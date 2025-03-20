@@ -131,7 +131,7 @@ std::vector<std::vector<double>> interpolate_results(const std::vector<std::vect
 }
 
 // Function to integrate the SIR model
-std::vector<std::vector<double>> sir_model(std::vector<double> S0, std::vector<double> I0, 
+std::vector<std::vector<double>> solve(std::vector<double> S0, std::vector<double> I0, 
                                            std::vector<double> R0, std::vector<double> I_inc0,
                                            std::vector<double> beta_0, std::vector<double> gamma,
                                            const std::vector<double>& delta_beta_temporal, 
@@ -157,6 +157,7 @@ std::vector<std::vector<double>> sir_model(std::vector<double> S0, std::vector<d
         results.push_back(row);
     };
 
+    
     SIR sir_system(beta_0, gamma, beta_modifiers);
     runge_kutta_dopri5<std::vector<double>> stepper;
     integrate_adaptive(make_controlled(10, 1e-6, stepper), sir_system, y, t0, t_end, dt, observer);
@@ -165,7 +166,7 @@ std::vector<std::vector<double>> sir_model(std::vector<double> S0, std::vector<d
 
 // Bind C++ module to Python
 PYBIND11_MODULE(sir_model, m) {
-    m.def("sir_model", &sir_model, "Solve a strain-stratified SIR model",
+    m.def("integrate", &solve, "Solve a strain-stratified SIR model",
           py::arg("S0"), py::arg("I0"), py::arg("R0"), py::arg("I_inc0"),
           py::arg("beta_0"), py::arg("gamma"),
           py::arg("delta_beta_temporal"), py::arg("modifier_length"), py::arg("sigma"),

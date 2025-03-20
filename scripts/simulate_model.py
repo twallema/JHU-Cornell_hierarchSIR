@@ -22,14 +22,14 @@ delta_beta_temporal = [1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.
 # Wrapper for timer
 import timeit
 def to_time():
-    sir_model.sir_model(S0, I0, R0, I_inc0, beta_0, gamma, delta_beta_temporal, modifier_length, sigma, t0, t_end, dt)
+    sir_model.integrate(S0, I0, R0, I_inc0, beta_0, gamma, delta_beta_temporal, modifier_length, sigma, t0, t_end, dt)
 # Measure the execution time for 20 repetitions
 execution_time = timeit.timeit(to_time, number=20)
 print(f"Total execution time for 20 runs: {execution_time:.6f} seconds")
 print(f"Average execution time per run: {execution_time / 20:.6f} seconds")
 
 # Call C++ function
-results = sir_model.sir_model(S0, I0, R0, I_inc0, beta_0, gamma, delta_beta_temporal, modifier_length, sigma, t0, t_end, dt)
+results = sir_model.integrate(S0, I0, R0, I_inc0, beta_0, gamma, delta_beta_temporal, modifier_length, sigma, t0, t_end, dt)
 
 # Convert to NumPy array
 results = np.array(results)
