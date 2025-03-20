@@ -40,6 +40,7 @@ class SIR():
         """
         # TODO: docstring
         """
+
         # translate start and stop relative to mid Nov
         time = self.convert_dates_to_timesteps(start_date, stop_date)
 
@@ -108,7 +109,7 @@ class SIR():
         """
 
         # Extract simulation time and state variables
-        time = pd.to_datetime([start_date + timedelta(days=t) for t in simout[:, 0]])
+        date = pd.to_datetime([datetime(start_date.year, 11, 15) + timedelta(days=t) for t in simout[:, 0]])
         n_timesteps = simout.shape[0]
         n_states = len(states)
 
@@ -116,13 +117,13 @@ class SIR():
         data_values = simout[:, 1:].reshape(n_timesteps, n_strains, n_states).swapaxes(1, 2)
 
         # Dynamically construct the data_vars dictionary using state names
-        data_vars = {state: (["time", "strain"], data_values[:, i, :]) for i, state in enumerate(states)}
+        data_vars = {state: (["date", "strain"], data_values[:, i, :]) for i, state in enumerate(states)}
 
         # Create xarray dataset
         ds = xr.Dataset(
             data_vars=data_vars,
             coords={
-                "time": time,
+                "date": date,
                 "strain": np.arange(n_strains),
             },
         )

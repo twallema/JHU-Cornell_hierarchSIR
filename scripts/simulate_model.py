@@ -1,14 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
-from hierarchSIR.utils import initialize_model
+from hierarchSIR.utils import initialise_model
 
 # start and end of simulation
 t_start = datetime(2023, 10, 1)
-t_stop = datetime(2024, 5, 1)
+t_stop = datetime(2024, 8, 1)
 
 # Set up model
-model = initialize_model(strains=True)
+model = initialise_model(strains=True)
 
 # Wrapper for timer
 import timeit
@@ -25,7 +25,7 @@ simout = model.sim(t_start, t_stop)
 # Plot results
 fig,ax=plt.subplots(nrows=2, ncols=1, figsize=(8.3,11.7/2), sharex=True)
 ## population dynamics
-t = simout.time
+t = simout.date
 ax[0].plot(t, simout['S'].sel(strain=0), label="Susceptible")
 ax[0].plot(t, simout['I'].sel(strain=0), label="Infected")
 ax[0].plot(t, simout['R'].sel(strain=0), label="Recovered")

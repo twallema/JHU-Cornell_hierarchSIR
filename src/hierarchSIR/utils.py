@@ -12,13 +12,13 @@ def initialise_model(strains=False):
         # Parameters
         parameters = {
         # initial condition function
-        'f_I': np.array([1e-4, 1e-5]),
+        'f_I': np.array([1e-4, 1e-6]),
         'f_R': np.array([0.35, 0.35]), 
         # SIR parameters
-        'beta_0': [0.5, 0.5],
+        'beta': [0.5, 0.5],
         'gamma': [1/3.5, 1/3.5],
         # modifiers
-        'delta_beta_temporal': np.array([1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5]),
+        'delta_beta_temporal': np.array([1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5])-1,
         'modifier_length': 15,
         'sigma': 2.5,
         # observation parameters
@@ -36,7 +36,7 @@ def initialise_model(strains=False):
         'beta': [0.5,],
         'gamma': [1/3.5,],
         # modifiers
-        'delta_beta_temporal': np.array([1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5]),
+        'delta_beta_temporal': np.array([1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5])-1,
         'modifier_length': 15,
         'sigma': 2.5,
         # observation parameters

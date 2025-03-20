@@ -32,12 +32,12 @@ struct SIR {
         // Get right modifier values
         int t_int = static_cast<int>(t);
         int index = t_int + 30;
-        double modifier = (index >= 0 && index < beta_modifiers.size()) ? beta_modifiers[index] : 1.0;
+        double modifier = (index >= 0 && index < beta_modifiers.size()) ? beta_modifiers[index] : 0.0;
 
         // Compute SIR model for every strain
         for (int strain = 0; strain < num_strains; ++strain) {
             int idx = strain * 6;
-            double beta_t = beta[strain] * modifier;
+            double beta_t = beta[strain] * (modifier+1);
             double S = y[idx], I = y[idx + 1], R = y[idx + 2], I_inc = y[idx + 3], H_inc_star = y[idx+4], H_inc = y[idx+5];
             double lambda = beta_t * S * I / T[strain];
 
@@ -83,7 +83,7 @@ std::vector<double> gaussian_smooth(const std::vector<double>& input, double sig
 // Function to compute daily beta modifiers with padding and smoothing
 std::vector<double> process_beta_modifiers(const std::vector<double>& delta_beta_temporal, 
                                            int modifier_length, int total_days, double sigma) {
-    std::vector<double> daily_beta(total_days, 1.0);
+    std::vector<double> daily_beta(total_days, 0.0);
     int num_modifiers = delta_beta_temporal.size();
 
     // Step 1: Expand modifiers to daily values
@@ -98,10 +98,10 @@ std::vector<double> process_beta_modifiers(const std::vector<double>& delta_beta
         }
     }
 
-    // Step 2: Pad with 30 extra days of `1.0`
-    std::vector<double> padded_beta(30, 1.0);
+    // Step 2: Pad with 30 extra days of `0.0`
+    std::vector<double> padded_beta(30, 0.0);
     padded_beta.insert(padded_beta.end(), daily_beta.begin(), daily_beta.end());
-    padded_beta.insert(padded_beta.end(), 30, 1.0);
+    padded_beta.insert(padded_beta.end(), 30, 0.0);
 
     // Step 3: Apply Gaussian smoothing
     return gaussian_smooth(padded_beta, sigma);
@@ -169,7 +169,7 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
     
     SIR sir_system(beta, gamma, rho_i, rho_h, T_h,  beta_modifiers);
     runge_kutta_dopri5<std::vector<double>> stepper;
-    integrate_adaptive(make_controlled(20, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
+    integrate_adaptive(make_controlled(1, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
     return interpolate_results(results, t_start, t_end);
 }
 
