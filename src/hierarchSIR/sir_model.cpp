@@ -10,16 +10,16 @@ using namespace boost::numeric::odeint;
 // SIR model
 struct SIR {
     double T_h;
-    std::vector<double> beta_0, gamma, rho_i, rho_h;
+    std::vector<double> beta, gamma, rho_i, rho_h;
     std::vector<double> beta_modifiers;
 
-    SIR(const std::vector<double>& beta_0, const std::vector<double>& gamma,
+    SIR(const std::vector<double>& beta, const std::vector<double>& gamma,
         const std::vector<double>& rho_i, const std::vector<double>& rho_h, double T_h,
         const std::vector<double>& beta_modifiers)
-        : beta_0(beta_0), gamma(gamma), rho_i(rho_i), rho_h(rho_h), T_h(T_h), beta_modifiers(beta_modifiers) {}
+        : beta(beta), gamma(gamma), rho_i(rho_i), rho_h(rho_h), T_h(T_h), beta_modifiers(beta_modifiers) {}
 
     void operator()(const std::vector<double>& y, std::vector<double>& dydt, double t) {
-        int num_strains = beta_0.size();
+        int num_strains = beta.size();
         int state_size = 6 * num_strains;  // Each strain has four states S, I, R, I_inc
         std::vector<double> T(num_strains, 0.0);
 
@@ -37,7 +37,7 @@ struct SIR {
         // Compute SIR model for every strain
         for (int strain = 0; strain < num_strains; ++strain) {
             int idx = strain * 6;
-            double beta_t = beta_0[strain] * modifier;
+            double beta_t = beta[strain] * modifier;
             double S = y[idx], I = y[idx + 1], R = y[idx + 2], I_inc = y[idx + 3], H_inc_star = y[idx+4], H_inc = y[idx+5];
             double lambda = beta_t * S * I / T[strain];
 
@@ -139,7 +139,7 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
                                            std::vector<double> S0, std::vector<double> I0, 
                                            std::vector<double> R0, std::vector<double> I_inc0,
                                            std::vector<double> H_inc_star0, std::vector<double> H_inc0,
-                                           std::vector<double> beta_0, std::vector<double> gamma, std::vector<double> rho_i, std::vector<double> rho_h, double T_h,
+                                           std::vector<double> beta, std::vector<double> gamma, std::vector<double> rho_i, std::vector<double> rho_h, double T_h,
                                            const std::vector<double>& delta_beta_temporal, 
                                            int modifier_length, double sigma
                                            ) {
@@ -167,7 +167,7 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
     };
 
     
-    SIR sir_system(beta_0, gamma, rho_i, rho_h, T_h,  beta_modifiers);
+    SIR sir_system(beta, gamma, rho_i, rho_h, T_h,  beta_modifiers);
     runge_kutta_dopri5<std::vector<double>> stepper;
     integrate_adaptive(make_controlled(20, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
     return interpolate_results(results, t_start, t_end);
@@ -180,7 +180,7 @@ PYBIND11_MODULE(sir_model, m) {
           py::arg("S0"), py::arg("I0"),
           py::arg("R0"), py::arg("I_inc0"),
           py::arg("H_inc_star0"), py::arg("H_inc0"),
-          py::arg("beta_0"), py::arg("gamma"), py::arg("rho_i"), py::arg("rho_h"), py::arg("T_h"),
+          py::arg("beta"), py::arg("gamma"), py::arg("rho_i"), py::arg("rho_h"), py::arg("T_h"),
           py::arg("delta_beta_temporal"), py::arg("modifier_length"), py::arg("sigma")
           );
 }

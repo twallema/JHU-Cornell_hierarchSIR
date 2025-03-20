@@ -24,7 +24,7 @@ class SIR():
         # TODO: docstring
         """
         # determine the number of strains
-        self.n_strains = len(parameters['beta_0'])
+        self.n_strains = len(parameters['beta'])
         self.states = ['S', 'I', 'R', 'I_inc', 'H_inc_star', 'H_inc']
 
         # TODO: retrieve the state's demography

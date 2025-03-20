@@ -1,7 +1,9 @@
+import os
 import numpy as np
+import pandas as pd
 from hierarchSIR.model import SIR
 
-def initialize_model(strains=False):
+def initialise_model(strains=False):
     """
     A function to intialise the model
     """
@@ -31,7 +33,7 @@ def initialize_model(strains=False):
         'f_I': np.array([1e-4,]),
         'f_R': np.array([0.35,]), 
         # SIR parameters
-        'beta_0': [0.5,],
+        'beta': [0.5,],
         'gamma': [1/3.5,],
         # modifiers
         'delta_beta_temporal': np.array([1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5]),
