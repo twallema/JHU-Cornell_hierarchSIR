@@ -30,6 +30,6 @@ setup(
     description='An SIR influenza model for the USA',
     author='Dr. Tijs W. Alleman, Johns Hopkins University, Cornell University',
     license='CC-BY-NC-SA',
-    install_requires=[],
+    install_requires=['emcee',],
     ext_modules=ext_modules
 )
