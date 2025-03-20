@@ -8,16 +8,21 @@ initial_condition = {
     'S0': [7E6, 7E6],
     'I0': [100, 1],
     'R0': [3E6, 3E6],
-    'I_inc0': [0, 0]
+    'I_inc0': [0, 0],
+    'H_inc_star0': [0, 0],
+    'H_inc0': [0, 0],
     }
+
 parameters = {
     'beta_0': [0.5, 0.5],
     'gamma': [1/3.5, 1/3.5],
-    'rho_i': [0.02, 0.02],
+    'rho_i': [0.025, 0.025],
+    'rho_h': [0.0025, 0.0025],
     'delta_beta_temporal': [1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5],
     'modifier_length': 15,
     'sigma': 2.5
     }
+
 t_start = datetime(2023, 10, 1)
 t_stop = datetime(2024, 5, 1)
 
@@ -46,6 +51,9 @@ ax[0].plot(t, simout['R'].sel(strain=0), label="Recovered")
 ## incidence
 ax[1].plot(t, simout['I_inc'].sel(strain=0), label="Infected (inc)")
 ax[1].plot(t, simout['I_inc'].sel(strain=1), label="Infected (inc), strain 2")
+ax[1].plot(t, simout['H_inc'].sel(strain=0), label="Hospitalised (inc)")
+ax[1].plot(t, simout['H_inc'].sel(strain=1), label="Hospitalised (inc), strain 2")
+
 plt.xlabel("Time (days)")
 plt.ylabel("Population")
 plt.legend()

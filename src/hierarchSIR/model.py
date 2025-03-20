@@ -27,7 +27,7 @@ class SIR():
 
         # determine the number of strains
         self.n_strains = len(self.parameters['beta_0'])
-        self.states = ['S', 'I', 'R', 'I_inc']
+        self.states = ['S', 'I', 'R', 'I_inc', 'H_inc_star', 'H_inc']
 
         pass
 
