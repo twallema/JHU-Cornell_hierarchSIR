@@ -19,29 +19,74 @@ class SIR():
     SIR Influenza model
     """
     
-    def __init__(self, parameters, initial_condition):
+    def __init__(self, parameters):
+        """
+        # TODO: docstring
+        """
+        # determine the number of strains
+        self.n_strains = len(parameters['beta_0'])
+        self.states = ['S', 'I', 'R', 'I_inc', 'H_inc_star', 'H_inc']
+
+        # TODO: retrieve the state's demography
+        # add state name or fips as input argument
+        self.demography = 11.05E6
 
         # assign variables to object
         self.parameters = parameters
-        self.initial_condition = initial_condition
-
-        # determine the number of strains
-        self.n_strains = len(self.parameters['beta_0'])
-        self.states = ['S', 'I', 'R', 'I_inc', 'H_inc_star', 'H_inc']
 
         pass
 
     def sim(self, start_date, stop_date):
-
+        """
+        # TODO: docstring
+        """
         # translate start and stop relative to mid Nov
         time = self.convert_dates_to_timesteps(start_date, stop_date)
 
+        # build initial condition
+        initial_condition = self.initial_condition_function(self.demography, self.parameters['f_I'], self.parameters['f_R'])
+
+        # remove ICF arguments from the parameters
+        model_parameters = {key: value for key, value in self.parameters.items() if key not in ['f_I', 'f_R']}
+
         # simulate the model
-        simout = sir_model.integrate(*time, **self.initial_condition, **self.parameters)
+        simout = sir_model.integrate(*time, **initial_condition, **model_parameters)
 
         # format the output 
         return self.format_output(np.array(simout), start_date, self.states, self.n_strains)
 
+    @staticmethod
+    def initial_condition_function(demography, f_I, f_R):
+        """
+        A function generating the model's initial condition.
+        
+        input
+        -----
+
+        demography: float
+            Number of inhabitants in US state
+
+        f_I: float
+            Fraction of the population initially infected
+        
+        f_R: float
+            Fraction of the population initially immune
+
+        output
+        ------
+
+        initial_condition: dict
+            Keys: 'S0', ... . Values: np.ndarray.
+        """
+
+        # construct initial condition
+        return {'S0':  (1 - f_I - f_R) * demography,
+                'I0': f_I * demography,   
+                'R0': f_R * demography,
+                'I_inc0': len(f_I) * [0,],
+                'H_inc_star0': len(f_I) * [0,],
+                'H_inc0': len(f_I) * [0,],
+                }
 
     @staticmethod
     def format_output(simout: np.ndarray, start_date: datetime, states: list, n_strains: int) -> xr.Dataset:

@@ -1,34 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
-from hierarchSIR.model import SIR
+from hierarchSIR.utils import initialize_model
 
-# Parameters
-initial_condition = {
-    'S0': [7E6, 7E6],
-    'I0': [100, 1],
-    'R0': [3E6, 3E6],
-    'I_inc0': [0, 0],
-    'H_inc_star0': [0, 0],
-    'H_inc0': [0, 0],
-    }
-
-parameters = {
-    'beta_0': [0.5, 0.5],
-    'gamma': [1/3.5, 1/3.5],
-    'rho_i': [0.025, 0.025],
-    'rho_h': [0.0025, 0.0025],
-    'T_h': 3.5,
-    'delta_beta_temporal': [1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5],
-    'modifier_length': 15,
-    'sigma': 2.5
-    }
-
+# start and end of simulation
 t_start = datetime(2023, 10, 1)
 t_stop = datetime(2024, 5, 1)
 
 # Set up model
-model = SIR(parameters, initial_condition)
+model = initialize_model(strains=True)
 
 # Wrapper for timer
 import timeit
