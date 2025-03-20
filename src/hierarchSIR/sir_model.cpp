@@ -37,11 +37,12 @@ struct SIR {
             int idx = strain * 4;
             double beta_t = beta_0[strain] * modifier;
             double S = y[idx], I = y[idx + 1], R = y[idx + 2], I_inc = y[idx + 3];
+            double lambda = beta_t * S * I / T[strain];
 
-            dydt[idx] = -beta_t * S * I / T[strain];                                // dS/dt
-            dydt[idx + 1] = beta_t * S * I / T[strain] - gamma[strain] * I;         // dI/dt
-            dydt[idx + 2] = gamma[strain] * I;                                      // dR/dt
-            dydt[idx + 3] = rho_i[strain] * beta_t * S * I / T[strain] - I_inc;     // dI_inc/dt
+            dydt[idx] = -lambda;                                // dS/dt
+            dydt[idx + 1] = lambda - gamma[strain] * I;         // dI/dt
+            dydt[idx + 2] = gamma[strain] * I;                  // dR/dt
+            dydt[idx + 3] = rho_i[strain] * lambda - I_inc;     // dI_inc/dt
         }
     }
 };
