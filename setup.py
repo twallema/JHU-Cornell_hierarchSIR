@@ -8,8 +8,8 @@ boost_lib_dir = '/opt/homebrew/Cellar/boost/1.87.0_1/lib'
 # point toward C++ model
 ext_modules = [
     Extension(
-        "sir_model",
-        ["src/JHU-Cornell_hierarchSIR/sir_model.cpp"],
+        "hierarchSIR.sir_model",
+        ["src/hierarchSIR/sir_model.cpp"],
         include_dirs=[
             pybind11.get_include(),
             boost_include_dir,  # Add Boost include path
@@ -21,9 +21,9 @@ ext_modules = [
     ),
 ]
 
-# install Python package
+# installs the Python package
 setup(
-    name='JHU-Cornell_hierarchSIR',
+    name='hierarchSIR',
     packages=find_packages("src", exclude=["*.tests"]),
     package_dir={'': 'src'},
     version='0.0',
