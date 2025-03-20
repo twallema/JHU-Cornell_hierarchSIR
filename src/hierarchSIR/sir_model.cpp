@@ -18,12 +18,12 @@ struct SIR {
 
     void operator()(const std::vector<double>& y, std::vector<double>& dydt, double t) {
         int num_strains = beta_0.size();
-        int state_size = 4 * num_strains;  // Each strain has four states S, I, R, I_inc
+        int state_size = 6 * num_strains;  // Each strain has four states S, I, R, I_inc
         std::vector<double> T(num_strains, 0.0);
 
         // Compute total population for each strain
         for (int strain = 0; strain < num_strains; ++strain) {
-            int idx = strain * 4;
+            int idx = strain * 6;
             T[strain] = y[idx] + y[idx + 1] + y[idx + 2];
         }
 
@@ -34,15 +34,17 @@ struct SIR {
 
         // Compute SIR model for every strain
         for (int strain = 0; strain < num_strains; ++strain) {
-            int idx = strain * 4;
+            int idx = strain * 6;
             double beta_t = beta_0[strain] * modifier;
-            double S = y[idx], I = y[idx + 1], R = y[idx + 2], I_inc = y[idx + 3];
+            double S = y[idx], I = y[idx + 1], R = y[idx + 2], I_inc = y[idx + 3], H_inc_star = y[idx+4], H_inc = y[idx+5];
             double lambda = beta_t * S * I / T[strain];
 
             dydt[idx] = -lambda;                                // dS/dt
             dydt[idx + 1] = lambda - gamma[strain] * I;         // dI/dt
             dydt[idx + 2] = gamma[strain] * I;                  // dR/dt
             dydt[idx + 3] = rho_i[strain] * lambda - I_inc;     // dI_inc/dt
+            dydt[idx + 4] = rho_i[strain] * lambda - I_inc;     // dI_inc/dt
+            dydt[idx + 5] = rho_i[strain] * lambda - I_inc;     // dI_inc/dt
         }
     }
 };
@@ -135,6 +137,7 @@ std::vector<std::vector<double>> interpolate_results(const std::vector<std::vect
 std::vector<std::vector<double>> solve(double t_start, double t_end,
                                            std::vector<double> S0, std::vector<double> I0, 
                                            std::vector<double> R0, std::vector<double> I_inc0,
+                                           std::vector<double> H_inc_star0, std::vector<double> H_inc0,
                                            std::vector<double> beta_0, std::vector<double> gamma, std::vector<double> rho_i,
                                            const std::vector<double>& delta_beta_temporal, 
                                            int modifier_length, double sigma
@@ -151,6 +154,8 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
         y.push_back(I0[strain]);
         y.push_back(R0[strain]);
         y.push_back(I_inc0[strain]);
+        y.push_back(H_inc_star0[strain]);
+        y.push_back(H_inc0[strain]);
     }
 
     std::vector<std::vector<double>> results;
@@ -171,7 +176,9 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
 PYBIND11_MODULE(sir_model, m) {
     m.def("integrate", &solve, "Solve a strain-stratified SIR model",
           py::arg("t_start"), py::arg("t_end"),
-          py::arg("S0"), py::arg("I0"), py::arg("R0"), py::arg("I_inc0"),
+          py::arg("S0"), py::arg("I0"),
+          py::arg("R0"), py::arg("I_inc0"),
+          py::arg("H_inc_star0"), py::arg("H_inc0"),
           py::arg("beta_0"), py::arg("gamma"), py::arg("rho_i"),
           py::arg("delta_beta_temporal"), py::arg("modifier_length"), py::arg("sigma")
           );
