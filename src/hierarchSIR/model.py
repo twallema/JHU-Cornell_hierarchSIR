@@ -109,7 +109,7 @@ class SIR():
         """
 
         # Extract simulation time and state variables
-        date = pd.to_datetime([datetime(start_date.year, 11, 15) + timedelta(days=t) for t in simout[:, 0]])
+        date = pd.to_datetime([datetime(start_date.year, 10, 15) + timedelta(days=t) for t in simout[:, 0]])
         n_timesteps = simout.shape[0]
         n_states = len(states)
 
@@ -134,18 +134,18 @@ class SIR():
     @staticmethod
     def convert_dates_to_timesteps(start_date: datetime, end_date: datetime) -> list:
         """
-        Convert absolute start and end datetimes into integer indices relative to November 15 of the same year.
+        Convert absolute start and end datetimes into integer indices relative to October 15 of the same year.
 
         Parameters:
         - start_date (datetime): The start date of the simulation.
         - end_date (datetime): The end date of the simulation.
 
         Returns:
-        - (int, int): The start and end dates as integer indices relative to the C++ model's t=0 of November 15.
+        - (int, int): The start and end dates as integer indices relative to the C++ model's t=0 of October 15.
         """
 
-        # Define reference date (Nov 15 of the start_date's year)
-        reference_date = datetime(start_date.year, 11, 15)
+        # Define reference date (Oct 15 of the start_date's year)
+        reference_date = datetime(start_date.year, 10, 15)
 
         # Compute integer days relative to reference date
         start_index = (start_date - reference_date).days
