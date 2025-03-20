@@ -1,0 +1,14 @@
+name: HIERARCHSIR
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pandas
+  - numpy
+  - xarray
+  - matplotlib
+  - corner
+  - openpyxl
+  - jupyter
+  - pybind11
