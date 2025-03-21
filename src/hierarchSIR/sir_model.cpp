@@ -20,7 +20,7 @@ struct SIR {
 
     void operator()(const std::vector<double>& y, std::vector<double>& dydt, double t) {
         int num_strains = beta.size();
-        int num_states = 8;                 // Each strain has eight states S, I, R, I_inc, H_inc_LCT0, H_inc_LCT1, H_inc_LCT2, H_inc
+        int num_states = 10;                 // Each strain has eight states S, I, R, I_inc, H_inc_LCT0, H_inc_LCT1, H_inc_LCT2, H_inc
         int state_size = num_states * num_strains;  
         std::vector<double> T(num_strains, 0.0);
 
@@ -39,17 +39,19 @@ struct SIR {
         for (int strain = 0; strain < num_strains; ++strain) {
             int idx = strain * num_states;
             double beta_t = beta[strain] * (modifier+1);
-            double S = y[idx], I = y[idx + 1], R = y[idx + 2], I_inc = y[idx + 3], H_inc_LCT0 = y[idx+4],  H_inc_LCT1 = y[idx+5], H_inc_LCT2 = y[idx+6], H_inc = y[idx+7];
+            double S = y[idx], I = y[idx + 1], R = y[idx + 2], I_inc = y[idx + 3], H_inc_LCT0 = y[idx+4],  H_inc_LCT1 = y[idx+5], H_inc_LCT2 = y[idx+6], H_inc_LCT3 = y[idx+7], H_inc_LCT4 = y[idx+8], H_inc = y[idx+9];
             double lambda = beta_t * S * I / T[strain];
 
             dydt[idx] = -lambda;                                                    // dS/dt
             dydt[idx + 1] = lambda - gamma[strain] * I;                             // dI/dt
             dydt[idx + 2] = gamma[strain] * I;                                      // dR/dt
             dydt[idx + 3] = rho_i[strain] * lambda - I_inc;                         // dI_inc/dt
-            dydt[idx + 4] = rho_h[strain] * lambda - (3/T_h) * H_inc_LCT0;          // dH_inc_LCT0/dt
-            dydt[idx + 5] = (3/T_h) * H_inc_LCT0 - (3/T_h) * H_inc_LCT1;            // dH_inc_LCT1/dt
-            dydt[idx + 6] = (3/T_h) * H_inc_LCT1 - (3/T_h) * H_inc_LCT2;            // dH_inc_LCT2/dt
-            dydt[idx + 7] = (3/T_h) * H_inc_LCT2 - H_inc;                           // dH_inc/dt
+            dydt[idx + 4] = rho_h[strain] * lambda - (5/T_h) * H_inc_LCT0;          // dH_inc_LCT0/dt
+            dydt[idx + 5] = (5/T_h) * H_inc_LCT0 - (5/T_h) * H_inc_LCT1;            // dH_inc_LCT1/dt
+            dydt[idx + 6] = (5/T_h) * H_inc_LCT1 - (5/T_h) * H_inc_LCT2;            // dH_inc_LCT2/dt
+            dydt[idx + 7] = (5/T_h) * H_inc_LCT2 - (5/T_h) * H_inc_LCT3;            // dH_inc_LCT3/dt
+            dydt[idx + 8] = (5/T_h) * H_inc_LCT3 - (5/T_h) * H_inc_LCT4;            // dH_inc_LCT4/dt
+            dydt[idx + 9] = (5/T_h) * H_inc_LCT4 - H_inc;                           // dH_inc/dt
         }
     }
 };
@@ -159,6 +161,8 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
         y.push_back(0.0);   // H_inc_LCT0
         y.push_back(0.0);   // H_inc_LCT1
         y.push_back(0.0);   // H_inc_LCT2
+        y.push_back(0.0);   // H_inc_LCT3
+        y.push_back(0.0);   // H_inc_LCT4
         y.push_back(0.0);   // H_inc
     }
 
@@ -173,7 +177,7 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
             row.push_back(y[idx + 1]);   // I
             row.push_back(y[idx + 2]);   // R
             row.push_back(y[idx + 3]);   // I_inc
-            row.push_back(y[idx + 7]);   // H_inc (skip H_inc_LCT0, H_inc_LCT1, H_inc_LCT2)
+            row.push_back(y[idx + 9]);   // H_inc (skip H_inc_LCT0, H_inc_LCT1, H_inc_LCT2)
         }
         results.push_back(row);
     };

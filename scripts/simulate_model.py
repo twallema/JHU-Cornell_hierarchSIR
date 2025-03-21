@@ -32,13 +32,7 @@ ax[0].plot(t, simout['R'].sel(strain=0), label="Recovered")
 ax[0].legend()
 ## incidence
 ax[1].plot(t, simout['I_inc'].sel(strain=0), label="I_inc")
-#ax[1].plot(t, simout['I_inc'].sel(strain=1), label="Infected (inc), strain 2")
-#ax[1].plot(t, simout['H_inc_LCT0'].sel(strain=0), label="H_inc_LCT0")
-#ax[1].plot(t, simout['H_inc_LCT1'].sel(strain=0), label="H_inc_LCT1")
-#ax[1].plot(t, simout['H_inc_LCT2'].sel(strain=0), label="H_inc_LCT2")
 ax[1].plot(t, simout['H_inc'].sel(strain=0), label="H_inc")
-
-#ax[1].plot(t, simout['H_inc'].sel(strain=1), label="Hospitalised (inc), strain 2")
 
 plt.xlabel("Time (days)")
 plt.ylabel("Population")
