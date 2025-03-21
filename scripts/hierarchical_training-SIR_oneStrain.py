@@ -32,9 +32,9 @@ n_chains = 400
 pert = 0.01
 run_date = datetime.today().strftime("%Y-%m-%d")
 identifier = 'exclude-None'
-print_n =  5
-backend =  None
-discard = 0
+print_n =  100
+backend =  'exclude-None_BACKEND_2025-03-21.hdf5'
+discard = 1000
 thin = 1
 processes = int(os.environ.get('NUM_CORES', '16'))
 
@@ -110,10 +110,10 @@ pars_0 = list(pars_model_0.transpose().values.flatten())
 
 # hyperparameters
 hyperpars_0 = [
-               5.0, 1.0e-02,                                                                # rho_i
+               5.0, 3.0e-02,                                                                # rho_i
                1.7,                                                                         # T_h
-               5.7, 1.1e-03,                                                                # rho_h
-               0.027*17.4, 0.0057*17.4,                                                     # beta
+               5.7, 3.0e-03,                                                                # rho_h
+               0.55, 0.10,                                                                  # beta
                12.0, 16.5,                                                                  # f_R
                4.3, 2.8e-05,                                                                # f_I
                -0.06, -0.04, -0.02, 0.01, 0.13, -0.13, 0.02, 0.11, 0.03, 0.03, 0.08, -0.04, # delta_beta_temporal_mu
@@ -163,7 +163,6 @@ if __name__ == '__main__':
             if sampler.iteration % print_n:
                 continue
             else:
-                pass
                 # every print_n steps do..
                 # ..dump samples
                 samples = dump_sampler_to_xarray(sampler.get_chain(discard=discard, thin=thin), samples_path+str(identifier)+'_SAMPLES_'+run_date+'.nc', hyperpars_shapes, pars_model_shapes, seasons)
@@ -172,4 +171,4 @@ if __name__ == '__main__':
                 # ..generate goodness-of-fit
                 plot_fit(model, datasets, samples, pars_model_names, samples_path, identifier, run_date)
                 # ..generate traceplots
-                #traceplot(samples, pars_model_shapes, hyperpars_shapes, samples_path, identifier, run_date)
+                traceplot(samples, pars_model_shapes, hyperpars_shapes, samples_path, identifier, run_date)

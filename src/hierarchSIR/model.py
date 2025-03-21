@@ -120,7 +120,7 @@ class SIR():
         Returns:
         --------
 
-        - xr.Dataset: The structured dataset with labeled dimensions (time, strain).
+        - xr.Dataset: A structured xarray dataset with labeled dimensions (date, strain).
         """
 
         # Extract simulation time and state variables

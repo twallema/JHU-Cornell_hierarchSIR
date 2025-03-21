@@ -111,7 +111,7 @@ def log_posterior_probability(theta, model, datasets, pars_model_names, pars_mod
         # compute the likelihood
         for j, (state_model, state_data) in enumerate(zip(states_model, states_data)):
             x = data[state_data].values
-            y = simout[state_model].interp({'date': data.index}, method='linear').values
+            y = simout[state_model].sum(dim='strain').interp({'date': data.index}, method='linear').values
             # check model output for nans
             if np.isnan(y).any():
                 raise ValueError(f"simulation output contains nan, most likely due to numerical unstability. try using more conservative bounds.")
@@ -324,9 +324,9 @@ def plot_fit(model, datasets, samples_xr, pars_model_names, path, identifier, ru
     # simulate model for every season
     simout=[]
     for season, data in zip(list(samples_xr.coords['season'].values), datasets):
-        simout.append(model.sim(min(data.index), max(data.index), N=100,
+        simout.append(add_poisson_noise(model.sim(min(data.index), max(data.index), N=100,
                                         draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'season': season, 'pars_model_names': pars_model_names})+0.01
-                                        )
+                                        ))
 
     # visualise outcome
     for season, data, out in zip(list(samples_xr.coords['season'].values), datasets, simout):
