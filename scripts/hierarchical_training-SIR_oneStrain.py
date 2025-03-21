@@ -33,8 +33,8 @@ pert = 0.01
 run_date = datetime.today().strftime("%Y-%m-%d")
 identifier = 'exclude-2024-2025'
 print_n =  100
-backend =  'exclude-2024-2025_BACKEND_2025-03-21.hdf5'
-discard = 3000
+backend =  None
+discard = 0
 thin = 1
 processes = int(os.environ.get('NUM_CORES', '16'))
 

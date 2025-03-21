@@ -7,6 +7,8 @@
 namespace py = pybind11;
 using namespace boost::numeric::odeint;
 
+int num_states = 10;
+
 // SIR model
 struct SIR {
     double T_h;
@@ -20,7 +22,6 @@ struct SIR {
 
     void operator()(const std::vector<double>& y, std::vector<double>& dydt, double t) {
         int num_strains = beta.size();
-        int num_states = 10;                 // Each strain has eight states S, I, R, I_inc, H_inc_LCT0, H_inc_LCT1, H_inc_LCT2, H_inc
         int state_size = num_states * num_strains;  
         std::vector<double> T(num_strains, 0.0);
 
@@ -172,19 +173,19 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
         std::vector<double> row = {t};
         // perform ommission
         for (int strain = 0; strain < num_strains; ++strain) {
-            int idx = strain * 8;  // 8 states per strain
+            int idx = strain * num_states;  
             row.push_back(y[idx]);       // S
             row.push_back(y[idx + 1]);   // I
             row.push_back(y[idx + 2]);   // R
             row.push_back(y[idx + 3]);   // I_inc
-            row.push_back(y[idx + 9]);   // H_inc (skip H_inc_LCT0, H_inc_LCT1, H_inc_LCT2)
+            row.push_back(y[idx + 9]);   // H_inc (skip H_inc_LCT states)
         }
         results.push_back(row);
     };
     
     SIR sir_system(beta, gamma, rho_i, rho_h, T_h,  beta_modifiers);
     runge_kutta_dopri5<std::vector<double>> stepper;
-    integrate_adaptive(make_controlled(1e-1, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
+    integrate_adaptive(make_controlled(1, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
     return interpolate_results(results, t_start, t_end);
 }
 
