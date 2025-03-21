@@ -87,7 +87,7 @@ def log_posterior_probability(theta, model, datasets, pars_model_names, pars_mod
         lpp += beta.logpdf(theta_season['f_R'], a=theta_hyperpars['f_R_a'], b=theta_hyperpars['f_R_b'])                             # f_R
         lpp += gamma.logpdf(theta_season['f_I'], a=theta_hyperpars['f_I_a'], loc=0, scale=theta_hyperpars['f_I_scale'])             # f_I
         lpp += np.sum(norm.logpdf(theta_season['delta_beta_temporal'], loc=theta_hyperpars['delta_beta_temporal_mu'], scale=theta_hyperpars['delta_beta_temporal_sigma']))
-        
+
         # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
         if math.isnan(lpp):
             return -np.inf
@@ -99,7 +99,7 @@ def log_posterior_probability(theta, model, datasets, pars_model_names, pars_mod
         # or huge delta_beta_temporal_mu/sigma
         if ((any(((x < -0.5) | (x > 0.5)) for x in theta_hyperpars['delta_beta_temporal_mu'])) | (any(((x < 0) | (x > 0.50)) for x in theta_hyperpars['delta_beta_temporal_sigma']))):
             return -np.inf
-        
+
         # Assign model parameters (make sure they're vectors)
         model.parameters.update(theta_season)
         for par in ['rho_i', 'T_h', 'rho_h', 'beta', 'f_R', 'f_I']:
@@ -118,7 +118,6 @@ def log_posterior_probability(theta, model, datasets, pars_model_names, pars_mod
             lpp += w[i,j] * ll_poisson(x, y)
 
     return lpp
-
 
 #################################
 ## Function to save the chains ##
@@ -325,7 +324,7 @@ def plot_fit(model, datasets, samples_xr, pars_model_names, path, identifier, ru
     # simulate model for every season
     simout=[]
     for season, data in zip(list(samples_xr.coords['season'].values), datasets):
-        simout.append(model.sim(min(data.index), max(data.index), N=1,
+        simout.append(model.sim(min(data.index), max(data.index), N=100,
                                         draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'season': season, 'pars_model_names': pars_model_names})+0.01
                                         )
 
