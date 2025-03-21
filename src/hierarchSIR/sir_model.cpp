@@ -162,13 +162,21 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
         y.push_back(0.0);   // H_inc
     }
 
+    // Observe only S, I, R, I_inc and H_inc: omit linear chain trick
     std::vector<std::vector<double>> results;
     auto observer = [&](const std::vector<double>& y, double t) {
         std::vector<double> row = {t};
-        row.insert(row.end(), y.begin(), y.end());
+        // perform ommission
+        for (int strain = 0; strain < num_strains; ++strain) {
+            int idx = strain * 8;  // 8 states per strain
+            row.push_back(y[idx]);       // S
+            row.push_back(y[idx + 1]);   // I
+            row.push_back(y[idx + 2]);   // R
+            row.push_back(y[idx + 3]);   // I_inc
+            row.push_back(y[idx + 7]);   // H_inc (skip H_inc_LCT0, H_inc_LCT1, H_inc_LCT2)
+        }
         results.push_back(row);
     };
-
     
     SIR sir_system(beta, gamma, rho_i, rho_h, T_h,  beta_modifiers);
     runge_kutta_dopri5<std::vector<double>> stepper;
