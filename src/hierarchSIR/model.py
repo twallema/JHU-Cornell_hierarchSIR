@@ -99,11 +99,6 @@ class SIR():
         return {'S0':  (1 - f_I - f_R) * demography,
                 'I0': f_I * demography,   
                 'R0': f_R * demography,
-                'I_inc0': len(f_I) * [0,],
-                'H_inc_LCT0': len(f_I) * [0,],
-                'H_inc_LCT1': len(f_I) * [0,],
-                'H_inc_LCT2': len(f_I) * [0,],
-                'H_inc0': len(f_I) * [1,],
                 }
 
     @staticmethod

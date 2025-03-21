@@ -41,14 +41,14 @@ struct SIR {
             double S = y[idx], I = y[idx + 1], R = y[idx + 2], I_inc = y[idx + 3], H_inc_LCT0 = y[idx+4],  H_inc_LCT1 = y[idx+5], H_inc_LCT2 = y[idx+6], H_inc = y[idx+7];
             double lambda = beta_t * S * I / T[strain];
 
-            dydt[idx] = -lambda;                                // dS/dt
-            dydt[idx + 1] = lambda - gamma[strain] * I;         // dI/dt
-            dydt[idx + 2] = gamma[strain] * I;                  // dR/dt
-            dydt[idx + 3] = rho_i[strain] * lambda - I_inc;     // dI_inc/dt
-            dydt[idx + 4] = rho_h[strain] * lambda - (3/T_h) * H_inc_LCT0;     // dH_inc_LCT0/dt
-            dydt[idx + 5] = (3/T_h) * H_inc_LCT0 - (3/T_h) * H_inc_LCT1;     // dH_inc_LCT1/dt
-            dydt[idx + 6] = (3/T_h) * H_inc_LCT1 - (3/T_h) * H_inc_LCT2;     // dH_inc_LCT2/dt
-            dydt[idx + 7] = (3/T_h) * H_inc_LCT2 - H_inc;     // dH_inc/dt
+            dydt[idx] = -lambda;                                                    // dS/dt
+            dydt[idx + 1] = lambda - gamma[strain] * I;                             // dI/dt
+            dydt[idx + 2] = gamma[strain] * I;                                      // dR/dt
+            dydt[idx + 3] = rho_i[strain] * lambda - I_inc;                         // dI_inc/dt
+            dydt[idx + 4] = rho_h[strain] * lambda - (3/T_h) * H_inc_LCT0;          // dH_inc_LCT0/dt
+            dydt[idx + 5] = (3/T_h) * H_inc_LCT0 - (3/T_h) * H_inc_LCT1;            // dH_inc_LCT1/dt
+            dydt[idx + 6] = (3/T_h) * H_inc_LCT1 - (3/T_h) * H_inc_LCT2;            // dH_inc_LCT2/dt
+            dydt[idx + 7] = (3/T_h) * H_inc_LCT2 - H_inc;                           // dH_inc/dt
         }
     }
 };
@@ -138,9 +138,7 @@ std::vector<std::vector<double>> interpolate_results(const std::vector<std::vect
 
 // Function to integrate the SIR model
 std::vector<std::vector<double>> solve(double t_start, double t_end,
-                                           std::vector<double> S0, std::vector<double> I0, 
-                                           std::vector<double> R0, std::vector<double> I_inc0,
-                                           std::vector<double> H_inc_LCT0, std::vector<double> H_inc_LCT1, std::vector<double> H_inc_LCT2, std::vector<double> H_inc0,
+                                           std::vector<double> S0, std::vector<double> I0, std::vector<double> R0,
                                            std::vector<double> beta, std::vector<double> gamma, std::vector<double> rho_i, std::vector<double> rho_h, double T_h,
                                            const std::vector<double>& delta_beta_temporal, 
                                            int modifier_length, double sigma
@@ -156,11 +154,11 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
         y.push_back(S0[strain]);
         y.push_back(I0[strain]);
         y.push_back(R0[strain]);
-        y.push_back(I_inc0[strain]);
-        y.push_back(H_inc_LCT0[strain]);
-        y.push_back(H_inc_LCT1[strain]);
-        y.push_back(H_inc_LCT2[strain]);
-        y.push_back(H_inc0[strain]);
+        y.push_back(0.0);
+        y.push_back(0.0);
+        y.push_back(0.0);
+        y.push_back(0.0);
+        y.push_back(0.0);
     }
 
     std::vector<std::vector<double>> results;
@@ -181,9 +179,7 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
 PYBIND11_MODULE(sir_model, m) {
     m.def("integrate", &solve, "Solve a strain-stratified SIR model",
           py::arg("t_start"), py::arg("t_end"),
-          py::arg("S0"), py::arg("I0"),
-          py::arg("R0"), py::arg("I_inc0"),
-          py::arg("H_inc_LCT0"), py::arg("H_inc_LCT1"), py::arg("H_inc_LCT2"), py::arg("H_inc0"),
+          py::arg("S0"), py::arg("I0"), py::arg("R0"),
           py::arg("beta"), py::arg("gamma"), py::arg("rho_i"), py::arg("rho_h"), py::arg("T_h"),
           py::arg("delta_beta_temporal"), py::arg("modifier_length"), py::arg("sigma")
           );
