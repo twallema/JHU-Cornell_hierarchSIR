@@ -91,7 +91,7 @@ def log_posterior_probability(theta, model, datasets, pars_model_names, pars_mod
         # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
         if math.isnan(lpp):
             return -np.inf
-        
+
         # nor are negative betas
         if theta_hyperpars['beta_mu'] <= 0:
             return -np.inf
@@ -260,32 +260,33 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, bounds, N):
             ax.set_ylabel(par_name)
         ## TEMPORAL BETAS
         elif par_name == 'delta_beta_temporal':
-            ### get transmission rate function
-            from influenza_USA.NC_forecasts.TDPF import transmission_rate_function
-            f = transmission_rate_function(sigma=2.5)
-            x = pd.date_range(start=datetime(2020,10,21), end=datetime(2021,4,10), freq='2D').tolist()
-            ### compute modifier tranjectory of every season and plot
-            for i, season in enumerate(samples_xr.coords['season']):
-                y = []
-                for d in x:
-                    y.append(f(d, {}, 1, samples_xr['delta_beta_temporal'].median(dim=['iteration', 'chain']).sel(season=season).values))
-                ax.plot(x, np.squeeze(np.array(y)), color='black', linewidth=0.5, alpha=0.2)
-            ### visualise hyperdistribution
-            ll=[]
-            y=[]
-            ul=[]
-            for d in x:
-                ll.append(f(d, {}, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values - samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values))
-                y.append(f(d, {}, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values))
-                ul.append(f(d, {}, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values + samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values))
-            ax.plot(x, np.squeeze(np.array(y)), color='red', alpha=0.8)
-            ax.fill_between(x, np.squeeze(np.array(ll)), np.squeeze(np.array(ul)), color='red', alpha=0.1)
+            pass
+            # ### get transmission rate function
+            # from influenza_USA.NC_forecasts.TDPF import transmission_rate_function
+            # f = transmission_rate_function(sigma=2.5)
+            # x = pd.date_range(start=datetime(2020,10,21), end=datetime(2021,4,10), freq='2D').tolist()
+            # ### compute modifier tranjectory of every season and plot
+            # for i, season in enumerate(samples_xr.coords['season']):
+            #     y = []
+            #     for d in x:
+            #         y.append(f(d, {}, 1, samples_xr['delta_beta_temporal'].median(dim=['iteration', 'chain']).sel(season=season).values))
+            #     ax.plot(x, np.squeeze(np.array(y)), color='black', linewidth=0.5, alpha=0.2)
+            # ### visualise hyperdistribution
+            # ll=[]
+            # y=[]
+            # ul=[]
+            # for d in x:
+            #     ll.append(f(d, {}, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values - samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values))
+            #     y.append(f(d, {}, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values))
+            #     ul.append(f(d, {}, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values + samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values))
+            # ax.plot(x, np.squeeze(np.array(y)), color='red', alpha=0.8)
+            # ax.fill_between(x, np.squeeze(np.array(ll)), np.squeeze(np.array(ul)), color='red', alpha=0.1)
             # add parameter box
-            ax.text(0.02, 0.97, f"avg={list(np.round(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values,2))}\nstdev={list(np.round(samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values,2))}", transform=ax.transAxes, fontsize=5,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
-            ax.set_ylabel(r'$\Delta \beta_{t}$')
-            ax.set_ylim([0.7, 1.3])
+            #ax.text(0.02, 0.97, f"avg={list(np.round(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values,2))}\nstdev={list(np.round(samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values,2))}", transform=ax.transAxes, fontsize=5,
+            #    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+            #ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+            #ax.set_ylabel(r'$\Delta \beta_{t}$')
+            #ax.set_ylim([0.7, 1.3])
 
     fig.delaxes(axes[3,1])
     plt.tight_layout()
@@ -302,7 +303,7 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, bounds, N):
 import random
 def draw_function(parameters, samples_xr, season, pars_model_names):
     """
-    A pySODM compatible draw function
+    A compatible draw function
     """
 
     # get a random iteration and markov chain
@@ -310,7 +311,10 @@ def draw_function(parameters, samples_xr, season, pars_model_names):
     j = random.randint(0, len(samples_xr.coords['chain'])-1)
     # assign parameters
     for var in pars_model_names:
-        parameters[var] = samples_xr[var].sel({'iteration': i, 'chain': j, 'season': season}).values
+        if var != 'delta_beta_temporal':
+            parameters[var] = np.array([samples_xr[var].sel({'iteration': i, 'chain': j, 'season': season}).values],)
+        else:
+            parameters[var] = samples_xr[var].sel({'iteration': i, 'chain': j, 'season': season}).values
     return parameters
 
 def plot_fit(model, datasets, samples_xr, pars_model_names, path, identifier, run_date):
@@ -321,9 +325,9 @@ def plot_fit(model, datasets, samples_xr, pars_model_names, path, identifier, ru
     # simulate model for every season
     simout=[]
     for season, data in zip(list(samples_xr.coords['season'].values), datasets):
-        simout.append(add_poisson_noise(model.sim([min(data.index), max(data.index)], N=100, processes=1, method='RK23', rtol=5e-3,
+        simout.append(model.sim(min(data.index), max(data.index), N=1,
                                         draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'season': season, 'pars_model_names': pars_model_names})+0.01
-                                        ))
+                                        )
 
     # visualise outcome
     for season, data, out in zip(list(samples_xr.coords['season'].values), datasets, simout):
@@ -331,18 +335,18 @@ def plot_fit(model, datasets, samples_xr, pars_model_names, path, identifier, ru
         fig,ax=plt.subplots(nrows=2, figsize=(8.3, 11.7/5*2))
         # hosp
         ax[0].scatter(data.index, 7*data['H_inc'], color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-        ax[0].fill_between(out['date'], 7*out['H_inc'].sum(dim=['age_group', 'location']).quantile(dim='draws', q=0.05/2),
-                            7*out['H_inc'].sum(dim=['age_group', 'location']).quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
-        ax[0].fill_between(out['date'], 7*out['H_inc'].sum(dim=['age_group', 'location']).quantile(dim='draws', q=0.50/2),
-                            7*out['H_inc'].sum(dim=['age_group', 'location']).quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)
+        ax[0].fill_between(out['date'], 7*out['H_inc'].sum(dim=['strain',]).quantile(dim='draws', q=0.05/2),
+                            7*out['H_inc'].sum(dim='strain').quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
+        ax[0].fill_between(out['date'], 7*out['H_inc'].sum(dim='strain').quantile(dim='draws', q=0.50/2),
+                            7*out['H_inc'].sum(dim='strain').quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)
         ax[0].set_title(f'Hospitalisations')
         ax[0].set_ylabel('Weekly hospital inc. (-)')
         # ILI
         ax[1].scatter(data.index, 7*data['I_inc'], color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-        ax[1].fill_between(out['date'], 7*out['I_inc'].sum(dim=['age_group', 'location']).quantile(dim='draws', q=0.05/2),
-                            7*out['I_inc'].sum(dim=['age_group', 'location']).quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
-        ax[1].fill_between(out['date'], 7*out['I_inc'].sum(dim=['age_group', 'location']).quantile(dim='draws', q=0.50/2),
-                            7*out['I_inc'].sum(dim=['age_group', 'location']).quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)   
+        ax[1].fill_between(out['date'], 7*out['I_inc'].sum(dim='strain').quantile(dim='draws', q=0.05/2),
+                            7*out['I_inc'].sum(dim='strain').quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
+        ax[1].fill_between(out['date'], 7*out['I_inc'].sum(dim='strain').quantile(dim='draws', q=0.50/2),
+                            7*out['I_inc'].sum(dim='strain').quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)   
         ax[1].set_title(f'Influenza-like illness')
         ax[1].set_ylabel('Weekly ILI inc. (-)')
         fig.suptitle(f'{season}')

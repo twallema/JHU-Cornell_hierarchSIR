@@ -20,7 +20,8 @@ from hierarchSIR.utils import initialise_model, get_NC_influenza_data
 ##############
 
 # calibration settings
-use_ED_visits = True                                                                                     # use both ED admission (hospitalisation) and ED visits (ILI) data 
+strains = False
+use_ED_visits = True                                                                                    # use both ED admission (hospitalisation) and ED visits (ILI) data 
 seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024']    # season to include in calibration excercise
 start_calibration_month = 10                                                                             # start calibration on month 10, day 1
 end_calibration_month = 5                                                                                # end calibration on month 5, day 1
@@ -28,10 +29,10 @@ end_calibration_month = 5                                                       
 # Define number of chains
 max_n = 25000
 n_chains = 400
-pert = 0.10
+pert = 0.01
 run_date = datetime.today().strftime("%Y-%m-%d")
 identifier = 'exclude-None'
-print_n = 10
+print_n =  5
 backend =  None
 discard = 0
 thin = 1
@@ -61,7 +62,7 @@ datasets = [get_NC_influenza_data(start_calibration, end_calibration, season) fo
 ## Setup model ##
 #################
 
-model = initialise_model(strains=False)
+model = initialise_model(strains=strains)
 
 ##########################################
 ## Setup posterior probability function ##
@@ -79,7 +80,7 @@ if not use_ED_visits:
 # define model parameters to calibrate to every season and their bounds
 # not how we're not cutting out the parameters associated with the ED visit data
 pars_model_names = ['rho_i', 'T_h', 'rho_h', 'beta', 'f_R', 'f_I', 'delta_beta_temporal']
-pars_model_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.015), (0.01,1), (0.001,0.999), (1e-9,1e-3), (-1,1)]
+pars_model_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.02), (0.01,1), (0.001,0.999), (1e-9,1e-3), (-1,1)]
 _, pars_model_shapes = validate_calibrated_parameters(pars_model_names, model.parameters)
 n_pars = sum([v[0] for v in pars_model_shapes.values()])
 
@@ -100,6 +101,9 @@ hyperpars_shapes = {
 
 # get independent fit parameters
 pars_model_0 = pd.read_csv('../data/interim/calibration/single-season-optimal-parameters-oneStrain.csv', index_col=0)[seasons]
+
+# manually tweak beta (this model has no age groups)
+pars_model_0.loc['beta'] = 21 * pars_model_0.loc['beta']
 
 # parameters
 pars_0 = list(pars_model_0.transpose().values.flatten())
@@ -164,8 +168,8 @@ if __name__ == '__main__':
                 # ..dump samples
                 samples = dump_sampler_to_xarray(sampler.get_chain(discard=discard, thin=thin), samples_path+str(identifier)+'_SAMPLES_'+run_date+'.nc', hyperpars_shapes, pars_model_shapes, seasons)
                 # .. visualise hyperdistributions
-                hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', pars_model_shapes, pars_model_bounds, 300)
+                #hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', pars_model_shapes, pars_model_bounds, 300)
                 # ..generate goodness-of-fit
-                #plot_fit(model, datasets, samples, pars_model_names, samples_path, identifier, run_date)
+                plot_fit(model, datasets, samples, pars_model_names, samples_path, identifier, run_date)
                 # ..generate traceplots
-                traceplot(samples, pars_model_shapes, hyperpars_shapes, samples_path, identifier, run_date)
+                #traceplot(samples, pars_model_shapes, hyperpars_shapes, samples_path, identifier, run_date)

@@ -45,8 +45,8 @@ struct SIR {
             dydt[idx + 1] = lambda - gamma[strain] * I;         // dI/dt
             dydt[idx + 2] = gamma[strain] * I;                  // dR/dt
             dydt[idx + 3] = rho_i[strain] * lambda - I_inc;     // dI_inc/dt
-            dydt[idx + 4] = rho_h[strain] * lambda - (1/T_h) * H_inc_star;     // dI_inc/dt
-            dydt[idx + 5] = (1/T_h) * H_inc_star - H_inc;     // dI_inc/dt
+            dydt[idx + 4] = rho_h[strain] * lambda - (1/T_h) * H_inc_star;     // dH_inc_star/dt
+            dydt[idx + 5] = (1/T_h) * H_inc_star - H_inc;     // dH_inc/dt
         }
     }
 };
@@ -169,7 +169,7 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
     
     SIR sir_system(beta, gamma, rho_i, rho_h, T_h,  beta_modifiers);
     runge_kutta_dopri5<std::vector<double>> stepper;
-    integrate_adaptive(make_controlled(1, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
+    integrate_adaptive(make_controlled(1e-1, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
     return interpolate_results(results, t_start, t_end);
 }
 

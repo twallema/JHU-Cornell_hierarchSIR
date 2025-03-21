@@ -5,6 +5,7 @@ This script contains a wrapper to simulate the C++ SIR model
 __author__      = "Tijs Alleman"
 __copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group, Johns Hopkins Bloomberg School of Public Health. All Rights Reserved."
 
+import copy
 import numpy as np
 import xarray as xr
 import pandas as pd
@@ -36,7 +37,7 @@ class SIR():
 
         pass
 
-    def sim(self, start_date, stop_date):
+    def sim(self, start_date, stop_date, N=1, draw_function=None, draw_function_kwargs={}):
         """
         # TODO: docstring
         """
@@ -44,17 +45,31 @@ class SIR():
         # translate start and stop relative to mid Nov
         time = self.convert_dates_to_timesteps(start_date, stop_date)
 
-        # build initial condition
-        initial_condition = self.initial_condition_function(self.demography, self.parameters['f_I'], self.parameters['f_R'])
+        # save a copy before altering to reset after simulation
+        cp_pars = copy.deepcopy(self.parameters)
+        # loop over number of repeated samples
+        output = []
+        for _ in range(N):
+            # get parameters
+            if draw_function:
+                self.parameters.update(draw_function(copy.deepcopy(self.parameters), **draw_function_kwargs))
+            # build initial condition
+            initial_condition = self.initial_condition_function(self.demography, self.parameters['f_I'], self.parameters['f_R'])
+            # remove ICF arguments from the parameters
+            self.parameters = {key: value for key, value in self.parameters.items() if key not in ['f_I', 'f_R']}
+            # simulate model
+            simout = sir_model.integrate(*time, **initial_condition, **self.parameters)
+            # format and append output
+            output.append(self.format_output(np.array(simout), start_date, self.states, self.n_strains))
+            # Reset parameter dictionary
+            self.parameters = cp_pars
 
-        # remove ICF arguments from the parameters
-        model_parameters = {key: value for key, value in self.parameters.items() if key not in ['f_I', 'f_R']}
+        # Concatenate along dimension 'draw'
+        out = output[0]
+        for xarr in output[1:]:
+            out = xr.concat([out, xarr], "draws")
 
-        # simulate the model
-        simout = sir_model.integrate(*time, **initial_condition, **model_parameters)
-
-        # format the output 
-        return self.format_output(np.array(simout), start_date, self.states, self.n_strains)
+        return out
 
     @staticmethod
     def initial_condition_function(demography, f_I, f_R):
