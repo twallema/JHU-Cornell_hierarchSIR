@@ -31,10 +31,10 @@ max_n = 25000
 n_chains = 400
 pert = 0.01
 run_date = datetime.today().strftime("%Y-%m-%d")
-identifier = 'exclude-None'
+identifier = 'exclude-2024-2025'
 print_n =  100
-backend =  'exclude-None_BACKEND_2025-03-21.hdf5'
-discard = 1000
+backend =  'exclude-2024-2025_BACKEND_2025-03-21.hdf5'
+discard = 3000
 thin = 1
 processes = int(os.environ.get('NUM_CORES', '16'))
 
@@ -167,7 +167,7 @@ if __name__ == '__main__':
                 # ..dump samples
                 samples = dump_sampler_to_xarray(sampler.get_chain(discard=discard, thin=thin), samples_path+str(identifier)+'_SAMPLES_'+run_date+'.nc', hyperpars_shapes, pars_model_shapes, seasons)
                 # .. visualise hyperdistributions
-                #hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', pars_model_shapes, pars_model_bounds, 300)
+                hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', pars_model_shapes, pars_model_bounds, 300)
                 # ..generate goodness-of-fit
                 plot_fit(model, datasets, samples, pars_model_names, samples_path, identifier, run_date)
                 # ..generate traceplots

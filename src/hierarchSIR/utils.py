@@ -23,7 +23,7 @@ def initialise_model(strains=False):
         'sigma': 2.5,
         # observation parameters
         'rho_i': [0.025, 0.025],
-        'rho_h': [0.0025, 0.0025],
+        'rho_h': [0.025, 0.025],
         'T_h': 3.5
         }
     else:
