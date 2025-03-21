@@ -26,7 +26,7 @@ class SIR():
         """
         # determine the number of strains
         self.n_strains = len(parameters['beta'])
-        self.states = ['S', 'I', 'R', 'I_inc', 'H_inc_star', 'H_inc']
+        self.states = ['S', 'I', 'R', 'I_inc', 'H_inc_LCT0', 'H_inc_LCT1', 'H_inc_LCT2', 'H_inc']
 
         # TODO: retrieve the state's demography
         # add state name or fips as input argument
@@ -100,8 +100,10 @@ class SIR():
                 'I0': f_I * demography,   
                 'R0': f_R * demography,
                 'I_inc0': len(f_I) * [0,],
-                'H_inc_star0': len(f_I) * [0,],
-                'H_inc0': len(f_I) * [0,],
+                'H_inc_LCT0': len(f_I) * [0,],
+                'H_inc_LCT1': len(f_I) * [0,],
+                'H_inc_LCT2': len(f_I) * [0,],
+                'H_inc0': len(f_I) * [1,],
                 }
 
     @staticmethod
