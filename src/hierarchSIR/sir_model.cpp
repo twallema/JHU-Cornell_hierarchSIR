@@ -20,12 +20,13 @@ struct SIR {
 
     void operator()(const std::vector<double>& y, std::vector<double>& dydt, double t) {
         int num_strains = beta.size();
-        int state_size = 8 * num_strains;  // Each strain has eight states S, I, R, I_inc, H_inc_LCT0, H_inc_LCT1, H_inc_LCT2, H_inc
+        int num_states = 8;                 // Each strain has eight states S, I, R, I_inc, H_inc_LCT0, H_inc_LCT1, H_inc_LCT2, H_inc
+        int state_size = num_states * num_strains;  
         std::vector<double> T(num_strains, 0.0);
 
         // Compute total population for each strain
         for (int strain = 0; strain < num_strains; ++strain) {
-            int idx = strain * 8;
+            int idx = strain * num_states;
             T[strain] = y[idx] + y[idx + 1] + y[idx + 2];
         }
 
@@ -36,7 +37,7 @@ struct SIR {
 
         // Compute SIR model for every strain
         for (int strain = 0; strain < num_strains; ++strain) {
-            int idx = strain * 8;
+            int idx = strain * num_states;
             double beta_t = beta[strain] * (modifier+1);
             double S = y[idx], I = y[idx + 1], R = y[idx + 2], I_inc = y[idx + 3], H_inc_LCT0 = y[idx+4],  H_inc_LCT1 = y[idx+5], H_inc_LCT2 = y[idx+6], H_inc = y[idx+7];
             double lambda = beta_t * S * I / T[strain];
@@ -154,11 +155,11 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
         y.push_back(S0[strain]);
         y.push_back(I0[strain]);
         y.push_back(R0[strain]);
-        y.push_back(0.0);
-        y.push_back(0.0);
-        y.push_back(0.0);
-        y.push_back(0.0);
-        y.push_back(0.0);
+        y.push_back(0.0);   // I_inc
+        y.push_back(0.0);   // H_inc_LCT0
+        y.push_back(0.0);   // H_inc_LCT1
+        y.push_back(0.0);   // H_inc_LCT2
+        y.push_back(0.0);   // H_inc
     }
 
     std::vector<std::vector<double>> results;
@@ -171,7 +172,7 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
     
     SIR sir_system(beta, gamma, rho_i, rho_h, T_h,  beta_modifiers);
     runge_kutta_dopri5<std::vector<double>> stepper;
-    integrate_adaptive(make_controlled(1e-6, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
+    integrate_adaptive(make_controlled(1e-1, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
     return interpolate_results(results, t_start, t_end);
 }
 
