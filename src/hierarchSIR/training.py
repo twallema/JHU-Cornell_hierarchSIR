@@ -81,7 +81,7 @@ def log_posterior_probability(theta, model, datasets, pars_model_names, pars_mod
 
         # compute priors of the season's parameters using the hyperparameters
         lpp += gamma.logpdf(theta_season['rho_i'], loc=0, a=theta_hyperpars['rho_i_a'], scale=theta_hyperpars['rho_i_scale'])       # rho_i
-        lpp += expon.logpdf(theta_season['T_h'], scale=theta_hyperpars['T_h_rate'])                                                 # T_h
+        lpp += expon.logpdf(theta_season['T_h'], scale=theta_hyperpars['T_h_scale'])                                                 # T_h
         lpp += gamma.logpdf(theta_season['rho_h'], loc=0, a=theta_hyperpars['rho_h_a'], scale=theta_hyperpars['rho_h_scale'])       # rho_h
         lpp += norm.logpdf(theta_season['beta'], loc=theta_hyperpars['beta_mu'], scale=theta_hyperpars['beta_sigma'])               # beta
         lpp += beta.logpdf(theta_season['f_R'], a=theta_hyperpars['f_R_a'], b=theta_hyperpars['f_R_b'])                             # f_R
@@ -185,7 +185,7 @@ def dump_sampler_to_xarray(samples_np, path_filename, hyperpars_shapes, pars_sha
 ## Hyperdistributions ##
 ########################
 
-def hyperdistributions(samples_xr, path_filename, pars_model_shapes, bounds, N):
+def hyperdistributions(samples_xr, path_filename, pars_model_shapes, pars_model_hyperdistributions, bounds, N):
 
     # get the element-expanded number of parameters and the parameter's names
     pars_model_names = pars_model_shapes.keys()
@@ -193,72 +193,13 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, bounds, N):
     # make figure
     fig, axes = plt.subplots(nrows=4, ncols=2, figsize=(8.3,11.7/5*4))
 
-    for _, (ax, par_name, bound) in enumerate(zip(axes.flatten(), pars_model_names, bounds)):
+    for _, (ax, par_name, par_hyperdistribution, bound) in enumerate(zip(axes.flatten(), pars_model_names, pars_model_hyperdistributions, bounds)):
         
         # define x based on plausible range
         x = np.linspace(start=bound[0],stop=bound[1],num=100)
 
-        ## EXPONENTIAL
-        if par_name == 'T_h':
-            # draw a random chain and iteration
-            for _ in range(N):
-                i = random.randint(0, len(samples_xr.coords['iteration'])-1)
-                j = random.randint(0, len(samples_xr.coords['chain'])-1)
-                ax.plot(x, expon.pdf(x, scale=samples_xr['T_h_rate'].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')        
-            # draw mean
-            m = samples_xr['T_h_rate'].median(dim=['iteration', 'chain']).values
-            ax.plot(x, expon.pdf(x, scale=m), color='red', linestyle='--')
-            # add parameter box
-            ax.text(0.05, 0.95, f"scale={m:.1f}", transform=ax.transAxes, fontsize=7,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
-            ax.set_ylabel('$T_h$')
-        ## GAMMA
-        elif par_name in ['rho_i', 'rho_h', 'f_I']:
-            a_name = f'{par_name}_a'
-            scale_name = f'{par_name}_scale'
-            # draw a random chain and iteration
-            for _ in range(N):
-                i = random.randint(0, len(samples_xr.coords['iteration'])-1)
-                j = random.randint(0, len(samples_xr.coords['chain'])-1)
-                ax.plot(x, gamma.pdf(x, a=samples_xr[a_name].sel({'iteration': i, 'chain': j}).values, scale=samples_xr[scale_name].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')        
-            # draw mean
-            ax.plot(x, gamma.pdf(x, a=samples_xr[a_name].median(dim=['iteration', 'chain']).values, scale=samples_xr[scale_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
-            # add parameter box
-            ax.text(0.05, 0.95, f"a={samples_xr[a_name].median(dim=['iteration', 'chain']).values:.1e}, scale={samples_xr[scale_name].median(dim=['iteration', 'chain']).values:.1e}", transform=ax.transAxes, fontsize=7,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
-            ax.set_ylabel(par_name)
-        ## NORMAL
-        elif par_name in ['beta',]:
-            mu_name = f'{par_name}_mu'
-            sigma_name = f'{par_name}_sigma'
-            # draw a random chain and iteration
-            for _ in range(N):
-                i = random.randint(0, len(samples_xr.coords['iteration'])-1)
-                j = random.randint(0, len(samples_xr.coords['chain'])-1)
-                ax.plot(x, norm.pdf(x, loc=samples_xr[mu_name].sel({'iteration': i, 'chain': j}).values, scale=samples_xr[sigma_name].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')        
-            # draw mean
-            ax.plot(x, norm.pdf(x, loc=samples_xr[mu_name].median(dim=['iteration', 'chain']).values, scale=samples_xr[sigma_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
-            # add parameter box
-            ax.text(0.05, 0.95, f"avg={samples_xr[mu_name].median(dim=['iteration', 'chain']).values:.1e}, stdev={samples_xr[sigma_name].median(dim=['iteration', 'chain']).values:.1e}", transform=ax.transAxes, fontsize=7,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
-            ax.set_ylabel(par_name)
-        ## BETA
-        elif par_name in ['f_R',]:
-            a_name = f'{par_name}_a'
-            b_name = f'{par_name}_b'
-            # draw a random chain and iteration
-            for _ in range(N):
-                i = random.randint(0, len(samples_xr.coords['iteration'])-1)
-                j = random.randint(0, len(samples_xr.coords['chain'])-1)
-                ax.plot(x, beta.pdf(x, a=samples_xr[a_name].sel({'iteration': i, 'chain': j}).values, b=samples_xr[b_name].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')        
-            # draw mean
-            ax.plot(x, beta.pdf(x, a=samples_xr[a_name].median(dim=['iteration', 'chain']).values, b=samples_xr[b_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
-            # add parameter box
-            ax.text(0.05, 0.95, f"a={samples_xr[a_name].median(dim=['iteration', 'chain']).values:.1f}, b={samples_xr[b_name].median(dim=['iteration', 'chain']).values:.1f}", transform=ax.transAxes, fontsize=7,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
-            ax.set_ylabel(par_name)
-        ## TEMPORAL BETAS
-        elif par_name == 'delta_beta_temporal':
+        # exception for `delta_beta_temporal`
+        if par_name == 'delta_beta_temporal':
             ### get transmission rate function
             from hierarchSIR.utils import transmission_rate_function
             f = transmission_rate_function(sigma=2.5)
@@ -281,10 +222,74 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, bounds, N):
             ax.fill_between(x, np.squeeze(np.array(ll)), np.squeeze(np.array(ul)), color='red', alpha=0.1)
             # add parameter box
             ax.text(0.02, 0.97, f"avg={list(np.round(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values,2).tolist())}\nstdev={list(np.round(samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values,2).tolist())}", transform=ax.transAxes, fontsize=5,
-               verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
             ax.set_ylabel(r'$\Delta \beta_{t}$')
             ax.set_ylim([0.7, 1.3])
+        else:
+
+            # loop over the number of iterations
+            for k in range(N):
+                ## draw a random sample
+                i = random.randint(0, len(samples_xr.coords['iteration'])-1)
+                j = random.randint(0, len(samples_xr.coords['chain'])-1)
+
+                ## if not `delta_beta_temporal`: select the right distribution
+                if par_hyperdistribution == 'gamma':
+                    ### construct hyperpars names
+                    a_name = f'{par_name}_a'
+                    scale_name = f'{par_name}_scale'
+                    ### add sample to plot
+                    ax.plot(x, gamma.pdf(x, a=samples_xr[a_name].sel({'iteration': i, 'chain': j}).values, scale=samples_xr[scale_name].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')
+                    ### add mean
+                    if k == N-1:
+                        #### mean
+                        ax.plot(x, gamma.pdf(x, a=samples_xr[a_name].median(dim=['iteration', 'chain']).values, scale=samples_xr[scale_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                        #### textbox
+                        ax.text(0.05, 0.95, f"a={samples_xr[a_name].median(dim=['iteration', 'chain']).values:.1e}, scale={samples_xr[scale_name].median(dim=['iteration', 'chain']).values:.1e}", transform=ax.transAxes, fontsize=7,
+                                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                        ax.set_ylabel(par_name)
+                elif par_hyperdistribution == 'expon':
+                    ### construct hyperpars names
+                    scale_name = f'{par_name}_scale'
+                    ### add sample to plot
+                    ax.plot(x, expon.pdf(x, scale=samples_xr[scale_name].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')
+                    ### add mean
+                    if k == N-1:
+                        #### mean
+                        ax.plot(x, expon.pdf(x, scale=samples_xr[scale_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                        #### textbox
+                        ax.text(0.05, 0.95, f"scale={samples_xr[scale_name].median(dim=['iteration', 'chain']).values:.1f}", transform=ax.transAxes, fontsize=7,
+                                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                        ax.set_ylabel('$T_h$')
+                elif par_hyperdistribution == 'normal':
+                    ### construct hyperpars names
+                    mu_name = f'{par_name}_mu'
+                    sigma_name = f'{par_name}_sigma'
+                    ### add sample to plot
+                    ax.plot(x, norm.pdf(x, loc=samples_xr[mu_name].sel({'iteration': i, 'chain': j}).values, scale=samples_xr[sigma_name].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')        
+                    ### add mean
+                    if k == N-1:
+                        #### mean
+                        ax.plot(x, norm.pdf(x, loc=samples_xr[mu_name].median(dim=['iteration', 'chain']).values, scale=samples_xr[sigma_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                        #### textbox
+                        ax.text(0.05, 0.95, f"avg={samples_xr[mu_name].median(dim=['iteration', 'chain']).values:.1e}, stdev={samples_xr[sigma_name].median(dim=['iteration', 'chain']).values:.1e}", transform=ax.transAxes, fontsize=7,
+                                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                        ax.set_ylabel(par_name)
+                elif par_hyperdistribution == 'beta':
+                    ### construct hyperpars names
+                    a_name = f'{par_name}_a'
+                    b_name = f'{par_name}_b'
+                    ### add sample to plot
+                    ax.plot(x, beta.pdf(x, a=samples_xr[a_name].sel({'iteration': i, 'chain': j}).values, b=samples_xr[b_name].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')        
+                    ### add mean
+                    if k == N-1:
+                        #### mean
+                        ax.plot(x, beta.pdf(x, a=samples_xr[a_name].median(dim=['iteration', 'chain']).values, b=samples_xr[b_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                        #### textbox
+                        ax.text(0.05, 0.95, f"a={samples_xr[a_name].median(dim=['iteration', 'chain']).values:.1f}, b={samples_xr[b_name].median(dim=['iteration', 'chain']).values:.1f}", transform=ax.transAxes, fontsize=7,
+                                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                        ax.set_ylabel(par_name)
 
     fig.delaxes(axes[3,1])
     plt.tight_layout()

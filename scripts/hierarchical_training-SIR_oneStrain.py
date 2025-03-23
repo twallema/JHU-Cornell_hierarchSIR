@@ -83,11 +83,12 @@ pars_model_names = ['rho_i', 'T_h', 'rho_h', 'beta', 'f_R', 'f_I', 'delta_beta_t
 pars_model_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.02), (0.01,1), (0.001,0.999), (1e-9,1e-3), (-1,1)]
 _, pars_model_shapes = validate_calibrated_parameters(pars_model_names, model.parameters)
 n_pars = sum([v[0] for v in pars_model_shapes.values()])
+pars_model_hyperdistributions = ['gamma', 'expon', 'gamma', 'normal', 'beta', 'gamma', 'normal']
 
 # define hyperparameters 
 hyperpars_shapes = {
     'rho_i_a': (1,), 'rho_i_scale': (1,),
-    'T_h_rate': (1,),
+    'T_h_scale': (1,),
     'rho_h_a': (1,), 'rho_h_scale': (1,),
     'beta_mu': (1,), 'beta_sigma': (1,),
     'f_R_a': (1,), 'f_R_b': (1,),
@@ -167,7 +168,7 @@ if __name__ == '__main__':
                 # ..dump samples
                 samples = dump_sampler_to_xarray(sampler.get_chain(discard=discard, thin=thin), samples_path+str(identifier)+'_SAMPLES_'+run_date+'.nc', hyperpars_shapes, pars_model_shapes, seasons)
                 # .. visualise hyperdistributions
-                hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', pars_model_shapes, pars_model_bounds, 300)
+                hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', pars_model_shapes, pars_model_hyperdistributions, pars_model_bounds, 300)
                 # ..generate goodness-of-fit
                 plot_fit(model, datasets, samples, pars_model_names, samples_path, identifier, run_date)
                 # ..generate traceplots
