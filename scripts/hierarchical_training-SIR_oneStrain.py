@@ -12,7 +12,7 @@ import pandas as pd
 from datetime import datetime
 from multiprocessing import get_context
 from pySODM.optimization.objective_functions import validate_calibrated_parameters
-from hierarchSIR.hierarchical_calibration_oneStrain import log_posterior_probability, dump_sampler_to_xarray, traceplot, plot_fit, hyperdistributions
+from hierarchSIR.training import log_posterior_probability, dump_sampler_to_xarray, traceplot, plot_fit, hyperdistributions
 from hierarchSIR.utils import initialise_model, get_NC_influenza_data
 
 ##############

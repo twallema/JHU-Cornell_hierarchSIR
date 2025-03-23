@@ -259,33 +259,32 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, bounds, N):
             ax.set_ylabel(par_name)
         ## TEMPORAL BETAS
         elif par_name == 'delta_beta_temporal':
-            pass
-            # ### get transmission rate function
-            # from influenza_USA.NC_forecasts.TDPF import transmission_rate_function
-            # f = transmission_rate_function(sigma=2.5)
-            # x = pd.date_range(start=datetime(2020,10,21), end=datetime(2021,4,10), freq='2D').tolist()
-            # ### compute modifier tranjectory of every season and plot
-            # for i, season in enumerate(samples_xr.coords['season']):
-            #     y = []
-            #     for d in x:
-            #         y.append(f(d, {}, 1, samples_xr['delta_beta_temporal'].median(dim=['iteration', 'chain']).sel(season=season).values))
-            #     ax.plot(x, np.squeeze(np.array(y)), color='black', linewidth=0.5, alpha=0.2)
-            # ### visualise hyperdistribution
-            # ll=[]
-            # y=[]
-            # ul=[]
-            # for d in x:
-            #     ll.append(f(d, {}, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values - samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values))
-            #     y.append(f(d, {}, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values))
-            #     ul.append(f(d, {}, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values + samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values))
-            # ax.plot(x, np.squeeze(np.array(y)), color='red', alpha=0.8)
-            # ax.fill_between(x, np.squeeze(np.array(ll)), np.squeeze(np.array(ul)), color='red', alpha=0.1)
+            ### get transmission rate function
+            from hierarchSIR.utils import transmission_rate_function
+            f = transmission_rate_function(sigma=2.5)
+            x = pd.date_range(start=datetime(2020,10,21), end=datetime(2021,4,10), freq='2D').tolist()
+            ### compute modifier tranjectory of every season and plot
+            for i, season in enumerate(samples_xr.coords['season']):
+                y = []
+                for d in x:
+                    y.append(f(d, 1, samples_xr['delta_beta_temporal'].median(dim=['iteration', 'chain']).sel(season=season).values))
+                ax.plot(x, np.squeeze(np.array(y)), color='black', linewidth=0.5, alpha=0.2)
+            ### visualise hyperdistribution
+            ll=[]
+            y=[]
+            ul=[]
+            for d in x:
+                ll.append(f(d, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values - samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values))
+                y.append(f(d, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values))
+                ul.append(f(d, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values + samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values))
+            ax.plot(x, np.squeeze(np.array(y)), color='red', alpha=0.8)
+            ax.fill_between(x, np.squeeze(np.array(ll)), np.squeeze(np.array(ul)), color='red', alpha=0.1)
             # add parameter box
-            #ax.text(0.02, 0.97, f"avg={list(np.round(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values,2))}\nstdev={list(np.round(samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values,2))}", transform=ax.transAxes, fontsize=5,
-            #    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
-            #ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
-            #ax.set_ylabel(r'$\Delta \beta_{t}$')
-            #ax.set_ylim([0.7, 1.3])
+            ax.text(0.02, 0.97, f"avg={list(np.round(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values,2).tolist())}\nstdev={list(np.round(samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values,2).tolist())}", transform=ax.transAxes, fontsize=5,
+               verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+            ax.set_ylabel(r'$\Delta \beta_{t}$')
+            ax.set_ylim([0.7, 1.3])
 
     fig.delaxes(axes[3,1])
     plt.tight_layout()

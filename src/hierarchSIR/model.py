@@ -29,7 +29,7 @@ class SIR():
         self.states = ['S', 'I', 'R', 'I_inc', 'H_inc']
 
         # retrieve the state's population
-        self.population = population
+        self.population = np.ones(self.n_strains) * population
 
         # assign variables to object
         self.parameters = parameters

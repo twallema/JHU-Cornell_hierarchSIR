@@ -1,4 +1,3 @@
-import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 from hierarchSIR.utils import initialise_model
