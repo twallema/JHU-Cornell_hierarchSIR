@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from hierarchSIR.model import SIR
 
-def initialise_model(strains=False):
+def initialise_model(strains=False, fips_state=37):
     """
     A function to intialise the model
     """
@@ -45,7 +45,33 @@ def initialise_model(strains=False):
         'T_h': 3.5
         }
 
-    return SIR(parameters)
+    # get inhabitants
+    population = get_demography(fips_state)
+
+    return SIR(parameters, population)
+
+def get_demography(fips_state):
+    """
+    A function retrieving the total population of a US state
+
+    input
+    -----
+
+    - state_fips: int
+        - US state FIPS code
+
+    output
+    ------
+
+    - population: int
+        - population size
+    """
+
+    # load demography
+    demography = pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/demography/demography.csv'))
+
+    return int(demography[demography['fips_state'] == fips_state]['population'].values[0])
+
 
 def get_NC_influenza_data(startdate, enddate, season):
     """
