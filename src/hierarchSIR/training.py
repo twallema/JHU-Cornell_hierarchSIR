@@ -22,7 +22,7 @@ from pySODM.optimization.objective_functions import ll_poisson, validate_calibra
 ## Define posterior probability function ##
 ###########################################
 
-def log_posterior_probability(theta, model, datasets, pars_model_names, pars_model_bounds, hyperpars_shapes, states_model, states_data):
+def log_posterior_probability(theta, model, datasets, pars_model_names, pars_model_bounds, hyperpars_shapes, pars_model_hyperdistributions, states_model, states_data):
     """
     Computes the log posterior probability
 
@@ -35,7 +35,7 @@ def log_posterior_probability(theta, model, datasets, pars_model_names, pars_mod
     """
     # pre-allocate lpp
     lpp = 0
-    
+
     # derive the number of model parameters and all their shapes
     parameters_sizes, parameters_shapes = validate_calibrated_parameters(pars_model_names, model.parameters)
     n_pars = sum([v[0] for v in parameters_shapes.values()])
@@ -79,31 +79,48 @@ def log_posterior_probability(theta, model, datasets, pars_model_names, pars_mod
         # convert to a dictionary for my ease
         theta_season = list_to_dict(theta_season, parameters_shapes, retain_floats=True)
 
-        # compute priors of the season's parameters using the hyperparameters
-        lpp += gamma.logpdf(theta_season['rho_i'], loc=0, a=theta_hyperpars['rho_i_a'], scale=theta_hyperpars['rho_i_scale'])       # rho_i
-        lpp += expon.logpdf(theta_season['T_h'], scale=theta_hyperpars['T_h_scale'])                                                 # T_h
-        lpp += gamma.logpdf(theta_season['rho_h'], loc=0, a=theta_hyperpars['rho_h_a'], scale=theta_hyperpars['rho_h_scale'])       # rho_h
-        lpp += norm.logpdf(theta_season['beta'], loc=theta_hyperpars['beta_mu'], scale=theta_hyperpars['beta_sigma'])               # beta
-        lpp += beta.logpdf(theta_season['f_R'], a=theta_hyperpars['f_R_a'], b=theta_hyperpars['f_R_b'])                             # f_R
-        lpp += gamma.logpdf(theta_season['f_I'], a=theta_hyperpars['f_I_a'], loc=0, scale=theta_hyperpars['f_I_scale'])             # f_I
-        lpp += np.sum(norm.logpdf(theta_season['delta_beta_temporal'], loc=theta_hyperpars['delta_beta_temporal_mu'], scale=theta_hyperpars['delta_beta_temporal_sigma']))
+        # compute priors
+        for pars_model_name, pars_model_hyperdistribution in zip(pars_model_names, pars_model_hyperdistributions):
+            if pars_model_hyperdistribution == 'gamma':
+                ### construct hyperpars names
+                a_name = f'{pars_model_name}_a'
+                scale_name = f'{pars_model_name}_scale'
+                ### compute lpp
+                lpp += np.sum(gamma.logpdf(theta_season[pars_model_name], loc=0, a=theta_hyperpars[a_name], scale=theta_hyperpars[scale_name]))
+            elif pars_model_hyperdistribution == 'expon':
+                ### construct hyperpars names
+                scale_name = f'{pars_model_name}_scale'
+                ### compute lpp
+                lpp += np.sum(expon.logpdf(theta_season[pars_model_name], scale=theta_hyperpars[scale_name]))
+            elif pars_model_hyperdistribution == 'normal':
+                ### construct hyperpars names
+                mu_name = f'{pars_model_name}_mu'
+                sigma_name = f'{pars_model_name}_sigma'
+                ### compute lpp
+                lpp += np.sum(norm.logpdf(theta_season[pars_model_name], loc=theta_hyperpars[mu_name], scale=theta_hyperpars[sigma_name]))               
+            elif pars_model_hyperdistribution == 'beta':
+                ### construct hyperpars names
+                a_name = f'{pars_model_name}_a'
+                b_name = f'{pars_model_name}_b'
+                ### compute lpp
+                lpp += np.sum(beta.logpdf(theta_season[pars_model_name], a=theta_hyperpars[a_name], b=theta_hyperpars[b_name]))        
 
         # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
         if math.isnan(lpp):
             return -np.inf
-
         # nor are negative betas
         if theta_hyperpars['beta_mu'] <= 0:
             return -np.inf
-        
         # or huge delta_beta_temporal_mu/sigma
         if ((any(((x < -0.5) | (x > 0.5)) for x in theta_hyperpars['delta_beta_temporal_mu'])) | (any(((x < 0) | (x > 0.50)) for x in theta_hyperpars['delta_beta_temporal_sigma']))):
             return -np.inf
 
-        # Assign model parameters (make sure they're vectors)
+        # Assign model parameters
         model.parameters.update(theta_season)
-        for par in ['rho_i', 'T_h', 'rho_h', 'beta', 'f_R', 'f_I']:
-            model.parameters[par] = np.array([theta_season[par],])
+        # But make sure they're vectors
+        for par in pars_model_names:
+            if par != 'delta_beta_temporal':
+                model.parameters[par] = np.array([theta_season[par],])
 
         # run the forward simulation
         simout = model.sim([min(data.index), max(data.index)])
