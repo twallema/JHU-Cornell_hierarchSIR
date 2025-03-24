@@ -32,9 +32,9 @@ n_chains = 400
 pert = 0.01
 run_date = datetime.today().strftime("%Y-%m-%d")
 identifier = 'exclude-2024-2025'
-print_n =  100
+print_n =  200
 backend =  None
-discard = 0
+discard = 100
 thin = 1
 processes = int(os.environ.get('NUM_CORES', '16'))
 
@@ -79,22 +79,12 @@ if not use_ED_visits:
 
 # define model parameters to calibrate to every season and their bounds
 # not how we're not cutting out the parameters associated with the ED visit data
-pars_model_names = ['rho_i', 'T_h', 'rho_h', 'beta', 'f_R', 'f_I', 'delta_beta_temporal']
-pars_model_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.02), (0.01,1), (0.001,0.999), (1e-9,1e-3), (-1,1)]
-_, pars_model_shapes = validate_calibrated_parameters(pars_model_names, model.parameters)
-n_pars = sum([v[0] for v in pars_model_shapes.values()])
-pars_model_hyperdistributions = ['gamma', 'expon', 'gamma', 'normal', 'beta', 'gamma', 'normal']
+par_names = ['rho_i', 'T_h', 'rho_h', 'beta', 'f_R', 'f_I', 'delta_beta_temporal']
+par_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.02), (0.01,1), (0.001,0.999), (1e-9,1e-3), (-1,1)]
+par_hyperdistributions = ['gamma', 'expon', 'gamma', 'normal', 'beta', 'gamma', 'normal']
 
-# define hyperparameters 
-hyperpars_shapes = {
-    'rho_i_a': (1,), 'rho_i_scale': (1,),
-    'T_h_scale': (1,),
-    'rho_h_a': (1,), 'rho_h_scale': (1,),
-    'beta_mu': (1,), 'beta_sigma': (1,),
-    'f_R_a': (1,), 'f_R_b': (1,),
-    'f_I_a': (1,), 'f_I_scale': (1,),
-    'delta_beta_temporal_mu': (len(model.parameters['delta_beta_temporal']),), 'delta_beta_temporal_sigma': (len(model.parameters['delta_beta_temporal']),),
-}
+# setup lpp function
+lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, states_model, states_data)
 
 ####################################
 ## Fetch initial guess parameters ##
@@ -153,10 +143,9 @@ else:
 if __name__ == '__main__':
     with get_context("spawn").Pool(processes=processes) as pool:
         # setup sampler
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior_probability, backend=backend, pool=pool,
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, lpp, backend=backend, pool=pool,
                                         moves=[(emcee.moves.DEMove(), 0.5*0.9),(emcee.moves.DEMove(gamma0=1.0), 0.5*0.1),
-                                               (emcee.moves.StretchMove(live_dangerously=True), 0.50)],
-                                        args=(model, datasets, pars_model_names, pars_model_bounds, hyperpars_shapes, states_model, states_data)
+                                               (emcee.moves.StretchMove(live_dangerously=True), 0.50)]
                                         )
         # sample
         for sample in sampler.sample(pos, iterations=max_n, progress=True, store=True, skip_initial_state_check=True):
@@ -166,10 +155,10 @@ if __name__ == '__main__':
             else:
                 # every print_n steps do..
                 # ..dump samples
-                samples = dump_sampler_to_xarray(sampler.get_chain(discard=discard, thin=thin), samples_path+str(identifier)+'_SAMPLES_'+run_date+'.nc', hyperpars_shapes, pars_model_shapes, seasons)
+                samples = dump_sampler_to_xarray(sampler.get_chain(discard=discard, thin=thin), samples_path+str(identifier)+'_SAMPLES_'+run_date+'.nc', lpp.hyperpar_shapes, lpp.par_shapes, seasons)
                 # .. visualise hyperdistributions
-                hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', pars_model_shapes, pars_model_hyperdistributions, pars_model_bounds, 300)
+                hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', lpp.par_shapes, par_hyperdistributions, par_bounds, 300)
                 # ..generate goodness-of-fit
-                plot_fit(model, datasets, samples, pars_model_names, samples_path, identifier, run_date)
+                plot_fit(model, datasets, samples, par_names, samples_path, identifier, run_date)
                 # ..generate traceplots
-                traceplot(samples, pars_model_shapes, hyperpars_shapes, samples_path, identifier, run_date)
+                traceplot(samples, lpp.par_shapes, lpp.hyperpar_shapes, samples_path, identifier, run_date)

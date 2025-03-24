@@ -22,119 +22,157 @@ from pySODM.optimization.objective_functions import ll_poisson, validate_calibra
 ## Define posterior probability function ##
 ###########################################
 
-def log_posterior_probability(theta, model, datasets, pars_model_names, pars_model_bounds, hyperpars_shapes, pars_model_hyperdistributions, states_model, states_data):
-    """
-    Computes the log posterior probability
+class log_posterior_probability():
 
-    input
-    -----
+    def __init__(self, model, par_names, par_bounds, par_hyperdistributions, datasets, states_model, states_data):
 
-    output
-    ------
+        # get the shapes of the model parameters
+        self.par_sizes, self.par_shapes = validate_calibrated_parameters(par_names, model.parameters)
+        self.n_pars = sum([v[0] for v in self.par_shapes.values()])
 
-    """
-    # pre-allocate lpp
-    lpp = 0
+        # build the shapes of the hyperparameters
+        hyperpar_shapes = {}
+        for name, shape, hyperdist in zip(self.par_shapes.keys(), self.par_shapes.values(), par_hyperdistributions):
+            if hyperdist == 'gamma':
+                hyperpar_shapes[f'{name}_a'] = shape
+                hyperpar_shapes[f'{name}_scale'] = shape
+            elif hyperdist == 'expon':
+                hyperpar_shapes[f'{name}_scale'] = shape
+            elif hyperdist == 'normal':
+                hyperpar_shapes[f'{name}_mu'] = shape
+                hyperpar_shapes[f'{name}_sigma'] = shape
+            elif hyperdist == 'beta':
+                hyperpar_shapes[f'{name}_a'] = shape
+                hyperpar_shapes[f'{name}_b'] = shape
+            else:
+                ValueError(f"'{hyperdist}' is not a valid hyperdistribution.")
+        self.hyperpar_shapes = hyperpar_shapes
+        self.n_hyperpars = sum(value[0] for value in self.hyperpar_shapes.values())
 
-    # derive the number of model parameters and all their shapes
-    parameters_sizes, parameters_shapes = validate_calibrated_parameters(pars_model_names, model.parameters)
-    n_pars = sum([v[0] for v in parameters_shapes.values()])
+        # compute a weights matrix
+        ## pre-allocate
+        w = np.ones([len(datasets), len(states_data)])
+        ## weigh by inverse maximum in timeseries
+        for i, data in enumerate(datasets):
+            for j, state in enumerate(states_data):
+                w[i,j] = 1/max(data[state].values)
+        ## normalise back to one
+        self.w = w/np.mean(w)
 
-    # split the hyperparameters from the season's parameters
-    n_hyperpars = sum(value[0] for value in hyperpars_shapes.values())
-    theta_hyperpars = theta[:n_hyperpars]
-    theta_pars = theta[n_hyperpars:]
+        # assign variables
+        self.model = model
+        self.par_names = par_names
+        self.par_hyperdistributions = par_hyperdistributions
+        self.par_bounds = par_bounds
+        self.datasets = datasets
+        self.states_model = states_model
+        self.states_data = states_data
 
-    # and convert the hyperparameters to a dictionary
-    theta_hyperpars = list_to_dict(theta_hyperpars, hyperpars_shapes, retain_floats=True)
+        pass
 
-    # compute a weights matrix
-    ## pre-allocate
-    w = np.ones([len(datasets), len(states_data)])
-    ## weigh by inverse maximum in timeseries
-    for i, data in enumerate(datasets):
-        for j, state in enumerate(states_data):
-            w[i,j] = 1/max(data[state].values)
-    ## normalise back to one
-    w /= np.mean(w)
+    def __call__(self, theta: np.ndarray) -> float:
+        """
+        Computes the log posterior probability 
 
-    # loop over the seasons
-    for i, data in enumerate(datasets):
+        input
+        -----
 
-        # get this season's parameters for the model
-        theta_season = theta_pars[i*n_pars:(i+1)*n_pars]
+        - theta: list
+            - estimated parameters
 
-        # expand the model parameters bounds (beta_temporal is 1D)
-        pars_model_bounds = expand_bounds(parameters_sizes, pars_model_bounds)
+        output
+        ------
+        - lpp: float
+            - associated log posterior probability
+        """
         
-        # Restrict this season's parameters for the model to user-provided bounds --> going outside can crash a model!
-        for k,theta in enumerate(theta_season):
-            if theta > pars_model_bounds[k][1]:
-                theta_season[k] = pars_model_bounds[k][1]
-                lpp += - np.inf
-            elif theta < pars_model_bounds[k][0]:
-                theta_season[k] = pars_model_bounds[k][0]
-                lpp += - np.inf
+        # pre-allocate lpp
+        lpp = 0
 
-        # convert to a dictionary for my ease
-        theta_season = list_to_dict(theta_season, parameters_shapes, retain_floats=True)
+        # split the hyperparameters from the season's parameters
+        theta_hyperpars = theta[:self.n_hyperpars]
+        theta_pars = theta[self.n_hyperpars:]
 
-        # compute priors
-        for pars_model_name, pars_model_hyperdistribution in zip(pars_model_names, pars_model_hyperdistributions):
-            if pars_model_hyperdistribution == 'gamma':
-                ### construct hyperpars names
-                a_name = f'{pars_model_name}_a'
-                scale_name = f'{pars_model_name}_scale'
-                ### compute lpp
-                lpp += np.sum(gamma.logpdf(theta_season[pars_model_name], loc=0, a=theta_hyperpars[a_name], scale=theta_hyperpars[scale_name]))
-            elif pars_model_hyperdistribution == 'expon':
-                ### construct hyperpars names
-                scale_name = f'{pars_model_name}_scale'
-                ### compute lpp
-                lpp += np.sum(expon.logpdf(theta_season[pars_model_name], scale=theta_hyperpars[scale_name]))
-            elif pars_model_hyperdistribution == 'normal':
-                ### construct hyperpars names
-                mu_name = f'{pars_model_name}_mu'
-                sigma_name = f'{pars_model_name}_sigma'
-                ### compute lpp
-                lpp += np.sum(norm.logpdf(theta_season[pars_model_name], loc=theta_hyperpars[mu_name], scale=theta_hyperpars[sigma_name]))               
-            elif pars_model_hyperdistribution == 'beta':
-                ### construct hyperpars names
-                a_name = f'{pars_model_name}_a'
-                b_name = f'{pars_model_name}_b'
-                ### compute lpp
-                lpp += np.sum(beta.logpdf(theta_season[pars_model_name], a=theta_hyperpars[a_name], b=theta_hyperpars[b_name]))        
+        # and convert the hyperparameters to a dictionary
+        theta_hyperpars = list_to_dict(theta_hyperpars, self.hyperpar_shapes, retain_floats=True)
 
-        # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
-        if math.isnan(lpp):
-            return -np.inf
-        # nor are negative betas
-        if theta_hyperpars['beta_mu'] <= 0:
-            return -np.inf
-        # or huge delta_beta_temporal_mu/sigma
-        if ((any(((x < -0.5) | (x > 0.5)) for x in theta_hyperpars['delta_beta_temporal_mu'])) | (any(((x < 0) | (x > 0.50)) for x in theta_hyperpars['delta_beta_temporal_sigma']))):
-            return -np.inf
+        # loop over the seasons
+        for i, data in enumerate(self.datasets):
 
-        # Assign model parameters
-        model.parameters.update(theta_season)
-        # But make sure they're vectors
-        for par in pars_model_names:
-            if par != 'delta_beta_temporal':
-                model.parameters[par] = np.array([theta_season[par],])
+            # get this season's parameters for the model
+            theta_season = theta_pars[i*self.n_pars:(i+1)*self.n_pars]
 
-        # run the forward simulation
-        simout = model.sim([min(data.index), max(data.index)])
+            # expand the model parameters bounds (beta_temporal is 1D)
+            pars_model_bounds = expand_bounds(self.par_sizes, self.par_bounds)
+            
+            # Restrict this season's parameters for the model to user-provided bounds --> going outside can crash a model!
+            for k,theta in enumerate(theta_season):
+                if theta > pars_model_bounds[k][1]:
+                    theta_season[k] = pars_model_bounds[k][1]
+                    lpp += - np.inf
+                elif theta < pars_model_bounds[k][0]:
+                    theta_season[k] = pars_model_bounds[k][0]
+                    lpp += - np.inf
 
-        # compute the likelihood
-        for j, (state_model, state_data) in enumerate(zip(states_model, states_data)):
-            x = data[state_data].values
-            y = simout[state_model].sum(dim='strain').interp({'date': data.index}, method='linear').values
-            # check model output for nans
-            if np.isnan(y).any():
-                raise ValueError(f"simulation output contains nan, most likely due to numerical unstability. try using more conservative bounds.")
-            lpp += w[i,j] * ll_poisson(x, y)
+            # convert to a dictionary for ease
+            theta_season = list_to_dict(theta_season, self.par_shapes, retain_floats=True)
 
-    return lpp
+            # compute priors
+            for pars_model_name, pars_model_hyperdistribution in zip(self.par_names, self.par_hyperdistributions):
+                if pars_model_hyperdistribution == 'gamma':
+                    ### construct hyperpars names
+                    a_name = f'{pars_model_name}_a'
+                    scale_name = f'{pars_model_name}_scale'
+                    ### compute lpp
+                    lpp += np.sum(gamma.logpdf(theta_season[pars_model_name], loc=0, a=theta_hyperpars[a_name], scale=theta_hyperpars[scale_name]))
+                elif pars_model_hyperdistribution == 'expon':
+                    ### construct hyperpars names
+                    scale_name = f'{pars_model_name}_scale'
+                    ### compute lpp
+                    lpp += np.sum(expon.logpdf(theta_season[pars_model_name], scale=theta_hyperpars[scale_name]))
+                elif pars_model_hyperdistribution == 'normal':
+                    ### construct hyperpars names
+                    mu_name = f'{pars_model_name}_mu'
+                    sigma_name = f'{pars_model_name}_sigma'
+                    ### compute lpp
+                    lpp += np.sum(norm.logpdf(theta_season[pars_model_name], loc=theta_hyperpars[mu_name], scale=theta_hyperpars[sigma_name]))   
+                elif pars_model_hyperdistribution == 'beta':
+                    ### construct hyperpars names
+                    a_name = f'{pars_model_name}_a'
+                    b_name = f'{pars_model_name}_b'
+                    ### compute lpp
+                    lpp += np.sum(beta.logpdf(theta_season[pars_model_name], a=theta_hyperpars[a_name], b=theta_hyperpars[b_name]))       
+
+            # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
+            if math.isnan(lpp):
+                return -np.inf
+            # nor are negative betas
+            if theta_hyperpars['beta_mu'] <= 0:
+                return -np.inf
+            # or huge delta_beta_temporal_mu/sigma
+            if ((any(((x < -0.5) | (x > 0.5)) for x in theta_hyperpars['delta_beta_temporal_mu'])) | (any(((x < 0) | (x > 0.50)) for x in theta_hyperpars['delta_beta_temporal_sigma']))):
+                return -np.inf
+
+            # Assign model parameters
+            self.model.parameters.update(theta_season)
+            # But make sure they're vectors
+            for par in self.par_names:
+                if par != 'delta_beta_temporal':
+                    self.model.parameters[par] = np.array([theta_season[par],])
+
+            # run the forward simulation
+            simout = self.model.sim([min(data.index), max(data.index)])
+
+            # compute the likelihood
+            for j, (state_model, state_data) in enumerate(zip(self.states_model, self.states_data)):
+                x = data[state_data].values
+                y = simout[state_model].sum(dim='strain').interp({'date': data.index}, method='linear').values
+                # check model output for nans
+                if np.isnan(y).any():
+                    raise ValueError(f"simulation output contains nan, most likely due to numerical unstability. try using more conservative bounds.")
+                lpp += self.w[i,j] * ll_poisson(x, y)
+
+        return lpp
 
 #################################
 ## Function to save the chains ##
