@@ -6,6 +6,7 @@ __author__      = "Tijs Alleman"
 __copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group, Johns Hopkins Bloomberg School of Public Health. All Rights Reserved."
 
 import copy
+import inspect
 import numpy as np
 import xarray as xr
 import pandas as pd
@@ -20,28 +21,31 @@ class SIR():
     SIR Influenza model
     """
     
-    def __init__(self, parameters, population):
+    def __init__(self, parameters, initial_condition_function, n_strains):
         """
         # TODO: docstring
         """
-        # determine the number of strains
-        self.n_strains = len(parameters['beta'])
-        self.states = ['S', 'I', 'R', 'I_inc', 'H_inc']
 
-        # retrieve the state's population
-        self.population = np.ones(self.n_strains) * population
+        # take in the initial condition function and retrieve its arguments
+        self.ICF = initial_condition_function
+        self.ICF_args_names = list(inspect.signature(initial_condition_function).parameters.keys())
 
         # assign variables to object
         self.parameters = parameters
+        self.n_strains = n_strains
+
+        # attributes needed to make pySODM-compatible
+        self.states = ['S', 'I', 'R', 'I_inc', 'H_inc']
 
         pass
 
-    def sim(self, start_date, stop_date, N=1, draw_function=None, draw_function_kwargs={}):
+    def sim(self, simtime, N=1, draw_function=None, draw_function_kwargs={}):
         """
         # TODO: docstring
         """
 
         # translate start and stop relative to mid Nov
+        start_date, stop_date = simtime
         time = self.convert_dates_to_timesteps(start_date, stop_date)
 
         # save a copy before altering to reset after simulation
@@ -53,7 +57,7 @@ class SIR():
             if draw_function:
                 self.parameters.update(draw_function(copy.deepcopy(self.parameters), **draw_function_kwargs))
             # build initial condition
-            initial_condition = self.initial_condition_function(self.population, self.parameters['f_I'], self.parameters['f_R'])
+            initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
             # remove ICF arguments from the parameters
             self.parameters = {key: value for key, value in self.parameters.items() if key not in ['f_I', 'f_R']}
             # simulate model
@@ -69,36 +73,6 @@ class SIR():
             out = xr.concat([out, xarr], "draws")
 
         return out
-
-    @staticmethod
-    def initial_condition_function(population, f_I, f_R):
-        """
-        A function generating the model's initial condition.
-        
-        input
-        -----
-
-        population: int
-            Number of inhabitants in modeled US state
-
-        f_I: float
-            Fraction of the population initially infected
-        
-        f_R: float
-            Fraction of the population initially immune
-
-        output
-        ------
-
-        initial_condition: dict
-            Keys: 'S0', ... . Values: np.ndarray.
-        """
-
-        # construct initial condition
-        return {'S0':  (1 - f_I - f_R) * population,
-                'I0': f_I * population,   
-                'R0': f_R * population,
-                }
 
     @staticmethod
     def format_output(simout: np.ndarray, start_date: datetime, states: list, n_strains: int) -> xr.Dataset:

@@ -9,6 +9,7 @@ def initialise_model(strains=False, fips_state=37):
     """
 
     if strains == True:
+        n_strains = 2
         # Parameters
         parameters = {
         # initial condition function
@@ -27,6 +28,7 @@ def initialise_model(strains=False, fips_state=37):
         'T_h': 3.5
         }
     else:
+        n_strains = 1
         # Parameters
         parameters = {
         # initial condition function
@@ -46,10 +48,48 @@ def initialise_model(strains=False, fips_state=37):
         }
 
     # get inhabitants
-    population = get_demography(fips_state)
+    population = np.ones(n_strains) * get_demography(fips_state)
 
-    return SIR(parameters, population)
+    # initialise initial condition function
+    ICF = initial_condition_function(population)
 
+    return SIR(parameters, ICF, n_strains)
+
+class initial_condition_function():
+
+    def __init__(self, population):
+        self.population = population 
+        pass
+
+    def __call__(self, f_I, f_R):
+        """
+        A function generating the model's initial condition.
+        
+        input
+        -----
+
+        population: int
+            Number of inhabitants in modeled US state
+
+        f_I: float
+            Fraction of the population initially infected
+        
+        f_R: float
+            Fraction of the population initially immune
+
+        output
+        ------
+
+        initial_condition: dict
+            Keys: 'S0', ... . Values: np.ndarray.
+        """
+
+        # construct initial condition
+        return {'S0':  (1 - f_I - f_R) * self.population,
+                'I0': f_I * self.population,   
+                'R0': f_R * self.population,
+                }
+         
 def get_demography(fips_state):
     """
     A function retrieving the total population of a US state

@@ -106,7 +106,7 @@ def log_posterior_probability(theta, model, datasets, pars_model_names, pars_mod
             model.parameters[par] = np.array([theta_season[par],])
 
         # run the forward simulation
-        simout = model.sim(min(data.index), max(data.index))
+        simout = model.sim([min(data.index), max(data.index)])
 
         # compute the likelihood
         for j, (state_model, state_data) in enumerate(zip(states_model, states_data)):
@@ -328,7 +328,7 @@ def plot_fit(model, datasets, samples_xr, pars_model_names, path, identifier, ru
     # simulate model for every season
     simout=[]
     for season, data in zip(list(samples_xr.coords['season'].values), datasets):
-        simout.append(add_poisson_noise(model.sim(min(data.index), max(data.index), N=100,
+        simout.append(add_poisson_noise(model.sim([min(data.index), max(data.index)], N=100,
                                         draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'season': season, 'pars_model_names': pars_model_names})+0.01
                                         ))
 

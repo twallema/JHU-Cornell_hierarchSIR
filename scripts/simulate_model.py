@@ -12,14 +12,14 @@ model = initialise_model(strains=True)
 # Wrapper for timer
 import timeit
 def to_time():
-    model.sim(t_start, t_stop)
+    model.sim([t_start, t_stop])
 # Measure the execution time for 20 repetitions
 execution_time = timeit.timeit(to_time, number=20)
 print(f"Total execution time for 20 runs: {execution_time:.6f} seconds")
 print(f"Average execution time per run: {execution_time / 20:.6f} seconds")
 
 # Call C++ function
-simout = model.sim(t_start, t_stop)
+simout = model.sim([t_start, t_stop])
 
 # Plot results
 fig,ax=plt.subplots(nrows=2, ncols=1, figsize=(8.3,11.7/2), sharex=True)
