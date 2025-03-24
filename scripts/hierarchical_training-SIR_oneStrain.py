@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from multiprocessing import get_context
-from pySODM.optimization.objective_functions import validate_calibrated_parameters
 from hierarchSIR.training import log_posterior_probability, dump_sampler_to_xarray, traceplot, plot_fit, hyperdistributions
 from hierarchSIR.utils import initialise_model, get_NC_influenza_data
 
@@ -32,9 +31,9 @@ n_chains = 400
 pert = 0.01
 run_date = datetime.today().strftime("%Y-%m-%d")
 identifier = 'exclude-2024-2025'
-print_n =  200
+print_n =  1000
 backend =  None
-discard = 100
+discard = 0
 thin = 1
 processes = int(os.environ.get('NUM_CORES', '16'))
 

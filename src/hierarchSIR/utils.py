@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import pandas as pd
+import xarray as xr
+from datetime import datetime, timedelta
 from hierarchSIR.model import SIR
 
 def initialise_model(strains=False, fips_state=37):
@@ -89,7 +91,24 @@ class initial_condition_function():
                 'I0': f_I * self.population,   
                 'R0': f_R * self.population,
                 }
-         
+
+import random
+def draw_function(parameters, samples_xr, season, pars_model_names):
+    """
+    A compatible draw function
+    """
+
+    # get a random iteration and markov chain
+    i = random.randint(0, len(samples_xr.coords['iteration'])-1)
+    j = random.randint(0, len(samples_xr.coords['chain'])-1)
+    # assign parameters
+    for var in pars_model_names:
+        if var != 'delta_beta_temporal':
+            parameters[var] = np.array([samples_xr[var].sel({'iteration': i, 'chain': j, 'season': season}).values],)
+        else:
+            parameters[var] = samples_xr[var].sel({'iteration': i, 'chain': j, 'season': season}).values
+    return parameters
+
 def get_demography(fips_state):
     """
     A function retrieving the total population of a US state
@@ -111,7 +130,6 @@ def get_demography(fips_state):
     demography = pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/demography/demography.csv'))
 
     return int(demography[demography['fips_state'] == fips_state]['population'].values[0])
-
 
 def get_NC_influenza_data(startdate, enddate, season):
     """
@@ -167,6 +185,83 @@ def get_NC_influenza_data(startdate, enddate, season):
     df_merged = df_merged.dropna()
     # throw out `fraction_A`
     return df_merged[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B']].loc[slice(startdate,enddate)]
+
+
+def pySODM_to_hubverse(simout: xr.Dataset,
+                        location: int,
+                        reference_date: datetime,
+                        target: str,
+                        model_state: str,
+                        path: str=None,
+                        quantiles: bool=False) -> pd.DataFrame:
+    """
+    Convert pySODM simulation result to Hubverse format
+
+    Parameters
+    ----------
+    - simout: xr.Dataset
+        - pySODM simulation output. must contain `model_state`.
+
+    - location: int
+        - state FIPS code.
+
+    - reference_date: datetime
+        - when using data until a Saturday `x` to calibrate the model, `reference_date` is the date of the next saturday `x+1`.
+
+    - target: str
+        - simulation target, typically 'wk inc flu hosp'.
+
+    - path: str
+        - path to save result in. if no path provided, does not save result.
+
+    - quantiles: str
+        - save quantiles instead of individual trajectories.
+
+    Returns
+    -------
+
+    - hubverse_df: pd.Dataframe
+        - forecast in hubverse format
+
+    Reference
+    ---------
+
+    https://github.com/cdcepi/FluSight-forecast-hub/blob/main/model-output/README.md#Forecast-file-format
+    """
+
+    # deduce information from simout
+    location = [location,]
+    output_type_id = simout.coords['draws'].values if not quantiles else [0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.975, 0.99]
+    # fixed metadata
+    horizon = range(-1,4)
+    output_type = 'samples' if not quantiles else 'quantile'
+    # derived metadata
+    target_end_date = [reference_date + timedelta(weeks=h) for h in horizon]
+
+    # pre-allocate dataframe
+    idx = pd.MultiIndex.from_product([[reference_date,], [target,], horizon, location, [output_type,], output_type_id],
+                                        names=['reference_date', 'target', 'horizon', 'location', 'output_type', 'output_type_id'])
+    df = pd.DataFrame(index=idx, columns=['value'])
+    # attach target end date
+    df = df.reset_index()
+    df['target_end_date'] = df.apply(lambda row: row['reference_date'] + timedelta(weeks=row['horizon']), axis=1)
+
+    # fill in dataframe
+    for loc in location:
+        if not quantiles:
+            for draw in output_type_id:
+                df.loc[((df['output_type_id'] == draw) & (df['location'] == loc)), 'value'] = \
+                    7*simout[model_state].sum(dim='strain').sel({'draws': draw}).interp(date=target_end_date).values
+        else:
+            for q in output_type_id:
+                df.loc[((df['output_type_id'] == q) & (df['location'] == loc)), 'value'] = \
+                    7*simout[model_state].sum(dim='strain').quantile(q=q, dim='draws').interp(date=target_end_date).values
+    
+    # save result
+    if path:
+        df.to_csv(path+reference_date.strftime('%Y-%m-%d')+'-JHU_IDD'+'-hierarchSIM.csv', index=False)
+
+    return df
 
 #########################################################
 ## Transmission rate: equivalent Python implementation ##

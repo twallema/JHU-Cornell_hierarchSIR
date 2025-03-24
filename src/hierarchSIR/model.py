@@ -15,6 +15,10 @@ from datetime import datetime, timedelta
 # import C++ model
 from hierarchSIR import sir_model
 
+# import pySODM modules
+from pySODM.models.validation import build_state_sizes_dimensions
+from pySODM.optimization.utils import validate_calibrated_parameters
+
 # define integration function
 class SIR():
     """
@@ -34,8 +38,12 @@ class SIR():
         self.parameters = parameters
         self.n_strains = n_strains
 
-        # attributes needed to make pySODM-compatible
-        self.states = ['S', 'I', 'R', 'I_inc', 'H_inc']
+        # attributes needed to make model compatible with pySODM's optimization module
+        self.states_names = ['S', 'I', 'R', 'I_inc', 'H_inc']
+        self.coordinates = {'strain': np.linspace(start=0, stop=n_strains-1, num=n_strains).tolist()}
+        self.state_shapes, self.dimensions_per_state, self.state_coordinates = build_state_sizes_dimensions(self.coordinates, self.states_names, None)
+        self.initial_states = {'S': np.zeros(n_strains),  'I': np.zeros(n_strains), 'R': np.zeros(n_strains), 'I_inc': np.zeros(n_strains), 'H_inc': np.zeros(n_strains)}
+        _, self.parameter_sxchapes = validate_calibrated_parameters(self.parameters.keys(), self.parameters)
 
         pass
 
@@ -56,6 +64,10 @@ class SIR():
             # get parameters
             if draw_function:
                 self.parameters.update(draw_function(copy.deepcopy(self.parameters), **draw_function_kwargs))
+            # make sure parameters are vectors #TODO: do better!
+            for par, shape in self.parameter_shapes.items():
+                if ((shape == (1,)) & (par not in ['T_h', 'gamma', 'sigma', 'modifier_length']) & (par != 'delta_beta_temporal')):
+                    self.parameters[par] = np.array([self.parameters[par],])
             # build initial condition
             initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
             # remove ICF arguments from the parameters
@@ -63,7 +75,7 @@ class SIR():
             # simulate model
             simout = sir_model.integrate(*time, **initial_condition, **self.parameters)
             # format and append output
-            output.append(self.format_output(np.array(simout), start_date, self.states, self.n_strains))
+            output.append(self.format_output(np.array(simout), start_date, self.states_names, self.n_strains))
             # Reset parameter dictionary
             self.parameters = cp_pars
 

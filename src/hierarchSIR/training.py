@@ -17,6 +17,7 @@ import matplotlib.dates as mdates
 from scipy.stats import expon, beta, norm, gamma
 from pySODM.optimization.utils import list_to_dict, add_poisson_noise
 from pySODM.optimization.objective_functions import ll_poisson, validate_calibrated_parameters, expand_bounds
+from hierarchSIR.utils import draw_function
 
 ###########################################
 ## Define posterior probability function ##
@@ -357,23 +358,6 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, pars_model_
 #####################
 ## Goodness-of-fit ##
 #####################
-
-import random
-def draw_function(parameters, samples_xr, season, pars_model_names):
-    """
-    A compatible draw function
-    """
-
-    # get a random iteration and markov chain
-    i = random.randint(0, len(samples_xr.coords['iteration'])-1)
-    j = random.randint(0, len(samples_xr.coords['chain'])-1)
-    # assign parameters
-    for var in pars_model_names:
-        if var != 'delta_beta_temporal':
-            parameters[var] = np.array([samples_xr[var].sel({'iteration': i, 'chain': j, 'season': season}).values],)
-        else:
-            parameters[var] = samples_xr[var].sel({'iteration': i, 'chain': j, 'season': season}).values
-    return parameters
 
 def plot_fit(model, datasets, samples_xr, pars_model_names, path, identifier, run_date):
     """
