@@ -25,7 +25,7 @@ from hierarchSIR.utils import draw_function
 
 class log_posterior_probability():
 
-    def __init__(self, model, par_names, par_bounds, par_hyperdistributions, datasets, states_model, states_data):
+    def __init__(self, model, par_names, par_bounds, par_hyperdistributions, datasets):
 
         # get the shapes of the model parameters
         self.par_sizes, self.par_shapes = validate_calibrated_parameters(par_names, model.parameters)
@@ -99,8 +99,6 @@ class log_posterior_probability():
         self.par_hyperdistributions = par_hyperdistributions
         self.par_bounds = par_bounds
         self.datasets = datasets
-        self.states_model = states_model
-        self.states_data = states_data
 
         pass
 
@@ -486,9 +484,9 @@ def plot_fit(model, datasets, simtimes, samples_xr, pars_model_names, path, iden
     # simulate model for every season
     simout=[]
     for season, data, simtime in zip(list(samples_xr.coords['season'].values), datasets, simtimes):
-        simout.append(add_poisson_noise(model.sim(simtime, N=100,
+        simout.append(model.sim(simtime, N=100,
                                         draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'season': season, 'pars_model_names': pars_model_names})+0.01
-                                        ))
+                                        )
     
     # LOOP seasons
     for i, (season, data, out) in enumerate(zip(list(samples_xr.coords['season'].values), datasets, simout)):
@@ -498,6 +496,10 @@ def plot_fit(model, datasets, simtimes, samples_xr, pars_model_names, path, iden
 
         # generate figure
         fig,ax=plt.subplots(nrows=nrows, sharex=True, figsize=(8.3, 11.7/5*nrows))
+
+        # vectorise ax object
+        if nrows==1:
+            ax = [ax,]
 
         # loop over datasets
         k=0
