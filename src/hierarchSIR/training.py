@@ -179,17 +179,17 @@ class log_posterior_probability():
             if math.isnan(lpp):
                 return -np.inf
             # nor are negative betas
-            if theta_hyperpars['beta_mu'] <= 0:
-                return -np.inf
+            #if (any(x <= 0) for x in theta_hyperpars['beta_mu']):
+            #    return -np.inf
             # or huge delta_beta_temporal_mu/sigma
-            if ((any(((x < -0.5) | (x > 0.5)) for x in theta_hyperpars['delta_beta_temporal_mu'])) | (any(((x < 0) | (x > 0.50)) for x in theta_hyperpars['delta_beta_temporal_sigma']))):
+            if ((any(((x < -1) | (x > 1)) for x in theta_hyperpars['delta_beta_temporal_mu'])) | (any(((x < 0) | (x > 1)) for x in theta_hyperpars['delta_beta_temporal_sigma']))):
                 return -np.inf
 
             # Assign model parameters
             self.model.parameters.update(theta_season)
             # But make sure they're vectors (if using one strain)
             for par in self.par_names:
-                if par != 'delta_beta_temporal':
+                if ((par != 'delta_beta_temporal') & (self.model.parameter_shapes[par] == (1,))):
                     self.model.parameters[par] = np.array([theta_season[par],])
 
             # run the forward simulation
@@ -217,7 +217,17 @@ class log_posterior_probability():
                     # compute lpp
                     lpp += self.w[i,j] * ll_poisson(x, y)
                 else:
-                    pass
+                    # get timeseries
+                    x = df.squeeze().values
+                    y = np.squeeze(out_copy[state_model].sel({'date': df.index.get_level_values('date').unique().values}).sel({k:self.coordinates_data_also_in_model[i][j][jdx] for jdx,k in enumerate(self.additional_axes_data[i][j])}).values)
+                    # check if shapes are consistent
+                    if x.shape != y.shape:
+                        raise Exception(f"shape of model prediction {y.shape} and data {x.shape} are not identical.")
+                    # check for nan in model output
+                    if np.isnan(y).any():
+                        raise ValueError(f"simulation output contains nan, most likely due to numerical unstability. try using more conservative bounds.")
+                    # compute lpp
+                    lpp += self.w[i,j] * ll_poisson(x, y)
 
         return lpp
 
@@ -475,7 +485,7 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, pars_model_
 ## Goodness-of-fit ##
 #####################
 
-def plot_fit(model, datasets, simtimes, samples_xr, pars_model_names, path, identifier, run_date,
+def plot_fit(model, datasets, simtimes, samples_xr, parameter_shapes, path, identifier, run_date,
                 coordinates_data_also_in_model, aggregate_over, additional_axes_data, corresponding_model_states):
     """
     Visualises the goodness of fit for every season
@@ -485,8 +495,8 @@ def plot_fit(model, datasets, simtimes, samples_xr, pars_model_names, path, iden
     simout=[]
     for season, data, simtime in zip(list(samples_xr.coords['season'].values), datasets, simtimes):
         simout.append(model.sim(simtime, N=100,
-                                        draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'season': season, 'pars_model_names': pars_model_names})+0.01
-                                        )
+                                draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'season': season, 'parameter_shapes': parameter_shapes})+0.01
+                                )
     
     # LOOP seasons
     for i, (season, data, out) in enumerate(zip(list(samples_xr.coords['season'].values), datasets, simout)):
@@ -501,10 +511,13 @@ def plot_fit(model, datasets, simtimes, samples_xr, pars_model_names, path, iden
         if nrows==1:
             ax = [ax,]
 
+        # save a copy to reset
+        out_copy = out
+
         # loop over datasets
         k=0
         for j, df in enumerate(data):
-
+            
             # aggregate data
             for dimension in out.dims:
                 if dimension in aggregate_over[i][j]:
@@ -513,8 +526,9 @@ def plot_fit(model, datasets, simtimes, samples_xr, pars_model_names, path, iden
             # loop over coordinates 
             if coordinates_data_also_in_model[i][j]:
                 for coord in coordinates_data_also_in_model[i][j]:
-                    # get dimension coord is in
-                    dim_name = additional_axes_data[i][j]
+                    # get dimension coord is in #TODO: LIMITED TO ONE COORDINATE PER DIMENSION PER DATASET !!!
+                    dim_name = additional_axes_data[i][j][0]
+                    coord = coord[0]
                     # plot
                     ax[k].scatter(df.index.get_level_values('date').values, 7*df.loc[slice(None), coord].values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
                     ax[k].fill_between(out['date'], 7*out[corresponding_model_states[i][j]].sel({dim_name: coord}).quantile(dim='draws', q=0.05/2),
@@ -532,6 +546,9 @@ def plot_fit(model, datasets, simtimes, samples_xr, pars_model_names, path, iden
                             7*out[corresponding_model_states[i][j]].quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)
                 ax[k].set_title(f'State: {corresponding_model_states[i][j]}')
                 k += 1
+            
+            # reset output
+            out = out_copy
 
         fig.suptitle(f'{season}')
         plt.tight_layout()

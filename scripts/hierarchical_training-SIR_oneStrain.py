@@ -105,26 +105,39 @@ lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistribut
 ####################################
 
 # get independent fit parameters
-pars_model_0 = pd.read_csv('../data/interim/calibration/single-season-optimal-parameters-oneStrain.csv', index_col=0)[seasons]
-
-# manually tweak beta (this model has no age groups)
-pars_model_0.loc['beta'] = 21 * pars_model_0.loc['beta']
+pars_model_0 = pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=1)
+pars_model_0 = pars_model_0[pars_model_0['strains']==strains][seasons]
 
 # parameters
 pars_0 = list(pars_model_0.transpose().values.flatten())
 
 # hyperparameters
-hyperpars_0 = [
-               5.0, 3.0e-02,                                                                # rho_i
-               1.7,                                                                         # T_h
-               5.7, 3.0e-03,                                                                # rho_h
-               0.55, 0.10,                                                                  # beta
-               12.0, 16.5,                                                                  # f_R
-               4.3, 2.8e-05,                                                                # f_I
-               -0.06, -0.04, -0.02, 0.01, 0.13, -0.13, 0.02, 0.11, 0.03, 0.03, 0.08, -0.04, # delta_beta_temporal_mu
-               0.04, 0.05, 0.03, 0.05, 0.1, 0.13, 0.11, 0.10, 0.14, 0.10, 0.23, 0.10,       # delta_beta_temporal_sigma
+if not strains:
+    hyperpars_0 = [
+                5.0, 3.0e-02,                                                                # rho_i
+                1.7,                                                                         # T_h
+                5.7, 2.0e-03,                                                                # rho_h
+                0.55, 0.10,                                                                  # beta
+                12.0, 16.5,                                                                  # f_R
+                4.3, 2.8e-05,                                                                # f_I
+                -0.06, -0.04, -0.02, 0.01, 0.13, -0.13, 0.02, 0.11, 0.03, 0.03, 0.08, -0.04, # delta_beta_temporal_mu
+                0.04, 0.05, 0.03, 0.05, 0.1, 0.13, 0.11, 0.10, 0.14, 0.10, 0.23, 0.10,       # delta_beta_temporal_sigma
+                    ]
+else:
+    hyperpars_0 = [
+            5.0, 3.0e-02,                                                                   # rho_i_a, rho_i_scale
+            1.7,                                                                            # T_h_scale
+            5.7, 5.7,                                                                       # rho_h_a
+            2.0e-03, 2.0e-03,                                                               # rho_h_scale
+            0.55, 0.55,                                                                     # beta_mu
+            0.10, 0.10,                                                                     # beta_sigma
+            12.0, 12.0,                                                                     # f_R_a
+            16.5, 16.5,                                                                     # f_R_b
+            4.3, 4.3,                                                                       # f_I_a
+            2.8e-05, 2.8e-05,                                                               # f_I_scale
+            -0.06, -0.04, -0.02, 0.01, 0.13, -0.13, 0.02, 0.11, 0.03, 0.03, 0.08, -0.04,    # delta_beta_temporal_mu
+            0.04, 0.05, 0.03, 0.05, 0.1, 0.13, 0.11, 0.10, 0.14, 0.10, 0.23, 0.10,          # delta_beta_temporal_sigma
                 ]
-
 # combine
 theta_0 = hyperpars_0 + pars_0
 
@@ -171,9 +184,9 @@ if __name__ == '__main__':
                 # ..dump samples
                 samples = dump_sampler_to_xarray(sampler.get_chain(discard=discard, thin=thin), samples_path+str(identifier)+'_SAMPLES_'+run_date+'.nc', lpp.hyperpar_shapes, lpp.par_shapes, seasons)
                 # .. visualise hyperdistributions
-                hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', lpp.par_shapes, par_hyperdistributions, par_bounds, 100)
+                #hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', lpp.par_shapes, par_hyperdistributions, par_bounds, 100)
                 # ..generate traceplots
-                traceplot(samples, lpp.par_shapes, lpp.hyperpar_shapes, samples_path, identifier, run_date)
+                #traceplot(samples, lpp.par_shapes, lpp.hyperpar_shapes, samples_path, identifier, run_date)
                 # ..generate goodness-of-fit
-                plot_fit(model, datasets, lpp.simtimes, samples, par_names, samples_path, identifier, run_date,
+                plot_fit(model, datasets, lpp.simtimes, samples, model.parameter_shapes, samples_path, identifier, run_date,
                          lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data, lpp.corresponding_model_states)

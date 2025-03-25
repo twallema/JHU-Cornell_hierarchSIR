@@ -25,7 +25,7 @@ def initialise_model(strains=False, fips_state=37):
         'modifier_length': 15,
         'sigma': 2.5,
         # observation parameters
-        'rho_i': [0.025, 0.025],
+        'rho_i': [0.025,],
         'rho_h': [0.025, 0.025],
         'T_h': 3.5
         }
@@ -93,7 +93,7 @@ class initial_condition_function():
                 }
 
 import random
-def draw_function(parameters, samples_xr, season, pars_model_names):
+def draw_function(parameters, samples_xr, season, parameter_shapes):
     """
     A compatible draw function
     """
@@ -102,11 +102,14 @@ def draw_function(parameters, samples_xr, season, pars_model_names):
     i = random.randint(0, len(samples_xr.coords['iteration'])-1)
     j = random.randint(0, len(samples_xr.coords['chain'])-1)
     # assign parameters
-    for var in pars_model_names:
-        if var != 'delta_beta_temporal':
-            parameters[var] = np.array([samples_xr[var].sel({'iteration': i, 'chain': j, 'season': season}).values],)
-        else:
-            parameters[var] = samples_xr[var].sel({'iteration': i, 'chain': j, 'season': season}).values
+    for par in parameter_shapes.keys():
+        try:
+            if ((par != 'delta_beta_temporal') & (parameter_shapes[par] == (1,))):
+                parameters[par] = np.array([samples_xr[par].sel({'iteration': i, 'chain': j, 'season': season}).values],)
+            else:
+                parameters[par] = samples_xr[par].sel({'iteration': i, 'chain': j, 'season': season}).values
+        except:
+            pass
     return parameters
 
 def get_demography(fips_state):
