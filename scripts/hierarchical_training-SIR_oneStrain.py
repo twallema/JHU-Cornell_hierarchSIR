@@ -57,6 +57,13 @@ end_calibrations = [datetime(int(season[0:4])+1, end_calibration_month, 1) for s
 # gather datasets in a list
 datasets = [get_NC_influenza_data(start_calibration, end_calibration, season) for start_calibration, end_calibration, season in zip(start_calibrations, end_calibrations, seasons)]
 
+datasets = []
+for start_calibration, end_calibration, season in zip(start_calibrations, end_calibrations, seasons):
+    if use_ED_visits:
+        datasets.append([get_NC_influenza_data(start_calibration, end_calibration, season)['H_inc'], get_NC_influenza_data(start_calibration, end_calibration, season)['I_inc']])
+    else:
+        datasets.append([get_NC_influenza_data(start_calibration, end_calibration, season)['H_inc'],])
+
 #################
 ## Setup model ##
 #################
@@ -156,8 +163,9 @@ if __name__ == '__main__':
                 # ..dump samples
                 samples = dump_sampler_to_xarray(sampler.get_chain(discard=discard, thin=thin), samples_path+str(identifier)+'_SAMPLES_'+run_date+'.nc', lpp.hyperpar_shapes, lpp.par_shapes, seasons)
                 # .. visualise hyperdistributions
-                hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', lpp.par_shapes, par_hyperdistributions, par_bounds, 300)
-                # ..generate goodness-of-fit
-                plot_fit(model, datasets, samples, par_names, samples_path, identifier, run_date)
+                hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', lpp.par_shapes, par_hyperdistributions, par_bounds, 100)
                 # ..generate traceplots
                 traceplot(samples, lpp.par_shapes, lpp.hyperpar_shapes, samples_path, identifier, run_date)
+                # ..generate goodness-of-fit
+                plot_fit(model, datasets, lpp.simtimes, samples, par_names, samples_path, identifier, run_date,
+                         lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data, lpp.corresponding_model_states)

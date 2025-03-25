@@ -267,116 +267,47 @@ def pySODM_to_hubverse(simout: xr.Dataset,
 ## Transmission rate: equivalent Python implementation ##
 #########################################################
 
-import math
+
 from datetime import datetime
 from scipy.ndimage import gaussian_filter1d
 
-class transmission_rate_function():
+def get_transmission_coefficient_timeseries(modifier_vector, sigma=2.5):
+    """
+    A function mapping the modifier_vectors between Sep 15 and May 15 and smoothing it with a gaussian filter
 
-    def __init__(self, sigma):
-        self.sigma = sigma
-        pass
+    input
+    -----
 
-    def __call__(self, t, beta_0, delta_beta_temporal):
-        """
-        A function constructing a temporal transmission rate 'beta'
+    - modifier_vector: np.ndarray
+        - 1D numpy array (time) or 2D numpy array (time x spatial unit).
+        - Each entry represents a value of a knotted temporal modifier, the length of each modifier is equal to the number of days between Oct 15 and Apr 15 divided by `len(modifier_vector)`.
 
-        input
-        -----
+    - sigma: float 
+        - gaussian smoother's standard deviation. higher values represent more smooth trajectories but increase runtime. None represents no smoothing (fastest).
 
-        - t: datetime.datetime
-            - time in simulation
+    output
+    ------
 
-        - beta_0: float
-            - baseline transmission modifier
+    - smooth_temporal_modifier: np.ndarray
+        - 1D array of smoothed modifiers.
+    """
 
-        - delta_beta_temporal: np.ndarray
-            - multiplicative piecewise-continuous modifier of transmission rate between mid Oct - mid Apr (183 days)
-            - no effect: modifier = 0
-            - biweekly (15d): length 12
+    # Ensure the input is at least 2D
+    if modifier_vector.ndim == 1:
+        modifier_vector = modifier_vector[:, np.newaxis]
+    _, num_space = modifier_vector.shape
 
-        output
-        ------
+    # Define number of days between Oct 15 and Apr 15
+    num_days = 182
 
-        - beta(t): np.ndarray
-            - ime-varying transmission rate
-        """
+    # Step 1: Project the input vector onto the daily time scale
+    interval_size = num_days / len(modifier_vector)
+    positions = (np.arange(num_days) // interval_size).astype(int)
+    expanded_vector = modifier_vector[positions, :]
 
-        # smooth modifier
-        temporal_modifiers_smooth = self.get_smooth_temporal_modifier(1+np.array(delta_beta_temporal), t, sigma=self.sigma)
+    # Step 2: Prepend and append 31 days of ones
+    padding = np.zeros((31, num_space))
+    padded_vector = np.vstack([padding, expanded_vector, padding])
 
-        # apply modifier
-        return beta_0 * temporal_modifiers_smooth
-
-
-    @staticmethod
-    def get_smooth_temporal_modifier(modifier_vector, simulation_date, sigma=None):
-        """
-        A function returning the value of a temporal modifier on `simulation_date` after smoothing with a gaussian filter
-
-        input
-        -----
-
-        - modifier_vector: np.ndarray
-            - 1D numpy array (time) or 2D numpy array (time x spatial unit).
-            - Each entry represents a value of a knotted temporal modifier, the length of each modifier is equal to the number of days between Oct 15 and Apr 15 divided by `len(modifier_vector)`.
-
-        - simulation_date: datetime
-            - current simulation date
-
-        - sigma: float or None
-            - gaussian smoother's standard deviation. higher values represent more smooth trajectories but increase runtime. None represents no smoothing (fastest).
-
-        output
-        ------
-
-        - smooth_temporal_modifier: float
-            - smoothed modifier at `simulation_date`
-            - 1D array of smoothed modifiers at `simulation_date`. If the input is 1D, the output will be a single-element array. If the input is 2D, the output will have one value for each spatial dimension.
-        """
-
-        # Ensure the input is at least 2D
-        if modifier_vector.ndim == 1:
-            modifier_vector = modifier_vector[:, np.newaxis]
-        _, num_space = modifier_vector.shape
-
-        # Define number of days between Oct 15 and Apr 15
-        num_days = 182
-
-        # Step 1: Project the input vector onto the daily time scale
-        interval_size = num_days / len(modifier_vector)
-        positions = (np.arange(num_days) // interval_size).astype(int)
-        expanded_vector = modifier_vector[positions, :]
-
-        # Step 2: Prepend and append 31 days of ones
-        padding = np.ones((31, num_space))
-        padded_vector = np.vstack([padding, expanded_vector, padding])
-
-        # Step 3: Compute the number of days since the last Sept 15
-        year = simulation_date.year
-        # Compute the last October 1
-        sept15_this_year = datetime(year, 9, 15)
-        if simulation_date >= sept15_this_year:
-            last_sept15 = sept15_this_year
-        else:
-            last_sept15 = datetime(year - 1, 9, 15)
-        # Calculate the difference in days
-        days_difference = (simulation_date - last_sept15).days
-
-        # Step 4: If outside of range return 1
-        if days_difference < 0 or days_difference >= padded_vector.shape[0]:
-            return np.ones(num_space)  # Default value if out of range
-
-        # Step 5: apply the Gaussian filter only within a +- 4*sigma window
-        if not sigma:
-            sigma = 1 # just pick something
-            lower_bound = max(0, days_difference - math.ceil(4 * sigma))
-            upper_bound = min(padded_vector.shape[0], days_difference + math.ceil(4 * sigma)+1)
-            smoothed_subseries = padded_vector[lower_bound:upper_bound]
-        else:
-            lower_bound = max(0, days_difference - math.ceil(4 * sigma))
-            upper_bound = min(padded_vector.shape[0], days_difference + math.ceil(4 * sigma)+1)
-            smoothed_subseries = gaussian_filter1d(padded_vector[lower_bound:upper_bound], sigma=sigma, axis=0, mode="nearest")
-
-        # Return the smoothed value at the correct relative position
-        return smoothed_subseries[days_difference - lower_bound, :]
+    # Step 3: apply the Gaussian filter
+    return np.squeeze(gaussian_filter1d(padded_vector, sigma=sigma, axis=0, mode="nearest"))

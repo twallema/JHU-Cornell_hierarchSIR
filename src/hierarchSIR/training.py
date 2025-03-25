@@ -11,12 +11,12 @@ import random
 import numpy as np
 import xarray as xr
 import pandas as pd
-from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from datetime import datetime, timedelta
 from scipy.stats import expon, beta, norm, gamma
 from pySODM.optimization.utils import list_to_dict, add_poisson_noise
-from pySODM.optimization.objective_functions import ll_poisson, validate_calibrated_parameters, expand_bounds
+from pySODM.optimization.objective_functions import ll_poisson, validate_calibrated_parameters, expand_bounds, validate_dataset, create_fake_xarray_output, compare_data_model_coordinates
 from hierarchSIR.utils import draw_function
 
 ###########################################
@@ -31,7 +31,7 @@ class log_posterior_probability():
         self.par_sizes, self.par_shapes = validate_calibrated_parameters(par_names, model.parameters)
         self.n_pars = sum([v[0] for v in self.par_shapes.values()])
 
-        # build the shapes of the hyperparameters
+        # build the names and shapes of the hyperparameters
         hyperpar_shapes = {}
         for name, shape, hyperdist in zip(self.par_shapes.keys(), self.par_shapes.values(), par_hyperdistributions):
             if hyperdist == 'gamma':
@@ -50,17 +50,50 @@ class log_posterior_probability():
         self.hyperpar_shapes = hyperpar_shapes
         self.n_hyperpars = sum(value[0] for value in self.hyperpar_shapes.values())
 
-        # compute a weights matrix
+        # get additional axes beside time axis in dataset and model states we want to match
+        self.corresponding_model_states = []
+        self.additional_axes_data = []
+        for data in datasets:
+            states, addaxis = validate_dataset(data)
+            self.corresponding_model_states.append(states)
+            self.additional_axes_data.append(addaxis)
+
+        # check that across seasons, the corresponding states are identical (relaxing introduces additional overhead)
+        if not all(sublist == self.corresponding_model_states[0] for sublist in self.corresponding_model_states):
+            raise ValueError('across seasons, the states you want to match to must be identical')
+        else:
+            states_data = self.corresponding_model_states[0]
+
+        # Compare data and model dimensions
+        ## Create a fake model output
+        out = create_fake_xarray_output(model.dimensions_per_state, model.state_coordinates, model.initial_states, 'date')
+        ## Learn what needs to be aggregated over
+        self.coordinates_data_also_in_model = []
+        self.aggregate_over = []
+        for data, states, addaxdata in zip(datasets, self.corresponding_model_states, self.additional_axes_data):
+            aggregation_function = len(self.corresponding_model_states[0]) * [None,]
+            out_1, out_2 = compare_data_model_coordinates(out, data, states, aggregation_function, addaxdata)
+            self.coordinates_data_also_in_model.append(out_1)
+            self.aggregate_over.append(out_2)
+
+        # compute start and end of simulation (per season)
+        self.simtimes = []
+        for data in datasets:
+            start_sim = min([df.index.get_level_values('date').unique().min() for df in data]).to_pydatetime() 
+            end_sim = max([df.index.get_level_values('date').unique().max() for df in data]).to_pydatetime()
+            self.simtimes.append([start_sim, end_sim])
+
+        # compute the lpp weights matrix
         ## pre-allocate
         w = np.ones([len(datasets), len(states_data)])
         ## weigh by inverse maximum in timeseries
         for i, data in enumerate(datasets):
-            for j, state in enumerate(states_data):
-                w[i,j] = 1/max(data[state].values)
+            for j, _ in enumerate(states_data):
+                w[i,j] = 1/max(data[j].values)
         ## normalise back to one
         self.w = w/np.mean(w)
 
-        # assign variables
+        # assign remaining variables
         self.model = model
         self.par_names = par_names
         self.par_hyperdistributions = par_hyperdistributions
@@ -156,24 +189,112 @@ class log_posterior_probability():
 
             # Assign model parameters
             self.model.parameters.update(theta_season)
-            # But make sure they're vectors
+            # But make sure they're vectors (if using one strain)
             for par in self.par_names:
                 if par != 'delta_beta_temporal':
                     self.model.parameters[par] = np.array([theta_season[par],])
 
             # run the forward simulation
-            simout = self.model.sim([min(data.index), max(data.index)])
+            simout = self.model.sim(self.simtimes[i])
 
-            # compute the likelihood
-            for j, (state_model, state_data) in enumerate(zip(self.states_model, self.states_data)):
-                x = data[state_data].values
-                y = simout[state_model].sum(dim='strain').interp({'date': data.index}, method='linear').values
-                # check model output for nans
-                if np.isnan(y).any():
-                    raise ValueError(f"simulation output contains nan, most likely due to numerical unstability. try using more conservative bounds.")
-                lpp += self.w[i,j] * ll_poisson(x, y)
+            # loop over states
+            for j, (state_model, df) in enumerate(zip(self.corresponding_model_states[i], data)):
+                # reset copy
+                out_copy = simout
+                # aggregate over unwanted dimensions
+                for dimension in simout.dims:
+                    if dimension in self.aggregate_over[i][j]:
+                        out_copy = out_copy.sum(dim=dimension)
+                # match data and model
+                if not self.additional_axes_data[i][j]:
+                    # get timeseries
+                    x = df.squeeze().values
+                    y = out_copy[state_model].sel({'date': df.index.get_level_values('date').unique().values}).values
+                    # check if shapes are consistent
+                    if x.shape != y.shape:
+                        raise Exception(f"shape of model prediction {y.shape} and data {x.shape} are not identical.")
+                    # check for nan in model output
+                    if np.isnan(y).any():
+                        raise ValueError(f"simulation output contains nan, most likely due to numerical unstability. try using more conservative bounds.")
+                    # compute lpp
+                    lpp += self.w[i,j] * ll_poisson(x, y)
+                else:
+                    pass
 
         return lpp
+
+######################
+## Helper functions ##
+######################
+
+def validate_dataset(data):
+    """
+    Validates a dataset:
+        - Does the dataset itself have the right type?
+        - Does it contain Nan's?
+        - Is the index level 'date' present? (obligated)
+        - Are the indices in 'date' all datetime?
+
+
+    Extracts and returns the additional dimensions in dataset besides the 'date' axis, as well as the desired model state that will be matched to the data.
+
+    Parameters
+    ----------
+
+    data: list
+        List containing the datasets (pd.Series, pd.Dataframe, xarray.DataArray, xarray.Dataset)
+    
+    Returns
+    -------
+
+    corresponding_model_states: list
+        Contains the name of the pd.Series -- assumed to be the model state that must be matched
+
+    additional_axes_data: list
+        Contains the index levels beside 'date' present in the dataset
+    """
+
+    corresponding_model_states = []
+    additional_axes_data=[] 
+    for idx, df in enumerate(data):
+        # Is dataset a pd.Series or pd.Dataframe?
+        if not isinstance(df, (pd.Series, pd.DataFrame)):
+            raise TypeError(
+                f"{idx}th dataset is of type {type(df)}. expected pd.Series, pd.DataFrame or xarray.DataArray, xarray.Dataset"
+            )
+        # If it is a pd.DataFrame, does it have one column?
+        if isinstance(df, pd.DataFrame):
+            if len(df.columns) != 1:
+                raise ValueError(
+                    f"{idx}th dataset is a pd.DataFrame with {len(df.columns)} columns. expected one column."
+                )
+            else:
+                corresponding_model_states.append(df.columns.values)
+        else:
+            corresponding_model_states.append(df.name)
+        # Does data contain NaN values anywhere?
+        if np.isnan(df).values.any():
+            raise ValueError(
+                f"{idx}th dataset contains nans"
+                )
+        # Verify dataset is not empty
+        assert not df.empty, f"{idx}th dataset is empty"
+        # Does data have 'date' or 'time' as index level? (required)
+        if 'date' not in df.index.names:
+            raise ValueError(
+                f"Index of {idx}th dataset does not have 'date' as index level (index levels: {df.index.names})."
+                )
+        else:
+            additional_axes_data.append([name for name in df.index.names if name != 'date'])
+
+    # Do the types of the time axis make sense?
+    for idx, df in enumerate(data):
+        time_index_vals = df.index.get_level_values('date').unique().values
+        # 'date' --> can only be (np.)datetime; no str representations --> gets very messy if we allow this
+        if not all([isinstance(t, (datetime, np.datetime64)) for t in time_index_vals]):
+            raise ValueError(f"index level 'date' of the {idx}th dataset contains values not of type 'datetime'")
+
+    return corresponding_model_states, additional_axes_data
 
 #################################
 ## Function to save the chains ##
@@ -250,42 +371,39 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, pars_model_
     fig, axes = plt.subplots(nrows=4, ncols=2, figsize=(8.3,11.7/5*4))
 
     for _, (ax, par_name, par_hyperdistribution, bound) in enumerate(zip(axes.flatten(), pars_model_names, pars_model_hyperdistributions, bounds)):
-        
-        # define x based on plausible range
-        x = np.linspace(start=bound[0],stop=bound[1],num=100)
 
         # exception for `delta_beta_temporal`
         if par_name == 'delta_beta_temporal':
+
             ### get transmission rate function
-            from hierarchSIR.utils import transmission_rate_function
-            f = transmission_rate_function(sigma=2.5)
-            x = pd.date_range(start=datetime(2020,10,21), end=datetime(2021,4,10), freq='2D').tolist()
+            from hierarchSIR.utils import get_transmission_coefficient_timeseries
             ### compute modifier tranjectory of every season and plot
             for i, season in enumerate(samples_xr.coords['season']):
-                y = []
-                for d in x:
-                    y.append(f(d, 1, samples_xr['delta_beta_temporal'].median(dim=['iteration', 'chain']).sel(season=season).values))
-                ax.plot(x, np.squeeze(np.array(y)), color='black', linewidth=0.5, alpha=0.2)
+                y = 1 + get_transmission_coefficient_timeseries(samples_xr['delta_beta_temporal'].median(dim=['iteration', 'chain']).sel(season=season).values, sigma=2.5)
+                x = pd.date_range(start=datetime(2020,9,15), end=datetime(2020,9,15) + timedelta(days=len(y)-1), freq='D').tolist()
+                ax.plot(x, y, color='black', linewidth=0.5, alpha=0.2)
             ### visualise hyperdistribution
-            ll=[]
-            y=[]
-            ul=[]
-            for d in x:
-                ll.append(f(d, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values - samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values))
-                y.append(f(d, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values))
-                ul.append(f(d, 1, samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values + samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values))
-            ax.plot(x, np.squeeze(np.array(y)), color='red', alpha=0.8)
-            ax.fill_between(x, np.squeeze(np.array(ll)), np.squeeze(np.array(ul)), color='red', alpha=0.1)
+            ll= 1 + get_transmission_coefficient_timeseries(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values - samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values, sigma=2.5)
+            y= 1 + get_transmission_coefficient_timeseries(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values, sigma=2.5)
+            ul=1 + get_transmission_coefficient_timeseries(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values + samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values, sigma=2.5)
+            ax.plot(x, y, color='red', alpha=0.8)
+            ax.fill_between(x, ll, ul, color='red', alpha=0.1)
             # add parameter box
             ax.text(0.02, 0.97, f"avg={list(np.round(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values,2).tolist())}\nstdev={list(np.round(samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values,2).tolist())}", transform=ax.transAxes, fontsize=5,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
             ax.set_ylabel(r'$\Delta \beta_{t}$')
+            ax.set_xlim([datetime(2020,10,21), datetime(2021, 4, 12)])
             ax.set_ylim([0.7, 1.3])
+
         else:
+
+            # define x based on plausible range
+            x = np.linspace(start=bound[0],stop=bound[1],num=100)
 
             # loop over the number of iterations
             for k in range(N):
+
                 ## draw a random sample
                 i = random.randint(0, len(samples_xr.coords['iteration'])-1)
                 j = random.randint(0, len(samples_xr.coords['chain'])-1)
@@ -359,38 +477,60 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, pars_model_
 ## Goodness-of-fit ##
 #####################
 
-def plot_fit(model, datasets, samples_xr, pars_model_names, path, identifier, run_date):
+def plot_fit(model, datasets, simtimes, samples_xr, pars_model_names, path, identifier, run_date,
+                coordinates_data_also_in_model, aggregate_over, additional_axes_data, corresponding_model_states):
     """
     Visualises the goodness of fit for every season
     """
 
     # simulate model for every season
     simout=[]
-    for season, data in zip(list(samples_xr.coords['season'].values), datasets):
-        simout.append(add_poisson_noise(model.sim([min(data.index), max(data.index)], N=100,
+    for season, data, simtime in zip(list(samples_xr.coords['season'].values), datasets, simtimes):
+        simout.append(add_poisson_noise(model.sim(simtime, N=100,
                                         draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'season': season, 'pars_model_names': pars_model_names})+0.01
                                         ))
-
-    # visualise outcome
-    for season, data, out in zip(list(samples_xr.coords['season'].values), datasets, simout):
+    
+    # LOOP seasons
+    for i, (season, data, out) in enumerate(zip(list(samples_xr.coords['season'].values), datasets, simout)):
         
-        fig,ax=plt.subplots(nrows=2, figsize=(8.3, 11.7/5*2))
-        # hosp
-        ax[0].scatter(data.index, 7*data['H_inc'], color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-        ax[0].fill_between(out['date'], 7*out['H_inc'].sum(dim=['strain',]).quantile(dim='draws', q=0.05/2),
-                            7*out['H_inc'].sum(dim='strain').quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
-        ax[0].fill_between(out['date'], 7*out['H_inc'].sum(dim='strain').quantile(dim='draws', q=0.50/2),
-                            7*out['H_inc'].sum(dim='strain').quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)
-        ax[0].set_title(f'Hospitalisations')
-        ax[0].set_ylabel('Weekly hospital inc. (-)')
-        # ILI
-        ax[1].scatter(data.index, 7*data['I_inc'], color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-        ax[1].fill_between(out['date'], 7*out['I_inc'].sum(dim='strain').quantile(dim='draws', q=0.05/2),
-                            7*out['I_inc'].sum(dim='strain').quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
-        ax[1].fill_between(out['date'], 7*out['I_inc'].sum(dim='strain').quantile(dim='draws', q=0.50/2),
-                            7*out['I_inc'].sum(dim='strain').quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)   
-        ax[1].set_title(f'Influenza-like illness')
-        ax[1].set_ylabel('Weekly ILI inc. (-)')
+        # compute the amount of timeseries
+        nrows = sum(1 if not coords else len(coords) for coords in coordinates_data_also_in_model[i])
+
+        # generate figure
+        fig,ax=plt.subplots(nrows=nrows, sharex=True, figsize=(8.3, 11.7/5*nrows))
+
+        # loop over datasets
+        k=0
+        for j, df in enumerate(data):
+
+            # aggregate data
+            for dimension in out.dims:
+                if dimension in aggregate_over[i][j]:
+                    out = out.sum(dim=dimension)
+            
+            # loop over coordinates 
+            if coordinates_data_also_in_model[i][j]:
+                for coord in coordinates_data_also_in_model[i][j]:
+                    # get dimension coord is in
+                    dim_name = additional_axes_data[i][j]
+                    # plot
+                    ax[k].scatter(df.index.get_level_values('date').values, 7*df.loc[slice(None), coord].values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                    ax[k].fill_between(out['date'], 7*out[corresponding_model_states[i][j]].sel({dim_name: coord}).quantile(dim='draws', q=0.05/2),
+                                7*out[corresponding_model_states[i][j]].sel({dim_name: coord}).quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
+                    ax[k].fill_between(out['date'], 7*out[corresponding_model_states[i][j]].sel({dim_name: coord}).quantile(dim='draws', q=0.50/2),
+                                7*out[corresponding_model_states[i][j]].sel({dim_name: coord}).quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)
+                    ax[k].set_title(f'State: {corresponding_model_states[i][j]}; Dim: {dim_name} ({coord})')
+                    k += 1
+            else:
+                # plot
+                ax[k].scatter(df.index, 7*df.values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                ax[k].fill_between(out['date'], 7*out[corresponding_model_states[i][j]].quantile(dim='draws', q=0.05/2),
+                            7*out[corresponding_model_states[i][j]].quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
+                ax[k].fill_between(out['date'], 7*out[corresponding_model_states[i][j]].quantile(dim='draws', q=0.50/2),
+                            7*out[corresponding_model_states[i][j]].quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)
+                ax[k].set_title(f'State: {corresponding_model_states[i][j]}')
+                k += 1
+
         fig.suptitle(f'{season}')
         plt.tight_layout()
         # check if samples folder exists, if not, make it
@@ -398,6 +538,7 @@ def plot_fit(model, datasets, samples_xr, pars_model_names, path, identifier, ru
             os.makedirs(path+'fit/')
         plt.savefig(path+'fit/'+str(identifier)+'_FIT-'+f'{season}_'+run_date+'.pdf')
         plt.close()
+
 
 ################
 ## Traceplots ##
