@@ -97,7 +97,7 @@ else:
     # change name to build save path
     informed='informed'
     # load and select priors
-    priors = pd.read_csv('../../data/interim/calibration/summary-hyperparameters.csv')
+    priors = pd.read_csv('../../data/interim/calibration/hyperparameters.csv')
     priors = priors.loc[((priors['model'] == model_name) & (priors['use_ED_visits'] == use_ED_visits)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
     # assign values
     log_prior_prob_fcn = 3*[log_prior_gamma] + 1*[log_prior_normal] + 1*[log_prior_beta] + 1*[log_prior_gamma] + 12*[log_prior_normal,] 
