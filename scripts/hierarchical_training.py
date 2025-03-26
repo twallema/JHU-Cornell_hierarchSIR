@@ -167,10 +167,21 @@ if __name__ == '__main__':
                 # every print_n steps do..
                 # ..dump samples
                 samples = dump_sampler_to_xarray(sampler.get_chain(discard=discard, thin=thin), samples_path+str(identifier)+'_SAMPLES_'+run_date+'.nc', lpp.hyperpar_shapes, lpp.par_shapes, seasons)
+                # write median hyperpars to .csv
+                hyperpars_names = []
+                hyperpars_values = []
+                for hyperpar_name, hyperpar_shape in lpp.hyperpar_shapes.items():
+                    # append value
+                    hyperpars_values.append(samples.median(dim=['chain', 'iteration'])[hyperpar_name].values.tolist())
+                    # append name
+                    hyperpars_names.extend([f'{hyperpar_name}_{i}' if hyperpar_shape[0] > 1 else f'{hyperpar_name}' for i in range(hyperpar_shape[0])])
+                hyperpars_values = np.hstack(hyperpars_values)
+                # save to .csv
+                pd.Series(index=hyperpars_names, data=hyperpars_values, name=identifier).to_csv(samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.csv')
                 # .. visualise hyperdistributions
-                #hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', lpp.par_shapes, par_hyperdistributions, par_bounds, 100)
+                hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', lpp.par_shapes, lpp.hyperpar_shapes, par_hyperdistributions, par_bounds, 100)
                 # ..generate traceplots
-                #traceplot(samples, lpp.par_shapes, lpp.hyperpar_shapes, samples_path, identifier, run_date)
+                traceplot(samples, lpp.par_shapes, lpp.hyperpar_shapes, samples_path, identifier, run_date)
                 # ..generate goodness-of-fit
                 plot_fit(model, datasets, lpp.simtimes, samples, model.parameter_shapes, samples_path, identifier, run_date,
                          lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data, lpp.corresponding_model_states)
