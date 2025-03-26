@@ -369,15 +369,48 @@ def dump_sampler_to_xarray(samples_np, path_filename, hyperpars_shapes, pars_sha
 ## Hyperdistributions ##
 ########################
 
-def hyperdistributions(samples_xr, path_filename, pars_model_shapes, pars_model_hyperdistributions, bounds, N):
+def hyperdistributions(samples_xr, path_filename, pars_model_shapes, hyperpars_shapes, pars_model_hyperdistributions, bounds, N):
 
     # get the element-expanded number of parameters and the parameter's names
     pars_model_names = pars_model_shapes.keys()
-
+    
+    # compute the size of the figure
+    n_subfigs=0
+    for par, hyperdistribution in zip(pars_model_names, pars_model_hyperdistributions):
+        if par == 'delta_beta_temporal':
+            n_subfigs += 1
+        else:
+            if hyperdistribution == 'gamma':
+                ### construct hyperpars names
+                a_name = f'{par}_a'
+                ### get shapes
+                n_subfigs += hyperpars_shapes[a_name][0]
+            elif hyperdistribution == 'expon':
+                ### construct hyperpars names
+                scale_name = f'{par}_scale'
+                ### get shapes
+                n_subfigs += hyperpars_shapes[scale_name][0]
+            elif hyperdistribution == 'normal':
+                ### construct hyperpars names
+                mu_name = f'{par}_mu'
+                ### get shapes
+                n_subfigs += hyperpars_shapes[mu_name][0]
+            elif hyperdistribution == 'beta':
+                ### construct hyperpars names
+                a_name = f'{par}_a'
+                ### get shapes
+                n_subfigs += hyperpars_shapes[a_name][0]
+    # compute subfigure shape
+    ncols = 2
+    nrows = int((n_subfigs - (n_subfigs % ncols))/ncols + 1)
+    
     # make figure
-    fig, axes = plt.subplots(nrows=4, ncols=2, figsize=(8.3,11.7/5*4))
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(8.3,11.7/5*4))
 
-    for _, (ax, par_name, par_hyperdistribution, bound) in enumerate(zip(axes.flatten(), pars_model_names, pars_model_hyperdistributions, bounds)):
+    ax = axes.flatten()
+
+    i = 0
+    for _, (par_name, par_hyperdistribution, bound) in enumerate(zip(pars_model_names, pars_model_hyperdistributions, bounds)):
 
         # exception for `delta_beta_temporal`
         if par_name == 'delta_beta_temporal':
@@ -385,94 +418,175 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, pars_model_
             ### get transmission rate function
             from hierarchSIR.utils import get_transmission_coefficient_timeseries
             ### compute modifier tranjectory of every season and plot
-            for i, season in enumerate(samples_xr.coords['season']):
+            for _, season in enumerate(samples_xr.coords['season']):
                 y = 1 + get_transmission_coefficient_timeseries(samples_xr['delta_beta_temporal'].median(dim=['iteration', 'chain']).sel(season=season).values, sigma=2.5)
                 x = pd.date_range(start=datetime(2020,9,15), end=datetime(2020,9,15) + timedelta(days=len(y)-1), freq='D').tolist()
-                ax.plot(x, y, color='black', linewidth=0.5, alpha=0.2)
+                ax[i].plot(x, y, color='black', linewidth=0.5, alpha=0.2)
             ### visualise hyperdistribution
             ll= 1 + get_transmission_coefficient_timeseries(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values - samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values, sigma=2.5)
             y= 1 + get_transmission_coefficient_timeseries(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values, sigma=2.5)
             ul=1 + get_transmission_coefficient_timeseries(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values + samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values, sigma=2.5)
-            ax.plot(x, y, color='red', alpha=0.8)
-            ax.fill_between(x, ll, ul, color='red', alpha=0.1)
+            ax[i].plot(x, y, color='red', alpha=0.8)
+            ax[i].fill_between(x, ll, ul, color='red', alpha=0.1)
             # add parameter box
-            ax.text(0.02, 0.97, f"avg={list(np.round(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values,2).tolist())}\nstdev={list(np.round(samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values,2).tolist())}", transform=ax.transAxes, fontsize=5,
+            ax[i].text(0.02, 0.97, f"avg={list(np.round(samples_xr['delta_beta_temporal_mu'].median(dim=['iteration', 'chain']).values,2).tolist())}\nstdev={list(np.round(samples_xr['delta_beta_temporal_sigma'].median(dim=['iteration', 'chain']).values,2).tolist())}", transform=ax[i].transAxes, fontsize=5,
             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
-            ax.set_ylabel(r'$\Delta \beta_{t}$')
-            ax.set_xlim([datetime(2020,10,21), datetime(2021, 4, 12)])
-            ax.set_ylim([0.7, 1.3])
-
+            ax[i].xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+            ax[i].set_ylabel(r'$\Delta \beta_{t}$')
+            ax[i].set_xlim([datetime(2020,10,21), datetime(2021, 4, 12)])
+            ax[i].set_ylim([0.5, 1.5])
+            # update 
+            i += 1
         else:
 
             # define x based on plausible range
             x = np.linspace(start=bound[0],stop=bound[1],num=100)
 
-            # loop over the number of iterations
-            for k in range(N):
+            ## if not `delta_beta_temporal`: select the right distribution
+            if par_hyperdistribution == 'gamma':
+                ### construct hyperpars names
+                a_name = f'{par_name}_a'
+                scale_name = f'{par_name}_scale'
+                ### get shape
+                n_strains = hyperpars_shapes[a_name][0]
+                for j in range(n_strains):
+                    # loop over the number of iterations
+                    for k in range(N):
+                        ## draw a random sample
+                        m = random.randint(0, len(samples_xr.coords['iteration'])-1)
+                        n = random.randint(0, len(samples_xr.coords['chain'])-1)
+                        if n_strains == 1:
+                            ### add sample to plot
+                            ax[i+j].plot(x, gamma.pdf(x, a=samples_xr[a_name].sel({'iteration': m, 'chain': n}).values, scale=samples_xr[scale_name].sel({'iteration': m, 'chain': n}).values), alpha=0.05, color='black')
+                            ### add mean
+                            if k == N-1:
+                                #### mean
+                                ax[i+j].plot(x, gamma.pdf(x, a=samples_xr[a_name].median(dim=['iteration', 'chain']).values, scale=samples_xr[scale_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                                #### textbox
+                                ax[i+j].text(0.05, 0.95, f"a={samples_xr[a_name].median(dim=['iteration', 'chain']).values:.1e}, scale={samples_xr[scale_name].median(dim=['iteration', 'chain']).values:.1e}", transform=ax[i+j].transAxes, fontsize=7,
+                                            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                                ax[i+j].set_ylabel(f'{par_name}')
+                        else:
+                            ### add sample to plot
+                            ax[i+j].plot(x, gamma.pdf(x, a=samples_xr[a_name].sel({'iteration': m, 'chain': n, f'{a_name}_dim': j}).values, scale=samples_xr[scale_name].sel({'iteration': m, 'chain': n, f'{scale_name}_dim': j}).values), alpha=0.05, color='black')
+                            ### add mean
+                            if k == N-1:
+                                #### mean
+                                ax[i+j].plot(x, gamma.pdf(x, a=samples_xr[a_name].sel({f'{a_name}_dim': j}).median(dim=['iteration', 'chain']).values, scale=samples_xr[scale_name].sel({f'{scale_name}_dim': j}).median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                                #### textbox
+                                ax[i+j].text(0.05, 0.95, f"a={samples_xr[a_name].sel({f'{a_name}_dim': j}).median(dim=['iteration', 'chain']).values:.1e}, scale={samples_xr[scale_name].sel({f'{scale_name}_dim': j}).median(dim=['iteration', 'chain']).values:.1e}", transform=ax[i+j].transAxes, fontsize=7,
+                                            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                                ax[i+j].set_ylabel(f'{par_name}_{j}')
+                i+=n_strains
 
-                ## draw a random sample
-                i = random.randint(0, len(samples_xr.coords['iteration'])-1)
-                j = random.randint(0, len(samples_xr.coords['chain'])-1)
+            elif par_hyperdistribution == 'expon':
+                ### construct hyperpars names
+                scale_name = f'{par_name}_scale'
+                ### get shape
+                n_strains = hyperpars_shapes[scale_name][0]
+                for j in range(n_strains):
+                    # loop over the number of iterations
+                    for k in range(N):
+                        ## draw a random sample
+                        m = random.randint(0, len(samples_xr.coords['iteration'])-1)
+                        n = random.randint(0, len(samples_xr.coords['chain'])-1)
+                        if n_strains == 1:
+                            ### add sample to plot
+                            ax[i+j].plot(x, expon.pdf(x, scale=samples_xr[scale_name].sel({'iteration': m, 'chain': n}).values), alpha=0.05, color='black')
+                            ### add mean
+                            if k == N-1:
+                                #### mean
+                                ax[i+j].plot(x, expon.pdf(x, scale=samples_xr[scale_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                                #### textbox
+                                ax[i+j].text(0.05, 0.95, f"scale={samples_xr[scale_name].median(dim=['iteration', 'chain']).values:.1e}", transform=ax[i+j].transAxes, fontsize=7,
+                                            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                                ax[i+j].set_ylabel(f'{par_name}')
+                        else:
+                            ### add sample to plot
+                            ax[i+j].plot(x, expon.pdf(x, scale=samples_xr[scale_name].sel({'iteration': m, 'chain': n, f'{scale_name}_dim': j}).values), alpha=0.05, color='black')
+                            ### add mean
+                            if k == N-1:
+                                #### mean
+                                ax[i+j].plot(x, expon.pdf(x, scale=samples_xr[scale_name].sel({f'{scale_name}_dim': j}).median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                                #### textbox
+                                ax[i+j].text(0.05, 0.95, f"scale={samples_xr[scale_name].sel({f'{scale_name}_dim': j}).median(dim=['iteration', 'chain']).values:.1e}", transform=ax[i+j].transAxes, fontsize=7,
+                                            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                                ax[i+j].set_ylabel(f'{par_name}_{j}')
+                i+=n_strains
 
-                ## if not `delta_beta_temporal`: select the right distribution
-                if par_hyperdistribution == 'gamma':
-                    ### construct hyperpars names
-                    a_name = f'{par_name}_a'
-                    scale_name = f'{par_name}_scale'
-                    ### add sample to plot
-                    ax.plot(x, gamma.pdf(x, a=samples_xr[a_name].sel({'iteration': i, 'chain': j}).values, scale=samples_xr[scale_name].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')
-                    ### add mean
-                    if k == N-1:
-                        #### mean
-                        ax.plot(x, gamma.pdf(x, a=samples_xr[a_name].median(dim=['iteration', 'chain']).values, scale=samples_xr[scale_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
-                        #### textbox
-                        ax.text(0.05, 0.95, f"a={samples_xr[a_name].median(dim=['iteration', 'chain']).values:.1e}, scale={samples_xr[scale_name].median(dim=['iteration', 'chain']).values:.1e}", transform=ax.transAxes, fontsize=7,
-                                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
-                        ax.set_ylabel(par_name)
-                elif par_hyperdistribution == 'expon':
-                    ### construct hyperpars names
-                    scale_name = f'{par_name}_scale'
-                    ### add sample to plot
-                    ax.plot(x, expon.pdf(x, scale=samples_xr[scale_name].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')
-                    ### add mean
-                    if k == N-1:
-                        #### mean
-                        ax.plot(x, expon.pdf(x, scale=samples_xr[scale_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
-                        #### textbox
-                        ax.text(0.05, 0.95, f"scale={samples_xr[scale_name].median(dim=['iteration', 'chain']).values:.1f}", transform=ax.transAxes, fontsize=7,
-                                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
-                        ax.set_ylabel('$T_h$')
-                elif par_hyperdistribution == 'normal':
-                    ### construct hyperpars names
-                    mu_name = f'{par_name}_mu'
-                    sigma_name = f'{par_name}_sigma'
-                    ### add sample to plot
-                    ax.plot(x, norm.pdf(x, loc=samples_xr[mu_name].sel({'iteration': i, 'chain': j}).values, scale=samples_xr[sigma_name].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')        
-                    ### add mean
-                    if k == N-1:
-                        #### mean
-                        ax.plot(x, norm.pdf(x, loc=samples_xr[mu_name].median(dim=['iteration', 'chain']).values, scale=samples_xr[sigma_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
-                        #### textbox
-                        ax.text(0.05, 0.95, f"avg={samples_xr[mu_name].median(dim=['iteration', 'chain']).values:.1e}, stdev={samples_xr[sigma_name].median(dim=['iteration', 'chain']).values:.1e}", transform=ax.transAxes, fontsize=7,
-                                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
-                        ax.set_ylabel(par_name)
-                elif par_hyperdistribution == 'beta':
-                    ### construct hyperpars names
-                    a_name = f'{par_name}_a'
-                    b_name = f'{par_name}_b'
-                    ### add sample to plot
-                    ax.plot(x, beta.pdf(x, a=samples_xr[a_name].sel({'iteration': i, 'chain': j}).values, b=samples_xr[b_name].sel({'iteration': i, 'chain': j}).values), alpha=0.05, color='black')        
-                    ### add mean
-                    if k == N-1:
-                        #### mean
-                        ax.plot(x, beta.pdf(x, a=samples_xr[a_name].median(dim=['iteration', 'chain']).values, b=samples_xr[b_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
-                        #### textbox
-                        ax.text(0.05, 0.95, f"a={samples_xr[a_name].median(dim=['iteration', 'chain']).values:.1f}, b={samples_xr[b_name].median(dim=['iteration', 'chain']).values:.1f}", transform=ax.transAxes, fontsize=7,
-                                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
-                        ax.set_ylabel(par_name)
+            elif par_hyperdistribution == 'normal':
+                ### construct hyperpars names
+                mu_name = f'{par_name}_mu'
+                sigma_name = f'{par_name}_sigma'
+                ### get shape
+                n_strains = hyperpars_shapes[a_name][0]
+                for j in range(n_strains):
+                    # loop over the number of iterations
+                    for k in range(N):
+                        ## draw a random sample
+                        m = random.randint(0, len(samples_xr.coords['iteration'])-1)
+                        n = random.randint(0, len(samples_xr.coords['chain'])-1)
+                        if n_strains == 1:
+                            ### add sample to plot
+                            ax[i+j].plot(x, norm.pdf(x, loc=samples_xr[mu_name].sel({'iteration': m, 'chain': n}).values, scale=samples_xr[sigma_name].sel({'iteration': m, 'chain': n}).values), alpha=0.05, color='black')
+                            ### add mean
+                            if k == N-1:
+                                #### mean
+                                ax[i+j].plot(x, norm.pdf(x, loc=samples_xr[mu_name].median(dim=['iteration', 'chain']).values, scale=samples_xr[sigma_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                                #### textbox
+                                ax[i+j].text(0.05, 0.95, f"avg={samples_xr[mu_name].median(dim=['iteration', 'chain']).values:.1e}, stdev={samples_xr[sigma_name].median(dim=['iteration', 'chain']).values:.1e}", transform=ax[i+j].transAxes, fontsize=7,
+                                            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                                ax[i+j].set_ylabel(f'{par_name}')
+                        else:
+                            ### add sample to plot
+                            ax[i+j].plot(x, norm.pdf(x, loc=samples_xr[mu_name].sel({'iteration': m, 'chain': n, f'{mu_name}_dim': j}).values, scale=samples_xr[sigma_name].sel({'iteration': m, 'chain': n, f'{sigma_name}_dim': j}).values), alpha=0.05, color='black')
+                            ### add mean
+                            if k == N-1:
+                                #### mean
+                                ax[i+j].plot(x, norm.pdf(x, loc=samples_xr[mu_name].sel({f'{mu_name}_dim': j}).median(dim=['iteration', 'chain']).values, scale=samples_xr[sigma_name].sel({f'{sigma_name}_dim': j}).median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                                #### textbox
+                                ax[i+j].text(0.05, 0.95, f"avg={samples_xr[mu_name].sel({f'{mu_name}_dim': j}).median(dim=['iteration', 'chain']).values:.1e}, stdev={samples_xr[sigma_name].sel({f'{sigma_name}_dim': j}).median(dim=['iteration', 'chain']).values:.1e}", transform=ax[i+j].transAxes, fontsize=7,
+                                            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                                ax[i+j].set_ylabel(f'{par_name}_{j}')
+                i+=n_strains
 
-    fig.delaxes(axes[3,1])
+
+            elif par_hyperdistribution == 'beta':
+                ### construct hyperpars names
+                a_name = f'{par_name}_a'
+                b_name = f'{par_name}_b'
+                ### get shape
+                n_strains = hyperpars_shapes[a_name][0]
+                for j in range(n_strains):
+                    # loop over the number of iterations
+                    for k in range(N):
+                        ## draw a random sample
+                        m = random.randint(0, len(samples_xr.coords['iteration'])-1)
+                        n = random.randint(0, len(samples_xr.coords['chain'])-1)
+                        if n_strains == 1:
+                            ### add sample to plot
+                            ax[i+j].plot(x, beta.pdf(x, a=samples_xr[a_name].sel({'iteration': m, 'chain': n}).values, b=samples_xr[b_name].sel({'iteration': m, 'chain': n}).values), alpha=0.05, color='black')
+                            ### add mean
+                            if k == N-1:
+                                #### mean
+                                ax[i+j].plot(x, beta.pdf(x, a=samples_xr[a_name].median(dim=['iteration', 'chain']).values, b=samples_xr[b_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                                #### textbox
+                                ax[i+j].text(0.05, 0.95, f"a={samples_xr[a_name].median(dim=['iteration', 'chain']).values:.1e}, b={samples_xr[b_name].median(dim=['iteration', 'chain']).values:.1e}", transform=ax[i+j].transAxes, fontsize=7,
+                                            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                                ax[i+j].set_ylabel(f'{par_name}')
+                        else:
+                            ### add sample to plot
+                            ax[i+j].plot(x, beta.pdf(x, a=samples_xr[a_name].sel({'iteration': m, 'chain': n, f'{a_name}_dim': j}).values, b=samples_xr[b_name].sel({'iteration': m, 'chain': n, f'{b_name}_dim': j}).values), alpha=0.05, color='black')
+                            ### add mean
+                            if k == N-1:
+                                #### mean
+                                ax[i+j].plot(x, beta.pdf(x, a=samples_xr[a_name].sel({f'{a_name}_dim': j}).median(dim=['iteration', 'chain']).values, b=samples_xr[b_name].sel({f'{b_name}_dim': j}).median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                                #### textbox
+                                ax[i+j].text(0.05, 0.95, f"a={samples_xr[a_name].sel({f'{a_name}_dim': j}).median(dim=['iteration', 'chain']).values:.1e}, b={samples_xr[b_name].sel({f'{b_name}_dim': j}).median(dim=['iteration', 'chain']).values:.1e}", transform=ax[i+j].transAxes, fontsize=7,
+                                            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                                ax[i+j].set_ylabel(f'{par_name}_{j}')
+                i+=n_strains
+
     plt.tight_layout()
     plt.savefig(path_filename)
     plt.close()
