@@ -50,7 +50,7 @@ season = args.season
 ##############
 
 # model settings
-strains = True
+strains = False
 fips_state = 37
 season_start = int(season[0:4])                     # start of season
 start_simulation = datetime(season_start, 10, 1)    # date simulation is started
@@ -59,20 +59,26 @@ stdev = 0.10                                        # Expected standard deviatio
 
 # optimization parameters
 ## dates
-start_calibration = datetime(season_start+1, 4, 1)           # incremental calibration will start from here
-end_calibration = datetime(season_start+1, 4, 7)            # and incrementally (weekly) calibrate until this date
+start_calibration = datetime(season_start+1, 4, 25)           # incremental calibration will start from here
+end_calibration = datetime(season_start+1, 5, 1)            # and incrementally (weekly) calibrate until this date
 end_validation = datetime(season_start+1, 5, 1)             # enddate used on plots
 ## frequentist optimization
 n_pso = 500                                                # Number of PSO iterations
 multiplier_pso = 10                                         # PSO swarm size
 ## bayesian inference
-n_mcmc = 1000                                              # Number of MCMC iterations
+n_mcmc = 5000                                              # Number of MCMC iterations
 multiplier_mcmc = 5                                         # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 1000                                              # Print diagnostics every `print_n`` iterations
-discard = 500                                             # Discard first `discard` iterations as burn-in
-thin = 10                                                 # Thinning factor emcee chains
+print_n = 5000                                              # Print diagnostics every `print_n`` iterations
+discard = 4000                                             # Discard first `discard` iterations as burn-in
+thin = 50                                                 # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', '16'))          # Number of CPUs to use
-n = 100                                                     # Number of simulations performed in MCMC goodness-of-fit figure
+n = 200                                                     # Number of simulations performed in MCMC goodness-of-fit figure
+
+# format model name
+if strains:
+    model_name = 'SIR-2S'
+else:
+    model_name = 'SIR-1S'
 
 # calibration parameters
 pars = ['rho_i', 'T_h', 'rho_h', 'beta', 'f_R', 'f_I', 'delta_beta_temporal']                                   # parameters to calibrate
@@ -92,7 +98,7 @@ else:
     informed='informed'
     # load and select priors
     priors = pd.read_csv('../../data/interim/calibration/summary-hyperparameters.csv')
-    priors = priors.loc[((priors['model'] == 'oneStrain') & (priors['use_ED_visits'] == use_ED_visits)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
+    priors = priors.loc[((priors['model'] == model_name) & (priors['use_ED_visits'] == use_ED_visits)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
     # assign values
     log_prior_prob_fcn = 3*[log_prior_gamma] + 1*[log_prior_normal] + 1*[log_prior_beta] + 1*[log_prior_gamma] + 12*[log_prior_normal,] 
     log_prior_prob_fcn_args = [ 
@@ -120,26 +126,7 @@ else:
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 ## starting guestimate NM:
-# #TODO: from an excel file please (average over columns)
-if not strains:
-    rho_i = 0.02
-    T_h = 3.5
-    rho_h = 0.005
-    beta = 0.6
-    f_R = 0.4
-    f_I = 1e-4
-    delta_beta_temporal = [-0.08, -0.05, -0.05, 0.001, 0.07, -0.11, 0.02, 0.11, 0.05, 0.06, 0.04, -0.04] # 0.01
-    theta = [rho_i, T_h, rho_h, beta, f_R, f_I] + delta_beta_temporal
-else:
-    rho_i = 0.02
-    T_h = 3.5
-    rho_h = [0.005, 0.005]
-    beta = [0.6, 0.6]
-    f_R = [0.4, 0.4]
-    f_I = [1e-4, 1e-4]
-    delta_beta_temporal = [-0.08, -0.05, -0.05, 0.001, 0.07, -0.11, 0.02, 0.11, 0.05, 0.06, 0.04, -0.04] # 0.01
-    theta = [rho_i, T_h] + rho_h + beta + f_R + f_I + delta_beta_temporal    
-
+theta = pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1]).loc[(strains, slice(None))].mean(axis=1)
 
 ##########################################
 ## Prepare pySODM llp dataset arguments ##
@@ -207,9 +194,9 @@ if __name__ == '__main__':
         # Make folder structure
         identifier = f'reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}' # identifier
         if use_ED_visits:
-            samples_path=fig_path=f'../data/interim/calibration/incremental-calibration/oneStrain/{informed}_{hyperparameters}/use_ED_visits/{season}/{identifier}/' # Path to backend
+            samples_path=fig_path=f'../data/interim/calibration/incremental-calibration/{model_name}/{informed}_{hyperparameters}/use_ED_visits/{season}/{identifier}/' # Path to backend
         else:
-            samples_path=fig_path=f'../data/interim/calibration/incremental-calibration/oneStrain/{informed}_{hyperparameters}/not_use_ED_visits/{season}/{identifier}/'
+            samples_path=fig_path=f'../data/interim/calibration/incremental-calibration/{model_name}/{informed}_{hyperparameters}/not_use_ED_visits/{season}/{identifier}/'
         run_date = datetime.today().strftime("%Y-%m-%d") # get current date
         # check if samples folder exists, if not, make it
         if not os.path.exists(samples_path):
@@ -228,7 +215,7 @@ if __name__ == '__main__':
         weights = np.array(weights) / np.mean(weights)
 
         # Setup objective function (no priors defined = uniform priors based on bounds)
-        objective_function = log_posterior_probability(model, pars, bounds, data, states, log_likelihood_fnc, log_likelihood_fnc_args,
+        lpp = log_posterior_probability(model, pars, bounds, data, states, log_likelihood_fnc, log_likelihood_fnc_args,
                                                         log_prior_prob_fnc=log_prior_prob_fcn, log_prior_prob_fnc_args=log_prior_prob_fcn_args,
                                                         start_sim=start_simulation, weights=weights, labels=labels)
 
@@ -237,7 +224,7 @@ if __name__ == '__main__':
         #################
 
         # perform optimization 
-        theta, _ = nelder_mead.optimize(objective_function, np.array(theta), len(objective_function.expanded_bounds)*[0.1,],
+        theta, _ = nelder_mead.optimize(lpp, np.array(theta), len(lpp.expanded_bounds)*[0.1,],
                                         processes=processes, max_iter=n_pso, no_improv_break=1000)
 
         ######################
@@ -250,21 +237,21 @@ if __name__ == '__main__':
         simout = model.sim([start_simulation, end_validation])
         # visualise output
         plot_fit(simout, data, states, fig_path, identifier,
-                objective_function.coordinates_data_also_in_model, objective_function.aggregate_over, objective_function.additional_axes_data)
+                lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data)
 
         ##########
         ## MCMC ##
         ##########
 
         # Perturbate previously obtained estimate
-        ndim, nwalkers, pos = perturbate_theta(theta, pert=0.05*np.ones(len(theta)), multiplier=multiplier_mcmc, bounds=objective_function.expanded_bounds)
+        ndim, nwalkers, pos = perturbate_theta(theta, pert=0.05*np.ones(len(theta)), multiplier=multiplier_mcmc, bounds=lpp.expanded_bounds)
         # Append some usefull settings to the samples dictionary
         settings={'start_simulation': start_simulation.strftime('%Y-%m-%d'), 'start_calibration': start_calibration.strftime('%Y-%m-%d'), 'end_calibration': end_date.strftime('%Y-%m-%d'),
                   'season': season, 'starting_estimate': theta}
         # Sample n_mcmc iterations
-        sampler, samples_xr = run_EnsembleSampler(pos, n_mcmc, identifier, objective_function, fig_path=fig_path, samples_path=samples_path, print_n=print_n, backend=None, processes=processes, progress=True, 
+        sampler, samples_xr = run_EnsembleSampler(pos, n_mcmc, identifier, lpp, fig_path=fig_path, samples_path=samples_path, print_n=print_n, backend=None, processes=processes, progress=True, 
                                                     moves=[(emcee.moves.DEMove(), 0.5*0.9),(emcee.moves.DEMove(gamma0=1.0), 0.5*0.1), (emcee.moves.StretchMove(live_dangerously=True), 0.50)],
-                                                    settings_dict=settings
+                                                    settings_dict=settings, discard=discard, thin=thin,
                                             )                                                                               
  
         #######################
@@ -293,7 +280,7 @@ if __name__ == '__main__':
 
         # Simulate model
         simout = model.sim([start_simulation, end_validation], N=n,
-                            draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'parameter_shapes': objective_function.parameter_shapes})
+                            draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'parameter_shapes': lpp.parameter_shapes})
         
         # Add sampling noise
         try:
@@ -309,6 +296,6 @@ if __name__ == '__main__':
 
         # Visualise goodnes-of-fit
         plot_fit(simout, data, states, fig_path, identifier,
-                objective_function.coordinates_data_also_in_model, objective_function.aggregate_over, objective_function.additional_axes_data)
+                lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data)
         
 

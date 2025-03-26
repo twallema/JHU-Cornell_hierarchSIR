@@ -71,7 +71,7 @@ class SIR():
             # build initial condition
             initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
             # remove ICF arguments from the parameters
-            self.parameters = {key: value for key, value in self.parameters.items() if key not in ['f_I', 'f_R']}
+            self.parameters = {key: value for key, value in self.parameters.items() if key not in self.ICF_args_names}
             # simulate model
             simout = sir_model.integrate(*time, **initial_condition, **self.parameters)
             # format and append output

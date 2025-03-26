@@ -31,17 +31,22 @@ n_chains = 400
 pert = 0.01
 run_date = datetime.today().strftime("%Y-%m-%d")
 identifier = 'exclude-2024-2025'
-print_n =  1000
+print_n =  200
 backend =  None
-discard = 0
+discard = 150
 thin = 1
 processes = int(os.environ.get('NUM_CORES', '16'))
 
 # Make folder structure
-if use_ED_visits:
-    samples_path=fig_path=f'../data/interim/calibration/hierarchical-training/oneStrain/use_ED_visits/' # Path to backend
+if strains:
+    model_name = 'SIR-2S'
 else:
-    samples_path=fig_path=f'../data/interim/calibration/hierarchical-training/oneStrain/not_use_ED_visits/' # Path to backend
+    model_name = 'SIR-1S'
+
+if use_ED_visits:
+    samples_path=fig_path=f'../data/interim/calibration/hierarchical-training/{model_name}/use_ED_visits/' # Path to backend
+else:
+    samples_path=fig_path=f'../data/interim/calibration/hierarchical-training/{model_name}/not_use_ED_visits/' # Path to backend
 # check if samples folder exists, if not, make it
 if not os.path.exists(samples_path):
     os.makedirs(samples_path)

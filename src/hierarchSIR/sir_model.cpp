@@ -185,7 +185,7 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
     
     SIR sir_system(beta, gamma, rho_i, rho_h, T_h,  beta_modifiers);
     runge_kutta_dopri5<std::vector<double>> stepper;
-    integrate_adaptive(make_controlled(5e-1, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
+    integrate_adaptive(make_controlled(1e-1, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
     return interpolate_results(results, t_start, t_end);
 }
 
