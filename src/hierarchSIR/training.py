@@ -17,7 +17,6 @@ from datetime import datetime, timedelta
 from scipy.stats import expon, beta, norm, gamma
 from pySODM.optimization.utils import list_to_dict, add_poisson_noise
 from pySODM.optimization.objective_functions import ll_poisson, validate_calibrated_parameters, expand_bounds, validate_dataset, create_fake_xarray_output, compare_data_model_coordinates
-from hierarchSIR.utils import draw_function
 
 ###########################################
 ## Define posterior probability function ##
@@ -491,12 +490,43 @@ def plot_fit(model, datasets, simtimes, samples_xr, parameter_shapes, path, iden
     Visualises the goodness of fit for every season
     """
 
-    # simulate model for every season
+    # define draw function
+    def draw_function(parameters, samples_xr, season, parameter_shapes):
+        """
+        A compatible draw function
+        """
+
+        # get a random iteration and markov chain
+        i = random.randint(0, len(samples_xr.coords['iteration'])-1)
+        j = random.randint(0, len(samples_xr.coords['chain'])-1)
+        # assign parameters
+        for par in parameter_shapes.keys():
+            try:
+                if ((par != 'delta_beta_temporal') & (parameter_shapes[par] == (1,))):
+                    parameters[par] = np.array([samples_xr[par].sel({'iteration': i, 'chain': j, 'season': season}).values],)
+                else:
+                    parameters[par] = samples_xr[par].sel({'iteration': i, 'chain': j, 'season': season}).values
+            except:
+                pass
+        return parameters
+
+    # LOOP seasons
     simout=[]
     for season, data, simtime in zip(list(samples_xr.coords['season'].values), datasets, simtimes):
-        simout.append(model.sim(simtime, N=100,
-                                draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'season': season, 'parameter_shapes': parameter_shapes})+0.01
-                                )
+
+        # simulate model
+        out = model.sim(simtime, N=100, draw_function=draw_function,
+                        draw_function_kwargs={'samples_xr': samples_xr, 'season': season, 'parameter_shapes': parameter_shapes})
+        
+        # try poisson resampling
+        try:
+            out = add_poisson_noise(out)
+        except:
+            print('no poisson resampling performed')
+            pass
+
+        # append result
+        simout.append(out)
     
     # LOOP seasons
     for i, (season, data, out) in enumerate(zip(list(samples_xr.coords['season'].values), datasets, simout)):

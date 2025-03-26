@@ -44,9 +44,9 @@ struct SIR {
             double lambda = beta_t * S * I / T[strain];
 
             dydt[idx] = -lambda;                                                    // dS/dt
-            dydt[idx + 1] = lambda - gamma[strain] * I;                             // dI/dt
-            dydt[idx + 2] = gamma[strain] * I;                                      // dR/dt
-            dydt[idx + 3] = rho_i[strain] * lambda - I_inc;                         // dI_inc/dt
+            dydt[idx + 1] = lambda - gamma[0] * I;                             // dI/dt
+            dydt[idx + 2] = gamma[0] * I;                                      // dR/dt
+            dydt[idx + 3] = rho_i[0] * lambda - I_inc;                         // dI_inc/dt
             dydt[idx + 4] = rho_h[strain] * lambda - (5/T_h) * H_inc_LCT0;          // dH_inc_LCT0/dt
             dydt[idx + 5] = (5/T_h) * H_inc_LCT0 - (5/T_h) * H_inc_LCT1;            // dH_inc_LCT1/dt
             dydt[idx + 6] = (5/T_h) * H_inc_LCT1 - (5/T_h) * H_inc_LCT2;            // dH_inc_LCT2/dt

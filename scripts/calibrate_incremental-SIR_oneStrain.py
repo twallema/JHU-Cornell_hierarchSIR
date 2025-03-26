@@ -12,14 +12,14 @@ import emcee
 import numpy as np
 import pandas as pd
 from datetime import timedelta
-import matplotlib.pyplot as plt
 from datetime import datetime as datetime
-from hierarchSIR.utils import initialise_model, get_NC_influenza_data, pySODM_to_hubverse # influenza model
-# pySODM packages
+# pySODM functions
 from pySODM.optimization import nelder_mead
 from pySODM.optimization.utils import assign_theta, add_poisson_noise
 from pySODM.optimization.objective_functions import log_posterior_probability, ll_poisson, log_prior_normal, log_prior_uniform, log_prior_gamma, log_prior_normal, log_prior_beta
 from pySODM.optimization.mcmc import perturbate_theta, run_EnsembleSampler
+# hierarchSIR functions
+from hierarchSIR.utils import initialise_model, get_NC_influenza_data, pySODM_to_hubverse, plot_fit # influenza model
 
 #####################
 ## Parse arguments ##
@@ -50,7 +50,7 @@ season = args.season
 ##############
 
 # model settings
-strains = False
+strains = True
 fips_state = 37
 season_start = int(season[0:4])                     # start of season
 start_simulation = datetime(season_start, 10, 1)    # date simulation is started
@@ -63,16 +63,16 @@ start_calibration = datetime(season_start+1, 4, 1)           # incremental calib
 end_calibration = datetime(season_start+1, 4, 7)            # and incrementally (weekly) calibrate until this date
 end_validation = datetime(season_start+1, 5, 1)             # enddate used on plots
 ## frequentist optimization
-n_pso = 2000                                                # Number of PSO iterations
+n_pso = 500                                                # Number of PSO iterations
 multiplier_pso = 10                                         # PSO swarm size
 ## bayesian inference
-n_mcmc = 2000                                              # Number of MCMC iterations
+n_mcmc = 1000                                              # Number of MCMC iterations
 multiplier_mcmc = 5                                         # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 2000                                              # Print diagnostics every `print_n`` iterations
-discard = 1500                                             # Discard first `discard` iterations as burn-in
-thin = 50                                                 # Thinning factor emcee chains
+print_n = 1000                                              # Print diagnostics every `print_n`` iterations
+discard = 500                                             # Discard first `discard` iterations as burn-in
+thin = 10                                                 # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', '16'))          # Number of CPUs to use
-n = 500                                                     # Number of simulations performed in MCMC goodness-of-fit figure
+n = 100                                                     # Number of simulations performed in MCMC goodness-of-fit figure
 
 # calibration parameters
 pars = ['rho_i', 'T_h', 'rho_h', 'beta', 'f_R', 'f_I', 'delta_beta_temporal']                                   # parameters to calibrate
@@ -119,33 +119,67 @@ else:
                             ]          # arguments of prior functions
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-## starting guestimate NM
-rho_i = 0.02
-T_h = 3.5
-rho_h = 0.005
-beta = 0.6
-f_R = 0.4
-f_I = 1e-4
-delta_beta_temporal = [-0.08, -0.05, -0.05, 0.001, 0.07, -0.11, 0.02, 0.11, 0.05, 0.06, 0.04, -0.04] # 0.01
-theta = [rho_i, T_h, rho_h, beta, f_R, f_I] + delta_beta_temporal
+## starting guestimate NM:
+# #TODO: from an excel file please (average over columns)
+if not strains:
+    rho_i = 0.02
+    T_h = 3.5
+    rho_h = 0.005
+    beta = 0.6
+    f_R = 0.4
+    f_I = 1e-4
+    delta_beta_temporal = [-0.08, -0.05, -0.05, 0.001, 0.07, -0.11, 0.02, 0.11, 0.05, 0.06, 0.04, -0.04] # 0.01
+    theta = [rho_i, T_h, rho_h, beta, f_R, f_I] + delta_beta_temporal
+else:
+    rho_i = 0.02
+    T_h = 3.5
+    rho_h = [0.005, 0.005]
+    beta = [0.6, 0.6]
+    f_R = [0.4, 0.4]
+    f_I = [1e-4, 1e-4]
+    delta_beta_temporal = [-0.08, -0.05, -0.05, 0.001, 0.07, -0.11, 0.02, 0.11, 0.05, 0.06, 0.04, -0.04] # 0.01
+    theta = [rho_i, T_h] + rho_h + beta + f_R + f_I + delta_beta_temporal    
 
-## cut off 'rho_i' if not using ILI data
-n_rows_figs = 2
+
+##########################################
+## Prepare pySODM llp dataset arguments ##
+##########################################
+
+#TODO: from function
+# if strains make pySODM compatible
+
+if strains:
+    # pySODM llp data arguments
+    states = ['I_inc', 'H_inc', 'H_inc']
+    log_likelihood_fnc = [ll_poisson, ll_poisson, ll_poisson]
+    log_likelihood_fnc_args = [[],[],[]]
+    # pySODM formatting for flu A
+    flu_A = get_NC_influenza_data(start_simulation, end_calibration, season)['H_inc_A']
+    flu_A = flu_A.rename('H_inc') # pd.Series needs to have matching model state's name
+    flu_A = flu_A.reset_index()
+    flu_A['strain'] = 0
+    flu_A = flu_A.set_index(['date', 'strain']).squeeze()
+    # pySODM formatting for flu B
+    flu_B = get_NC_influenza_data(start_simulation, end_calibration, season)['H_inc_B']
+    flu_B = flu_B.rename('H_inc') # pd.Series needs to have matching model state's name
+    flu_B = flu_B.reset_index()
+    flu_B['strain'] = 1
+    flu_B = flu_B.set_index(['date', 'strain']).squeeze()
+    # attach all datasets
+    data = [get_NC_influenza_data(start_simulation, end_calibration, season)['I_inc'], flu_A, flu_B]
+else:
+    # pySODM llp data arguments
+    states = ['I_inc', 'H_inc']
+    log_likelihood_fnc = [ll_poisson, ll_poisson]
+    log_likelihood_fnc_args = [[],[]]
+    # pySODM data
+    data = [get_NC_influenza_data(start_simulation, end_calibration, season)['I_inc'], get_NC_influenza_data(start_simulation, end_calibration, season)['H_inc']]
+# omit I_inc
 if not use_ED_visits:
-    pars = pars[1:]
-    bounds = bounds[1:]
-    labels = labels[1:]
-    theta = theta[1:]
-    log_prior_prob_fcn = log_prior_prob_fcn[1:]
-    log_prior_prob_fcn_args = log_prior_prob_fcn_args[1:]
-    n_rows_figs = 1
-
-#####################
-## Load NC dataset ##
-#####################
-
-# load dataset
-data_interim = get_NC_influenza_data(start_simulation, end_validation, season)
+    data = data[1:]
+    states = states[1:]
+    log_likelihood_fnc = log_likelihood_fnc[1:]
+    log_likelihood_fnc_args = log_likelihood_fnc_args[1:]
 
 #################
 ## Setup model ##
@@ -164,7 +198,7 @@ if __name__ == '__main__':
     #####################
 
     # compute the list of incremental calibration enddates between start_calibration and end_calibration
-    incremental_enddates = data_interim.loc[slice(start_calibration, end_calibration)].index
+    incremental_enddates = data[0].loc[slice(start_calibration, end_calibration)].index
 
     for end_date in incremental_enddates:
 
@@ -186,19 +220,10 @@ if __name__ == '__main__':
         ##################################
 
         # split data in calibration and validation dataset
-        df_calib = data_interim.loc[slice(start_simulation, end_date)]
-        df_valid = data_interim.loc[slice(end_date+timedelta(days=1), end_validation)]
+        df_calib = data = [df.loc[slice(start_simulation, end_date)] for df in data]
+        df_valid = [df.loc[slice(end_date+timedelta(days=1), end_validation)] for df in data]
 
-        # prepare data-related arguments of posterior probability
-        data = [df_calib['H_inc'], df_calib['I_inc'].dropna()]
-        states = ['H_inc', 'I_inc']
-        log_likelihood_fnc = [ll_poisson, ll_poisson]
-        log_likelihood_fnc_args = [[],[]]
-        if not use_ED_visits:
-            data = data[:-1]
-            states = states[:-1]
-            log_likelihood_fnc = log_likelihood_fnc[:-1]
-            log_likelihood_fnc_args = log_likelihood_fnc_args[:-1]
+        # normalisation weights for lpp
         weights = [1/max(df) for df in data]
         weights = np.array(weights) / np.mean(weights)
 
@@ -212,7 +237,6 @@ if __name__ == '__main__':
         #################
 
         # perform optimization 
-        ## Nelder-Mead
         theta, _ = nelder_mead.optimize(objective_function, np.array(theta), len(objective_function.expanded_bounds)*[0.1,],
                                         processes=processes, max_iter=n_pso, no_improv_break=1000)
 
@@ -223,44 +247,17 @@ if __name__ == '__main__':
         # Assign results to model
         model.parameters = assign_theta(model.parameters, pars, theta)
         # Simulate model
-        out = model.sim([start_simulation, end_validation])
-        # Visualize
-        fig, ax = plt.subplots(n_rows_figs, 1, sharex=True, figsize=(8.3, 11.7/5*n_rows_figs))
-        props = dict(boxstyle='round', facecolor='wheat', alpha=1.0)
-        ## State
-        x_calibration_data = df_calib.index.unique().values
-        x_validation_data = df_valid.index.unique().values
-        if not use_ED_visits:
-            ax = [ax,]
-        ax[0].scatter(x_calibration_data, 7*df_calib['H_inc'], color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-        if not df_valid.empty:
-            ax[0].scatter(x_validation_data, 7*df_valid['H_inc'], color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-        ax[0].plot(out['date'], 7*out['H_inc'].sum(dim=['strain']), color='blue', alpha=1, linewidth=2)
-        ax[0].grid(False)
-        ax[0].set_title(f'FIPS: {int(fips_state*1000)}\nHospitalisations')
-        ## ILI
-        if use_ED_visits:
-            ax[1].scatter(x_calibration_data, 7*df_calib['I_inc'], color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-            if not df_valid.empty:
-                ax[1].scatter(x_validation_data, 7*df_valid['I_inc'], color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-            ax[1].plot(out['date'], 7*out['I_inc'].sum(dim=['strain']), color='blue', alpha=1, linewidth=2)
-            ax[1].grid(False)
-            ax[1].set_title('Influenza-like illness')
-        ## format dates
-        ax[-1].xaxis.set_major_locator(plt.MaxNLocator(5))
-        for tick in ax[-1].get_xticklabels():
-            tick.set_rotation(30)
-        ## Print to screen
-        plt.tight_layout()
-        plt.savefig(fig_path+f'{identifier}_goodness-fit-NM.pdf')
-        plt.close()
+        simout = model.sim([start_simulation, end_validation])
+        # visualise output
+        plot_fit(simout, data, states, fig_path, identifier,
+                objective_function.coordinates_data_also_in_model, objective_function.aggregate_over, objective_function.additional_axes_data)
 
         ##########
         ## MCMC ##
         ##########
 
         # Perturbate previously obtained estimate
-        ndim, nwalkers, pos = perturbate_theta(theta, pert=0.20*np.ones(len(theta)), multiplier=multiplier_mcmc, bounds=objective_function.expanded_bounds)
+        ndim, nwalkers, pos = perturbate_theta(theta, pert=0.05*np.ones(len(theta)), multiplier=multiplier_mcmc, bounds=objective_function.expanded_bounds)
         # Append some usefull settings to the samples dictionary
         settings={'start_simulation': start_simulation.strftime('%Y-%m-%d'), 'start_calibration': start_calibration.strftime('%Y-%m-%d'), 'end_calibration': end_date.strftime('%Y-%m-%d'),
                   'season': season, 'starting_estimate': theta}
@@ -274,97 +271,44 @@ if __name__ == '__main__':
         ## Visualize results ##
         #######################
 
-        # Simulate the model
-        # ------------------
+        # Define draw function
+        def draw_function(parameters, samples_xr, parameter_shapes):
+            """
+            A compatible draw function
+            """
 
-        def draw_function(parameters, samples_xr):
             # get a random iteration and markov chain
             i = random.randint(0, len(samples_xr.coords['iteration'])-1)
             j = random.randint(0, len(samples_xr.coords['chain'])-1)
             # assign parameters
-            for var in pars:
-                parameters[var] = samples_xr[var].sel({'iteration': i, 'chain': j}).values
+            for par in parameter_shapes.keys():
+                try:
+                    if ((par != 'delta_beta_temporal') & (parameter_shapes[par] == (1,))):
+                        parameters[par] = np.array([samples_xr[par].sel({'iteration': i, 'chain': j}).values],)
+                    else:
+                        parameters[par] = samples_xr[par].sel({'iteration': i, 'chain': j}).values
+                except:
+                    pass
             return parameters
-        
+
         # Simulate model
-        out = model.sim([start_simulation, end_validation+timedelta(weeks=4)], N=n,
-                            draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr})
+        simout = model.sim([start_simulation, end_validation], N=n,
+                            draw_function=draw_function, draw_function_kwargs={'samples_xr': samples_xr, 'parameter_shapes': objective_function.parameter_shapes})
         
         # Add sampling noise
         try:
-            out = add_poisson_noise(out)
+            simout = add_poisson_noise(simout)
         except:
             print('no poisson resampling performed')
             sys.stdout.flush()
             pass
 
         # Save as a .csv in hubverse format / raw netcdf
-        df = pySODM_to_hubverse(out, fips_state, end_date+timedelta(weeks=1), 'wk inc flu hosp', 'H_inc', samples_path, quantiles=True)
-        out.to_netcdf(samples_path+f'{identifier}_simulation-output.nc')
+        df = pySODM_to_hubverse(simout, fips_state, end_date+timedelta(weeks=1), 'wk inc flu hosp', 'H_inc', samples_path, quantiles=True)
+        simout.to_netcdf(samples_path+f'{identifier}_simulation-output.nc')
 
-        # Construct delta_beta_temporal trajectory
-        # ----------------------------------------
+        # Visualise goodnes-of-fit
+        plot_fit(simout, data, states, fig_path, identifier,
+                objective_function.coordinates_data_also_in_model, objective_function.aggregate_over, objective_function.additional_axes_data)
+        
 
-        # get function
-        from hierarchSIR.utils import transmission_rate_function
-        f = transmission_rate_function(sigma=2.5)
-        # pre-allocate output
-        y = []
-        lower = []
-        upper = []
-        x = pd.date_range(start=start_simulation, end=end_validation, freq='d').tolist()
-        # compute output
-        for d in x:
-            y.append(f(d, 1, samples_xr['delta_beta_temporal'].mean(dim=['chain', 'iteration']))[0])
-            lower.append(f(d, 1, samples_xr['delta_beta_temporal'].quantile(q=0.05/2, dim=['chain', 'iteration']))[0])
-            upper.append(f(d, 1, samples_xr['delta_beta_temporal'].quantile(q=1-0.05/2, dim=['chain', 'iteration']))[0])
-
-        # Build figure
-        # ------------
-
-        # Visualize
-        fig, ax = plt.subplots(n_rows_figs+1, 1, sharex=True, figsize=(8.3, 11.7/5*(n_rows_figs+1)))
-        props = dict(boxstyle='round', facecolor='wheat', alpha=1.0)
-        ## State
-        x_calibration_data = df_calib.index.unique().values
-        x_validation_data = df_valid.index.unique().values
-        ax[0].scatter(x_calibration_data, 7*df_calib['H_inc'], color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-        if not df_valid.empty:
-            ax[0].scatter(x_validation_data, 7*df_valid['H_inc'], color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-        ax[0].fill_between(out['date'], 7*out['H_inc'].sum(dim=['strain']).quantile(dim='draws', q=0.05/2),
-                            7*out['H_inc'].sum(dim=['strain']).quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
-        ax[0].fill_between(out['date'], 7*out['H_inc'].sum(dim=['strain']).quantile(dim='draws', q=0.50/2),
-                            7*out['H_inc'].sum(dim=['strain']).quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)
-        ax[0].grid(False)
-        ax[0].set_title(f'{int(fips_state*1000)}\nHospitalisations')
-        ax[0].set_ylabel('Weekly hospital inc. (-)')
-        ax[0].set_ylim([0,1850])
-        ## ILI incidences
-        next_ax = 1
-        if use_ED_visits:
-            next_ax = 2
-            ax[1].scatter(x_calibration_data, 7*df_calib['I_inc'], color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-            if not df_valid.empty:
-                ax[1].scatter(x_validation_data, 7*df_valid['I_inc'], color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-            ax[1].fill_between(out['date'], 7*out['I_inc'].sum(dim=['strain']).quantile(dim='draws', q=0.05/2),
-                                7*out['I_inc'].sum(dim=['strain']).quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
-            ax[1].fill_between(out['date'], 7*out['I_inc'].sum(dim=['strain']).quantile(dim='draws', q=0.50/2),
-                                7*out['I_inc'].sum(dim=['strain']).quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)    
-            ax[1].grid(False)
-            ax[1].set_title(f'Influenza-like illness')
-            ax[1].set_ylabel('Weekly ILI inc. (-)')
-        ## Temporal betas
-        ax[next_ax].plot(x, y, color='black')
-        ax[next_ax].fill_between(x, lower, upper, color='black', alpha=0.1)
-        ax[next_ax].grid(False)
-        ax[next_ax].set_title('Temporal modifiers transmission coefficient')
-        ax[next_ax].set_ylabel('$\\Delta \\beta (t)$')
-        ax[next_ax].set_ylim([0.6,1.4])
-        ## format dates
-        ax[-1].xaxis.set_major_locator(plt.MaxNLocator(5))
-        for tick in ax[-1].get_xticklabels():
-            tick.set_rotation(30)
-        ## Print to screen
-        plt.tight_layout()
-        plt.savefig(fig_path+f'{identifier}_goodness-fit-MCMC.pdf')
-        plt.close()

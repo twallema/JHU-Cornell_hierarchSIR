@@ -2,8 +2,13 @@ import os
 import numpy as np
 import pandas as pd
 import xarray as xr
+import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 from hierarchSIR.model import SIR
+
+##########################
+## Model initialisation ##
+##########################
 
 def initialise_model(strains=False, fips_state=37):
     """
@@ -57,6 +62,7 @@ def initialise_model(strains=False, fips_state=37):
 
     return SIR(parameters, ICF, n_strains)
 
+
 class initial_condition_function():
 
     def __init__(self, population):
@@ -92,25 +98,6 @@ class initial_condition_function():
                 'R0': f_R * self.population,
                 }
 
-import random
-def draw_function(parameters, samples_xr, season, parameter_shapes):
-    """
-    A compatible draw function
-    """
-
-    # get a random iteration and markov chain
-    i = random.randint(0, len(samples_xr.coords['iteration'])-1)
-    j = random.randint(0, len(samples_xr.coords['chain'])-1)
-    # assign parameters
-    for par in parameter_shapes.keys():
-        try:
-            if ((par != 'delta_beta_temporal') & (parameter_shapes[par] == (1,))):
-                parameters[par] = np.array([samples_xr[par].sel({'iteration': i, 'chain': j, 'season': season}).values],)
-            else:
-                parameters[par] = samples_xr[par].sel({'iteration': i, 'chain': j, 'season': season}).values
-        except:
-            pass
-    return parameters
 
 def get_demography(fips_state):
     """
@@ -133,6 +120,11 @@ def get_demography(fips_state):
     demography = pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/demography/demography.csv'))
 
     return int(demography[demography['fips_state'] == fips_state]['population'].values[0])
+
+
+################################
+## Data and output formatting ##
+################################
 
 def get_NC_influenza_data(startdate, enddate, season):
     """
@@ -266,10 +258,10 @@ def pySODM_to_hubverse(simout: xr.Dataset,
 
     return df
 
+
 #########################################################
 ## Transmission rate: equivalent Python implementation ##
 #########################################################
-
 
 from datetime import datetime
 from scipy.ndimage import gaussian_filter1d
@@ -314,3 +306,77 @@ def get_transmission_coefficient_timeseries(modifier_vector, sigma=2.5):
 
     # Step 3: apply the Gaussian filter
     return np.squeeze(gaussian_filter1d(padded_vector, sigma=sigma, axis=0, mode="nearest"))
+
+##############################
+## Plot fit helper function ##
+##############################
+
+def plot_fit(simout, data, states, fig_path, identifier,
+                coordinates_data_also_in_model, aggregate_over, additional_axes_data):
+    """
+    Visualises the goodness of fit for every season
+    """
+
+    # check if 'draws' are provided
+    samples = False
+    if 'draws' in simout.dims:
+        samples = True
+    
+    # compute the amount of timeseries to visualise
+    nrows = sum(1 if not coords else len(coords) for coords in coordinates_data_also_in_model)
+
+    # generate figure
+    _,ax=plt.subplots(nrows=nrows, sharex=True, figsize=(8.3, 11.7/5*nrows))
+
+    # vectorise ax object
+    if nrows==1:
+        ax = [ax,]
+
+    # save a copy to reset
+    out_copy = simout
+
+    # loop over datasets
+    k=0
+    for i, df in enumerate(data):
+        
+        # aggregate data
+        for dimension in simout.dims:
+            if dimension in aggregate_over[i]:
+                simout = simout.sum(dim=dimension)
+        
+        # loop over coordinates 
+        if coordinates_data_also_in_model[i]:
+            for coord in coordinates_data_also_in_model[i]:
+                # get dimension coord is in #TODO: LIMITED TO ONE COORDINATE PER DIMENSION PER DATASET !!!
+                dim_name = additional_axes_data[i][0]
+                coord = coord[0]
+                # plot
+                ax[k].scatter(df.index.get_level_values('date').values, 7*df.loc[slice(None), coord].values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                if samples:
+                    ax[k].fill_between(simout['date'], 7*simout[states[i]].sel({dim_name: coord}).quantile(dim='draws', q=0.05/2),
+                            7*simout[states[i]].sel({dim_name: coord}).quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
+                    ax[k].fill_between(simout['date'], 7*simout[states[i]].sel({dim_name: coord}).quantile(dim='draws', q=0.50/2),
+                            7*simout[states[i]].sel({dim_name: coord}).quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)
+                else:
+                    ax[k].plot(simout['date'], 7*simout[states[i]].sel({dim_name: coord}), color='blue')
+                ax[k].set_title(f'State: {states[i]}; Dim: {dim_name} ({coord})')
+                k += 1
+        else:
+            # plot
+            ax[k].scatter(df.index, 7*df.values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+            if samples:
+                ax[k].fill_between(simout['date'], 7*simout[states[i]].quantile(dim='draws', q=0.05/2),
+                            7*simout[states[i]].quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
+                ax[k].fill_between(simout['date'], 7*simout[states[i]].quantile(dim='draws', q=0.50/2),
+                            7*simout[states[i]].quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)
+            else:
+                ax[k].plot(simout['date'], 7*simout[states[i]], color='blue')
+            ax[k].set_title(f'State: {states[i]}')
+            k += 1
+        
+        # reset output
+        simout = out_copy
+
+    plt.tight_layout()
+    plt.savefig(fig_path+f'{identifier}-FIT.pdf')
+    plt.close()
