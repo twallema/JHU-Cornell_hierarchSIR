@@ -12,7 +12,7 @@ import pandas as pd
 from datetime import datetime
 from multiprocessing import get_context
 from hierarchSIR.training import log_posterior_probability, dump_sampler_to_xarray, traceplot, plot_fit, hyperdistributions
-from hierarchSIR.utils import initialise_model, get_NC_influenza_data
+from hierarchSIR.utils import initialise_model, make_data_pySODM_compatible
 
 ##############
 ## Settings ##
@@ -59,32 +59,11 @@ if not os.path.exists(samples_path):
 start_calibrations = [datetime(int(season[0:4]), start_calibration_month, 1) for season in seasons]
 end_calibrations = [datetime(int(season[0:4])+1, end_calibration_month, 1) for season in seasons]
 
-# gather datasets per season in a list
-datasets = [get_NC_influenza_data(start_calibration, end_calibration, season) for start_calibration, end_calibration, season in zip(start_calibrations, end_calibrations, seasons)]
-
+# get data
 datasets = []
 for start_calibration, end_calibration, season in zip(start_calibrations, end_calibrations, seasons):
-    # attach I_inc and H_inc
-    if strains:
-        # pySODM formatting for flu A
-        flu_A = get_NC_influenza_data(start_calibration, end_calibration, season)['H_inc_A']
-        flu_A = flu_A.rename('H_inc') # pd.Series needs to have matching model state's name
-        flu_A = flu_A.reset_index()
-        flu_A['strain'] = 0
-        flu_A = flu_A.set_index(['date', 'strain']).squeeze()
-        # pySODM formatting for flu B
-        flu_B = get_NC_influenza_data(start_calibration, end_calibration, season)['H_inc_B']
-        flu_B = flu_B.rename('H_inc') # pd.Series needs to have matching model state's name
-        flu_B = flu_B.reset_index()
-        flu_B['strain'] = 1
-        flu_B = flu_B.set_index(['date', 'strain']).squeeze()
-        # attach all datasets
-        datasets.append([get_NC_influenza_data(start_calibration, end_calibration, season)['I_inc'], flu_A, flu_B])
-    else:
-        datasets.append([get_NC_influenza_data(start_calibration, end_calibration, season)['I_inc'], get_NC_influenza_data(start_calibration, end_calibration, season)['H_inc']])
-    # omit I_inc
-    if not use_ED_visits:
-        datasets[-1] = datasets[-1][1:]
+    data, _, _, _ = make_data_pySODM_compatible(strains, use_ED_visits, start_calibration, end_calibration, season)
+    datasets.append(data)
 
 #################
 ## Setup model ##

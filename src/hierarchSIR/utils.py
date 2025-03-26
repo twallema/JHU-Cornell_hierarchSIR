@@ -182,6 +182,48 @@ def get_NC_influenza_data(startdate, enddate, season):
     return df_merged[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B']].loc[slice(startdate,enddate)]
 
 
+from pySODM.optimization.objective_functions import ll_poisson
+def make_data_pySODM_compatible(strains, use_ED_visits, start_date, end_date, season): 
+    """
+    A function formatting the NC Influenza data in pySODM format depending on the desire to use strain or ED visit information
+    """
+
+    if strains:
+        # pySODM llp data arguments
+        states = ['I_inc', 'H_inc', 'H_inc']
+        log_likelihood_fnc = [ll_poisson, ll_poisson, ll_poisson]
+        log_likelihood_fnc_args = [[],[],[]]
+        # pySODM formatting for flu A
+        flu_A = get_NC_influenza_data(start_date, end_date, season)['H_inc_A']
+        flu_A = flu_A.rename('H_inc') # pd.Series needs to have matching model state's name
+        flu_A = flu_A.reset_index()
+        flu_A['strain'] = 0
+        flu_A = flu_A.set_index(['date', 'strain']).squeeze()
+        # pySODM formatting for flu B
+        flu_B = get_NC_influenza_data(start_date, end_date, season)['H_inc_B']
+        flu_B = flu_B.rename('H_inc') # pd.Series needs to have matching model state's name
+        flu_B = flu_B.reset_index()
+        flu_B['strain'] = 1
+        flu_B = flu_B.set_index(['date', 'strain']).squeeze()
+        # attach all datasets
+        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_A, flu_B]
+    else:
+        # pySODM llp data arguments
+        states = ['I_inc', 'H_inc']
+        log_likelihood_fnc = [ll_poisson, ll_poisson]
+        log_likelihood_fnc_args = [[],[]]
+        # pySODM data
+        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], get_NC_influenza_data(start_date, end_date, season)['H_inc']]
+    # omit I_inc
+    if not use_ED_visits:
+        data = data[1:]
+        states = states[1:]
+        log_likelihood_fnc = log_likelihood_fnc[1:]
+        log_likelihood_fnc_args = log_likelihood_fnc_args[1:]
+
+    return data, states, log_likelihood_fnc, log_likelihood_fnc_args
+
+
 def pySODM_to_hubverse(simout: xr.Dataset,
                         location: int,
                         reference_date: datetime,
@@ -380,3 +422,5 @@ def plot_fit(simout, data, states, fig_path, identifier,
     plt.tight_layout()
     plt.savefig(fig_path+f'{identifier}-FIT.pdf')
     plt.close()
+
+

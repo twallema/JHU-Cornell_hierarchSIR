@@ -16,10 +16,10 @@ from datetime import datetime as datetime
 # pySODM functions
 from pySODM.optimization import nelder_mead
 from pySODM.optimization.utils import assign_theta, add_poisson_noise
-from pySODM.optimization.objective_functions import log_posterior_probability, ll_poisson, log_prior_normal, log_prior_uniform, log_prior_gamma, log_prior_normal, log_prior_beta
+from pySODM.optimization.objective_functions import log_posterior_probability, log_prior_normal, log_prior_uniform, log_prior_gamma, log_prior_normal, log_prior_beta
 from pySODM.optimization.mcmc import perturbate_theta, run_EnsembleSampler
 # hierarchSIR functions
-from hierarchSIR.utils import initialise_model, get_NC_influenza_data, pySODM_to_hubverse, plot_fit # influenza model
+from hierarchSIR.utils import initialise_model, pySODM_to_hubverse, plot_fit, make_data_pySODM_compatible # influenza model
 
 #####################
 ## Parse arguments ##
@@ -132,41 +132,7 @@ theta = pd.read_csv('../data/interim/calibration/single-season-optimal-parameter
 ## Prepare pySODM llp dataset arguments ##
 ##########################################
 
-#TODO: from function
-# if strains make pySODM compatible
-
-if strains:
-    # pySODM llp data arguments
-    states = ['I_inc', 'H_inc', 'H_inc']
-    log_likelihood_fnc = [ll_poisson, ll_poisson, ll_poisson]
-    log_likelihood_fnc_args = [[],[],[]]
-    # pySODM formatting for flu A
-    flu_A = get_NC_influenza_data(start_simulation, end_calibration, season)['H_inc_A']
-    flu_A = flu_A.rename('H_inc') # pd.Series needs to have matching model state's name
-    flu_A = flu_A.reset_index()
-    flu_A['strain'] = 0
-    flu_A = flu_A.set_index(['date', 'strain']).squeeze()
-    # pySODM formatting for flu B
-    flu_B = get_NC_influenza_data(start_simulation, end_calibration, season)['H_inc_B']
-    flu_B = flu_B.rename('H_inc') # pd.Series needs to have matching model state's name
-    flu_B = flu_B.reset_index()
-    flu_B['strain'] = 1
-    flu_B = flu_B.set_index(['date', 'strain']).squeeze()
-    # attach all datasets
-    data = [get_NC_influenza_data(start_simulation, end_calibration, season)['I_inc'], flu_A, flu_B]
-else:
-    # pySODM llp data arguments
-    states = ['I_inc', 'H_inc']
-    log_likelihood_fnc = [ll_poisson, ll_poisson]
-    log_likelihood_fnc_args = [[],[]]
-    # pySODM data
-    data = [get_NC_influenza_data(start_simulation, end_calibration, season)['I_inc'], get_NC_influenza_data(start_simulation, end_calibration, season)['H_inc']]
-# omit I_inc
-if not use_ED_visits:
-    data = data[1:]
-    states = states[1:]
-    log_likelihood_fnc = log_likelihood_fnc[1:]
-    log_likelihood_fnc_args = log_likelihood_fnc_args[1:]
+data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(strains, use_ED_visits, start_simulation, end_calibration, season)
 
 #################
 ## Setup model ##
