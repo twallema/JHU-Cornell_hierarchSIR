@@ -63,13 +63,13 @@ start_calibration = datetime(season_start+1, 4, 25)           # incremental cali
 end_calibration = datetime(season_start+1, 5, 1)            # and incrementally (weekly) calibrate until this date
 end_validation = datetime(season_start+1, 5, 1)             # enddate used on plots
 ## frequentist optimization
-n_pso = 500                                                # Number of PSO iterations
+n_pso = 1000                                                # Number of PSO iterations
 multiplier_pso = 10                                         # PSO swarm size
 ## bayesian inference
-n_mcmc = 5000                                              # Number of MCMC iterations
+n_mcmc = 10000                                              # Number of MCMC iterations
 multiplier_mcmc = 5                                         # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 5000                                              # Print diagnostics every `print_n`` iterations
-discard = 4000                                             # Discard first `discard` iterations as burn-in
+print_n = 10000                                              # Print diagnostics every `print_n`` iterations
+discard = 8000                                             # Discard first `discard` iterations as burn-in
 thin = 50                                                 # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', '16'))          # Number of CPUs to use
 n = 200                                                     # Number of simulations performed in MCMC goodness-of-fit figure
@@ -210,7 +210,7 @@ if __name__ == '__main__':
         ##########
 
         # Perturbate previously obtained estimate
-        ndim, nwalkers, pos = perturbate_theta(theta, pert=0.05*np.ones(len(theta)), multiplier=multiplier_mcmc, bounds=lpp.expanded_bounds)
+        ndim, nwalkers, pos = perturbate_theta(theta, pert=0.2*np.ones(len(theta)), multiplier=multiplier_mcmc, bounds=lpp.expanded_bounds)
         # Append some usefull settings to the samples dictionary
         settings={'start_simulation': start_simulation.strftime('%Y-%m-%d'), 'start_calibration': start_calibration.strftime('%Y-%m-%d'), 'end_calibration': end_date.strftime('%Y-%m-%d'),
                   'season': season, 'starting_estimate': theta}

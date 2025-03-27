@@ -26,16 +26,16 @@ start_calibration_month = 10                                                    
 end_calibration_month = 5                                                                                # end calibration on month 5, day 1
 
 # Define number of chains
-max_n = 25000
+max_n = 30000
 n_chains = 400
-pert = 0.01
+pert = 0.10
 run_date = datetime.today().strftime("%Y-%m-%d")
 identifier = 'exclude-2024-2025'
-print_n =  200
+print_n =  30000
 backend =  None
-discard = 150
-thin = 1
-processes = int(os.environ.get('NUM_CORES', '16'))
+discard = 25000
+thin = 100
+processes = 8 # int(os.environ.get('NUM_CORES', '16'))
 
 # Make folder structure
 if strains:
@@ -98,29 +98,29 @@ pars_0 = list(pars_model_0.transpose().values.flatten())
 # hyperparameters
 if not strains:
     hyperpars_0 = [
-                5.0, 3.0e-02,                                                                # rho_i
-                1.7,                                                                         # T_h
-                5.7, 2.0e-03,                                                                # rho_h
-                0.55, 0.10,                                                                  # beta
-                12.0, 16.5,                                                                  # f_R
-                4.3, 2.8e-05,                                                                # f_I
-                -0.06, -0.04, -0.02, 0.01, 0.13, -0.13, 0.02, 0.11, 0.03, 0.03, 0.08, -0.04, # delta_beta_temporal_mu
-                0.04, 0.05, 0.03, 0.05, 0.1, 0.13, 0.11, 0.10, 0.14, 0.10, 0.23, 0.10,       # delta_beta_temporal_sigma
+                5.0, 1.0e-02,                                                                   # rho_i
+                1.6,                                                                            # T_h
+                5.0, 1.0e-03,                                                                   # rho_h
+                0.55, 0.055,                                                                    # beta
+                12, 16,                                                                         # f_R
+                5.0, 3.0e-05,                                                                   # f_I
+                -0.07, -0.04, -0.01, 0.01, 0.14, -0.10, -0.01, 0.10, 0.05, 0.04, 0.05, -0.01,   # delta_beta_temporal_mu
+                0.025, 0.05, 0.03, 0.06, 0.09, 0.10, 0.08, 0.09, 0.11, 0.14, 0.16, 0.10,        # delta_beta_temporal_sigma
                     ]
 else:
     hyperpars_0 = [
-            5.0, 3.0e-02,                                                                   # rho_i_a, rho_i_scale
-            1.7,                                                                            # T_h_scale
-            5.7, 5.7,                                                                       # rho_h_a
-            2.0e-03, 2.0e-03,                                                               # rho_h_scale
+            5.0, 1.0e-02,                                                                   # rho_i_a, rho_i_scale
+            2.9,                                                                            # T_h_scale
+            5.0, 5.0,                                                                       # rho_h_a
+            1.0e-03, 1.0e-03,                                                               # rho_h_scale
             0.55, 0.55,                                                                     # beta_mu
-            0.10, 0.10,                                                                     # beta_sigma
+            0.055, 0.055,                                                                   # beta_sigma
             12.0, 12.0,                                                                     # f_R_a
-            16.5, 16.5,                                                                     # f_R_b
-            4.3, 4.3,                                                                       # f_I_a
-            2.8e-05, 2.8e-05,                                                               # f_I_scale
-            -0.06, -0.04, -0.02, 0.01, 0.13, -0.13, 0.02, 0.11, 0.03, 0.03, 0.08, -0.04,    # delta_beta_temporal_mu
-            0.04, 0.05, 0.03, 0.05, 0.1, 0.13, 0.11, 0.10, 0.14, 0.10, 0.23, 0.10,          # delta_beta_temporal_sigma
+            16.0, 16.0,                                                                     # f_R_b
+            5.0, 5.0,                                                                       # f_I_a
+            3.0e-05, 3.0e-05,                                                               # f_I_scale
+            -0.08, -0.05, -0.04, -0.005, 0.09, -0.09, -0.005, 0.11, 0.06, 0.05, 0.05, -0.03,    # delta_beta_temporal_mu
+            0.05, 0.02, 0.04, 0.03, 0.08, 0.09, 0.06, 0.07, 0.07, 0.11, 0.14, 0.16,          # delta_beta_temporal_sigma
                 ]
 # combine
 theta_0 = hyperpars_0 + pars_0
