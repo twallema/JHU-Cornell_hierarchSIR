@@ -33,6 +33,8 @@ def str_to_bool(value):
 
 # parse arguments
 parser = argparse.ArgumentParser()
+parser.add_argument("--strains", type=str_to_bool, help="Use a two strain model.")
+parser.add_argument("--immunity_linking", type=str_to_bool, help="Use an immunity linking function.")
 parser.add_argument("--use_ED_visits", type=str_to_bool, help="Use ED visit data (ILI) in addition to ED admission data (hosp. adm.).")
 parser.add_argument("--informed", type=str_to_bool, default=None, help="Use priors informed by posterior hyperdistributions.")
 parser.add_argument("--hyperparameters", type=str, default=None, help="Name of posterior hyperdistribution. Provide a valid column name in 'summary-hyperparameters.csv' to load the hyperdistributions.")
@@ -40,6 +42,8 @@ parser.add_argument("--season", type=str, help="Season to calibrate to. Format: 
 args = parser.parse_args()
 
 # assign to desired variables
+strains = args.strains
+immunity_linking = args.immunity_linking
 use_ED_visits = args.use_ED_visits
 informed = args.informed
 hyperparameters = args.hyperparameters
@@ -79,81 +83,92 @@ else:
     model_name = 'SIR-1S'
 
 # calibration parameters
-pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                           # parameters to calibrate
-bounds = [(1e-4,0.10), (0.5, 14), (1e-4,0.01), (0.01,0.70), (1e-7,1e-3), (0.01,1), (-0.50,0.50)]                  # parameter bounds
-labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']   # labels in output figures
-# UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-if not informed:
-    # change name to build save path
-    informed = 'uninformed'
-    # assign priors (R0 ~ N(1.6, 0.2); all other: uninformative)
-    log_prior_prob_fcn = 5*[log_prior_uniform,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
-    log_prior_prob_fcn_args = [{'bounds':  bounds[0]}, {'bounds':  bounds[1]}, {'bounds':  bounds[2]}, {'bounds':  bounds[3]}, {'bounds':  bounds[4]},
-                                {'avg':  0.455, 'stdev': 0.057}, {'avg':  0, 'stdev': 0.15}]   # arguments prior functions
-# INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-else:
-    # change name to build save path
-    informed='informed'
-    # load and select priors
-    priors = pd.read_csv('../data/interim/calibration/hyperparameters.csv')
-    priors = priors.loc[((priors['model'] == model_name) & (priors['use_ED_visits'] == use_ED_visits)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
-    # assign values
-    if not strains:
-        log_prior_prob_fcn = 3*[log_prior_gamma,] + 1*[log_prior_beta,] + 1*[log_prior_gamma,] + 1*[log_prior_normal,] + 12*[log_prior_normal,] 
-        log_prior_prob_fcn_args = [ 
-                                # ED visits
-                                {'a': priors['rho_i_a'], 'loc': 0, 'scale': priors['rho_i_scale']},                             # rho_i
-                                {'a': 1, 'loc': 0, 'scale': priors['T_h_scale']},                                                # T_h
-                                # >>>>>>>>>
-                                {'a': priors['rho_h_a'], 'loc': 0, 'scale': priors['rho_h_scale']},                             # rho_h
-                                {'a': priors['f_R_a'], 'b': priors['f_R_b'], 'loc': 0, 'scale': 1},                             # f_R
-                                {'a': priors['f_I_a'], 'loc': 0, 'scale': priors['f_I_scale']},                                 # f_I
-                                {'avg': priors['beta_mu'], 'stdev': priors['beta_sigma']},                                      # beta
-                                {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},    # delta_beta_temporal
-                                {'avg': priors['delta_beta_temporal_mu_1'], 'stdev': priors['delta_beta_temporal_sigma_1']},    # ...
-                                {'avg': priors['delta_beta_temporal_mu_2'], 'stdev': priors['delta_beta_temporal_sigma_2']},
-                                {'avg': priors['delta_beta_temporal_mu_3'], 'stdev': priors['delta_beta_temporal_sigma_3']},
-                                {'avg': priors['delta_beta_temporal_mu_4'], 'stdev': priors['delta_beta_temporal_sigma_4']},
-                                {'avg': priors['delta_beta_temporal_mu_5'], 'stdev': priors['delta_beta_temporal_sigma_5']},
-                                {'avg': priors['delta_beta_temporal_mu_6'], 'stdev': priors['delta_beta_temporal_sigma_6']},
-                                {'avg': priors['delta_beta_temporal_mu_7'], 'stdev': priors['delta_beta_temporal_sigma_7']},
-                                {'avg': priors['delta_beta_temporal_mu_8'], 'stdev': priors['delta_beta_temporal_sigma_8']},
-                                {'avg': priors['delta_beta_temporal_mu_9'], 'stdev': priors['delta_beta_temporal_sigma_9']},
-                                {'avg': priors['delta_beta_temporal_mu_10'], 'stdev': priors['delta_beta_temporal_sigma_10']},
-                                {'avg': priors['delta_beta_temporal_mu_11'], 'stdev': priors['delta_beta_temporal_sigma_11']},
-                                ]          # arguments of prior functions
+if not immunity_linking:
+    pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                                       # parameters to calibrate
+    bounds = [(1e-4,0.10), (0.5, 14), (1e-4,0.01), (0.01,0.70), (1e-7,1e-3), (0.01,1), (-0.50,0.50)]                    # parameter bounds
+    labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']       # labels in output figures
+    # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    if not informed:
+        # assign priors (R0 ~ N(1.6, 0.2); all other: uninformative)
+        log_prior_prob_fcn = 5*[log_prior_uniform,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
+        log_prior_prob_fcn_args = [{'bounds':  bounds[0]}, {'bounds':  bounds[1]}, {'bounds':  bounds[2]}, {'bounds':  bounds[3]}, {'bounds':  bounds[4]},
+                                    {'avg':  0.455, 'stdev': 0.057}, {'avg':  0, 'stdev': 0.15}]   # arguments prior functions
+    # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     else:
-        log_prior_prob_fcn = 4*[log_prior_gamma,] + 2*[log_prior_beta,] + 2*[log_prior_gamma,] + 2*[log_prior_normal,] + 12*[log_prior_normal,] 
-        log_prior_prob_fcn_args = [ 
-                                # ED visits
-                                {'a': priors['rho_i_a'], 'loc': 0, 'scale': priors['rho_i_scale']},                             # rho_i
-                                {'a': 1, 'loc': 0, 'scale': priors['T_h_scale']},                                                # T_h
-                                # >>>>>>>>>
-                                {'a': priors['rho_h_a_0'], 'loc': 0, 'scale': priors['rho_h_scale_0']},                         # rho_h_0
-                                {'a': priors['rho_h_a_1'], 'loc': 0, 'scale': priors['rho_h_scale_1']},                         # rho_h_1
-                                {'a': priors['f_R_a_0'], 'b': priors['f_R_b_0'], 'loc': 0, 'scale': 1},                         # f_R_0
-                                {'a': priors['f_R_a_1'], 'b': priors['f_R_b_1'], 'loc': 0, 'scale': 1},                         # f_R_1
-                                {'a': priors['f_I_a_0'], 'loc': 0, 'scale': priors['f_I_scale_0']},                             # f_I_0
-                                {'a': priors['f_I_a_1'], 'loc': 0, 'scale': priors['f_I_scale_1']},                             # f_I_1
-                                {'avg': priors['beta_mu_0'], 'stdev': priors['beta_sigma_0']},                                  # beta_0
-                                {'avg': priors['beta_mu_1'], 'stdev': priors['beta_sigma_1']},                                  # beta_1
-                                {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},    # delta_beta_temporal
-                                {'avg': priors['delta_beta_temporal_mu_1'], 'stdev': priors['delta_beta_temporal_sigma_1']},    # ...
-                                {'avg': priors['delta_beta_temporal_mu_2'], 'stdev': priors['delta_beta_temporal_sigma_2']},
-                                {'avg': priors['delta_beta_temporal_mu_3'], 'stdev': priors['delta_beta_temporal_sigma_3']},
-                                {'avg': priors['delta_beta_temporal_mu_4'], 'stdev': priors['delta_beta_temporal_sigma_4']},
-                                {'avg': priors['delta_beta_temporal_mu_5'], 'stdev': priors['delta_beta_temporal_sigma_5']},
-                                {'avg': priors['delta_beta_temporal_mu_6'], 'stdev': priors['delta_beta_temporal_sigma_6']},
-                                {'avg': priors['delta_beta_temporal_mu_7'], 'stdev': priors['delta_beta_temporal_sigma_7']},
-                                {'avg': priors['delta_beta_temporal_mu_8'], 'stdev': priors['delta_beta_temporal_sigma_8']},
-                                {'avg': priors['delta_beta_temporal_mu_9'], 'stdev': priors['delta_beta_temporal_sigma_9']},
-                                {'avg': priors['delta_beta_temporal_mu_10'], 'stdev': priors['delta_beta_temporal_sigma_10']},
-                                {'avg': priors['delta_beta_temporal_mu_11'], 'stdev': priors['delta_beta_temporal_sigma_11']},
-                                ]          # arguments of prior functions
-# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        # load and select priors
+        priors = pd.read_csv('../data/interim/calibration/hyperparameters.csv')
+        priors = priors.loc[((priors['model'] == model_name) & (priors['use_ED_visits'] == use_ED_visits)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
+        # assign values
+        if not strains:
+            log_prior_prob_fcn = 3*[log_prior_gamma,] + 1*[log_prior_beta,] + 1*[log_prior_gamma,] + 1*[log_prior_normal,] + 12*[log_prior_normal,] 
+            log_prior_prob_fcn_args = [ 
+                                    # ED visits
+                                    {'a': priors['rho_i_a'], 'loc': 0, 'scale': priors['rho_i_scale']},                             # rho_i
+                                    {'a': 1, 'loc': 0, 'scale': priors['T_h_scale']},                                                # T_h
+                                    # >>>>>>>>>
+                                    {'a': priors['rho_h_a'], 'loc': 0, 'scale': priors['rho_h_scale']},                             # rho_h
+                                    {'a': priors['f_R_a'], 'b': priors['f_R_b'], 'loc': 0, 'scale': 1},                             # f_R
+                                    {'a': priors['f_I_a'], 'loc': 0, 'scale': priors['f_I_scale']},                                 # f_I
+                                    {'avg': priors['beta_mu'], 'stdev': priors['beta_sigma']},                                      # beta
+                                    {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},    # delta_beta_temporal
+                                    {'avg': priors['delta_beta_temporal_mu_1'], 'stdev': priors['delta_beta_temporal_sigma_1']},    # ...
+                                    {'avg': priors['delta_beta_temporal_mu_2'], 'stdev': priors['delta_beta_temporal_sigma_2']},
+                                    {'avg': priors['delta_beta_temporal_mu_3'], 'stdev': priors['delta_beta_temporal_sigma_3']},
+                                    {'avg': priors['delta_beta_temporal_mu_4'], 'stdev': priors['delta_beta_temporal_sigma_4']},
+                                    {'avg': priors['delta_beta_temporal_mu_5'], 'stdev': priors['delta_beta_temporal_sigma_5']},
+                                    {'avg': priors['delta_beta_temporal_mu_6'], 'stdev': priors['delta_beta_temporal_sigma_6']},
+                                    {'avg': priors['delta_beta_temporal_mu_7'], 'stdev': priors['delta_beta_temporal_sigma_7']},
+                                    {'avg': priors['delta_beta_temporal_mu_8'], 'stdev': priors['delta_beta_temporal_sigma_8']},
+                                    {'avg': priors['delta_beta_temporal_mu_9'], 'stdev': priors['delta_beta_temporal_sigma_9']},
+                                    {'avg': priors['delta_beta_temporal_mu_10'], 'stdev': priors['delta_beta_temporal_sigma_10']},
+                                    {'avg': priors['delta_beta_temporal_mu_11'], 'stdev': priors['delta_beta_temporal_sigma_11']},
+                                    ]          # arguments of prior functions
+        else:
+            log_prior_prob_fcn = 4*[log_prior_gamma,] + 2*[log_prior_beta,] + 2*[log_prior_gamma,] + 2*[log_prior_normal,] + 12*[log_prior_normal,] 
+            log_prior_prob_fcn_args = [ 
+                                    # ED visits
+                                    {'a': priors['rho_i_a'], 'loc': 0, 'scale': priors['rho_i_scale']},                             # rho_i
+                                    {'a': 1, 'loc': 0, 'scale': priors['T_h_scale']},                                                # T_h
+                                    # >>>>>>>>>
+                                    {'a': priors['rho_h_a_0'], 'loc': 0, 'scale': priors['rho_h_scale_0']},                         # rho_h_0
+                                    {'a': priors['rho_h_a_1'], 'loc': 0, 'scale': priors['rho_h_scale_1']},                         # rho_h_1
+                                    {'a': priors['f_R_a_0'], 'b': priors['f_R_b_0'], 'loc': 0, 'scale': 1},                         # f_R_0
+                                    {'a': priors['f_R_a_1'], 'b': priors['f_R_b_1'], 'loc': 0, 'scale': 1},                         # f_R_1
+                                    {'a': priors['f_I_a_0'], 'loc': 0, 'scale': priors['f_I_scale_0']},                             # f_I_0
+                                    {'a': priors['f_I_a_1'], 'loc': 0, 'scale': priors['f_I_scale_1']},                             # f_I_1
+                                    {'avg': priors['beta_mu_0'], 'stdev': priors['beta_sigma_0']},                                  # beta_0
+                                    {'avg': priors['beta_mu_1'], 'stdev': priors['beta_sigma_1']},                                  # beta_1
+                                    {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},    # delta_beta_temporal
+                                    {'avg': priors['delta_beta_temporal_mu_1'], 'stdev': priors['delta_beta_temporal_sigma_1']},    # ...
+                                    {'avg': priors['delta_beta_temporal_mu_2'], 'stdev': priors['delta_beta_temporal_sigma_2']},
+                                    {'avg': priors['delta_beta_temporal_mu_3'], 'stdev': priors['delta_beta_temporal_sigma_3']},
+                                    {'avg': priors['delta_beta_temporal_mu_4'], 'stdev': priors['delta_beta_temporal_sigma_4']},
+                                    {'avg': priors['delta_beta_temporal_mu_5'], 'stdev': priors['delta_beta_temporal_sigma_5']},
+                                    {'avg': priors['delta_beta_temporal_mu_6'], 'stdev': priors['delta_beta_temporal_sigma_6']},
+                                    {'avg': priors['delta_beta_temporal_mu_7'], 'stdev': priors['delta_beta_temporal_sigma_7']},
+                                    {'avg': priors['delta_beta_temporal_mu_8'], 'stdev': priors['delta_beta_temporal_sigma_8']},
+                                    {'avg': priors['delta_beta_temporal_mu_9'], 'stdev': priors['delta_beta_temporal_sigma_9']},
+                                    {'avg': priors['delta_beta_temporal_mu_10'], 'stdev': priors['delta_beta_temporal_sigma_10']},
+                                    {'avg': priors['delta_beta_temporal_mu_11'], 'stdev': priors['delta_beta_temporal_sigma_11']},
+                                    ]          # arguments of prior functions
+    # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
+
+else:
+    pars = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']                                            # parameters to calibrate
+    bounds = [(1e-4,0.10), (0.5, 14), (1e-4,0.01), (0,2e-3), (0,2e-3), (0,2e-3), (1e-7,1e-3), (0.01,1), (-0.50,0.50)]                               # parameter bounds
+    labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']     # labels in output figures
+    # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    if not informed:
+        # assign priors (R0 ~ N(1.6, 0.3); all other: uninformative)
+        log_prior_prob_fcn = 3*[log_prior_uniform,] + 3*[log_prior_gamma] + 1*[log_prior_uniform,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
+        log_prior_prob_fcn_args = [{'bounds':  bounds[0]}, {'bounds':  bounds[1]}, {'bounds':  bounds[2]},
+                                   {'a': 1, 'loc': 0, 'scale': 2E-04}, {'a': 1, 'loc': 0, 'scale': 2E-04}, {'a': 1, 'loc': 0, 'scale': 2E-04},
+                                   {'bounds':  bounds[6]},
+                                   {'avg':  0.455, 'stdev': 0.055}, {'avg':  0, 'stdev': 0.15}]   # arguments prior functions
+    
 ## starting guestimate NM:
-theta = list(pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1]).loc[(strains, slice(None))].mean(axis=1))
+theta = list(pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2]).loc[(strains, immunity_linking, slice(None))].mean(axis=1))
 
 ##########################################
 ## Prepare pySODM llp dataset arguments ##
@@ -165,7 +180,7 @@ data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_com
 ## Setup model ##
 #################
 
-model = initialise_model(strains=strains, fips_state=fips_state)
+model = initialise_model(strains=strains, immunity_linking=immunity_linking, season=season, fips_state=fips_state)
 
 #####################
 ## Calibrate model ##
@@ -186,10 +201,7 @@ if __name__ == '__main__':
 
         # Make folder structure
         identifier = f'reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}' # identifier
-        if use_ED_visits:
-            samples_path=fig_path=f'../data/interim/calibration/incremental-calibration/{model_name}/{informed}_{hyperparameters}/use_ED_visits/{season}/{identifier}/' # Path to backend
-        else:
-            samples_path=fig_path=f'../data/interim/calibration/incremental-calibration/{model_name}/{informed}_{hyperparameters}/not_use_ED_visits/{season}/{identifier}/'
+        samples_path=fig_path=f'../data/interim/calibration/incremental-calibration/{model_name}/immunity_linking-{immunity_linking}/informed-{informed}_{hyperparameters}/ED_visits-{use_ED_visits}/{season}/{identifier}/' # Path to backend
         run_date = datetime.today().strftime("%Y-%m-%d") # get current date
         # check if samples folder exists, if not, make it
         if not os.path.exists(samples_path):

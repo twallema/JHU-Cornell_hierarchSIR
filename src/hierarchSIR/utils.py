@@ -148,13 +148,10 @@ class initial_condition_function():
         iota_1 = np.squeeze(iota_1)
         iota_2 = np.squeeze(iota_2)
         iota_3 = np.squeeze(iota_3)
-
+        
         ## compute immunity (bounded linear model)
         f_R = (iota_1 * C_min1 + iota_2 * C_min2 + iota_3 * C_min3) / (1 + iota_1 * C_min1 + iota_2 * C_min2 + iota_3 * C_min3)
-        print({'S0':  (1 - f_I - f_R) * self.population,
-                'I0': f_I * self.population,   
-                'R0': f_R * self.population,
-                })
+
         return {'S0':  (1 - f_I - f_R) * self.population,
                 'I0': f_I * self.population,   
                 'R0': f_R * self.population,
