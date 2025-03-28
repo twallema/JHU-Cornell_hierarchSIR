@@ -10,7 +10,7 @@ from hierarchSIR.model import SIR
 ## Model initialisation ##
 ##########################
 
-def initialise_model(strains=False, fips_state=37):
+def initialise_model(strains=False, immunity_linking=False, season=None, fips_state=37):
     """
     A function to intialise the model
     """
@@ -58,20 +58,35 @@ def initialise_model(strains=False, fips_state=37):
     population = np.ones(n_strains) * get_demography(fips_state)
 
     # initialise initial condition function
-    ICF = initial_condition_function(population)
+    if immunity_linking:
+        if strains:
+            historic_cumulative_incidence = get_NC_cumulatives_per_season()[['H_inc_A', 'H_inc_B']]
+        else:
+            historic_cumulative_incidence = get_NC_cumulatives_per_season()['H_inc']
+        ICF = initial_condition_function(population, historic_cumulative_incidence).w_immunity_linking
+    else:
+        historic_cumulative_incidence = get_NC_cumulatives_per_season()['H_inc']
+        ICF = initial_condition_function(population, historic_cumulative_incidence).wo_immunity_linking
+
+    # adjust parameters dictionary
+    if immunity_linking:
+        del parameters['f_R']
+        parameters['season'] = season
+        parameters['iota_1'] = parameters['iota_2'] = parameters['iota_3'] = np.ones(n_strains) * 1e-5
 
     return SIR(parameters, ICF, n_strains)
 
 
 class initial_condition_function():
 
-    def __init__(self, population):
+    def __init__(self, population, historic_cumulative_incidence):
         self.population = population 
+        self.historic_cumulative_incidence = historic_cumulative_incidence
         pass
 
-    def __call__(self, f_I, f_R):
+    def wo_immunity_linking(self, f_I, f_R):
         """
-        A function generating the model's initial condition.
+        A function generating the model's initial condition -- no immunity linking; direct estimation recovered population
         
         input
         -----
@@ -97,7 +112,53 @@ class initial_condition_function():
                 'I0': f_I * self.population,   
                 'R0': f_R * self.population,
                 }
+    
+    def w_immunity_linking(self, f_I, iota_1, iota_2, iota_3,  season):
+        """
+        A function setting the model's initial condition.
+        
+        input
+        -----
 
+        f_I: float
+            Fraction of the population initially infected
+        
+        iota_n: float
+            Relative influence of cumulative cases n seasons ago -- used to compute the fraction of the population initially immune
+
+
+        output
+        ------
+
+        initial_condition: dict
+            Keys: 'S', ... . Values: np.ndarray (n_age x n_loc).
+        """
+
+        # immunity link function
+        ##  get data
+        if len(iota_1) > 1:
+            C_min1 = self.historic_cumulative_incidence.loc[(season,-1)].values
+            C_min2 = self.historic_cumulative_incidence.loc[(season,-2)].values
+            C_min3 = self.historic_cumulative_incidence.loc[(season,-3)].values
+        else:
+            C_min1 = self.historic_cumulative_incidence.loc[(season,-1)]
+            C_min2 = self.historic_cumulative_incidence.loc[(season,-2)]
+            C_min3 = self.historic_cumulative_incidence.loc[(season,-3)]
+        ## flatten parameters
+        iota_1 = np.squeeze(iota_1)
+        iota_2 = np.squeeze(iota_2)
+        iota_3 = np.squeeze(iota_3)
+
+        ## compute immunity (bounded linear model)
+        f_R = (iota_1 * C_min1 + iota_2 * C_min2 + iota_3 * C_min3) / (1 + iota_1 * C_min1 + iota_2 * C_min2 + iota_3 * C_min3)
+        print({'S0':  (1 - f_I - f_R) * self.population,
+                'I0': f_I * self.population,   
+                'R0': f_R * self.population,
+                })
+        return {'S0':  (1 - f_I - f_R) * self.population,
+                'I0': f_I * self.population,   
+                'R0': f_R * self.population,
+                }
 
 def get_demography(fips_state):
     """
@@ -180,6 +241,45 @@ def get_NC_influenza_data(startdate, enddate, season):
     df_merged = df_merged.dropna()
     # throw out `fraction_A`
     return df_merged[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B']].loc[slice(startdate,enddate)]
+
+
+def get_NC_cumulatives_per_season():
+    """
+    A function that returns, for each season, the cumulative total H_inc, I_inc, H_inc_A and H_inc_B in the season - 0, season - 1 and season - 2.
+    """
+    # define seasons we want output for
+    seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']
+
+    # loop over them
+    seasons_collect = []
+    for season in seasons:
+        # get the season start
+        season_start = int(season[0:4])
+        # go back two seasons
+        horizons_collect = []
+        for i in [0, -1, -2, -3]:
+            # get the data
+            data = get_NC_influenza_data(datetime(season_start+i,10,1), datetime(season_start+1+i,5,1), f'{season_start+i}-{season_start+1+i}')*7
+            # calculate cumulative totals
+            column_sums = {
+                "horizon": i,
+                "H_inc": data["H_inc"].sum(),
+                "I_inc": data["I_inc"].sum(),
+                "H_inc_A": data["H_inc_A"].sum(),
+                 "H_inc_B": data["H_inc_B"].sum(),
+            }
+            # create the DataFrame
+            horizons_collect.append(pd.DataFrame([column_sums]))
+        # concatenate data
+        data = pd.concat(horizons_collect)
+        # add current season
+        data['season'] = season    
+        # add to archive
+        seasons_collect.append(data)
+    # concatenate across seasons
+    data = pd.concat(seasons_collect).set_index(['season', 'horizon'])
+
+    return data
 
 
 from pySODM.optimization.objective_functions import ll_poisson

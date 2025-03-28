@@ -43,7 +43,7 @@ class SIR():
         self.coordinates = {'strain': np.linspace(start=0, stop=n_strains-1, num=n_strains).tolist()}
         self.state_shapes, self.dimensions_per_state, self.state_coordinates = build_state_sizes_dimensions(self.coordinates, self.states_names, None)
         self.initial_states = {'S': np.zeros(n_strains),  'I': np.zeros(n_strains), 'R': np.zeros(n_strains), 'I_inc': np.zeros(n_strains), 'H_inc': np.zeros(n_strains)}
-        _, self.parameter_shapes = validate_calibrated_parameters(self.parameters.keys(), self.parameters)
+        _, self.parameter_shapes = validate_calibrated_parameters([par for par in self.parameters.keys() if par != 'season'], self.parameters)
 
         pass
 
