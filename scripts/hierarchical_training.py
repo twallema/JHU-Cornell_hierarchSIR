@@ -19,23 +19,23 @@ from hierarchSIR.utils import initialise_model, make_data_pySODM_compatible
 ##############
 
 # calibration settings
-strains = False
+strains = True
 use_ED_visits = True                                                                                    # use both ED admission (hospitalisation) and ED visits (ILI) data 
 seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024']    # season to include in calibration excercise
 start_calibration_month = 10                                                                             # start calibration on month 10, day 1
 end_calibration_month = 5                                                                                # end calibration on month 5, day 1
 
 # Define number of chains
-max_n = 30000
+max_n = 40000
 n_chains = 400
 pert = 0.10
 run_date = datetime.today().strftime("%Y-%m-%d")
 identifier = 'exclude-2024-2025'
-print_n =  30000
+print_n =  40000
 backend =  None
-discard = 25000
+discard = 36000
 thin = 100
-processes = 8 # int(os.environ.get('NUM_CORES', '16'))
+processes = int(os.environ.get('NUM_CORES', '16'))
 
 # Make folder structure
 if strains:
@@ -77,9 +77,9 @@ model = initialise_model(strains=strains)
 
 # define model parameters to calibrate to every season and their bounds
 # not how we're not cutting out the parameters associated with the ED visit data
-par_names = ['rho_i', 'T_h', 'rho_h', 'beta', 'f_R', 'f_I', 'delta_beta_temporal']
-par_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.02), (0.01,1), (0.001,0.999), (1e-9,1e-3), (-1,1)]
-par_hyperdistributions = ['gamma', 'expon', 'gamma', 'normal', 'beta', 'gamma', 'normal']
+par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
+par_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.02), (0.001,0.999), (1e-9,1e-3), (0.01,1), (-1,1)]
+par_hyperdistributions = ['gamma', 'expon', 'gamma', 'beta', 'gamma', 'normal', 'normal']
 
 # setup lpp function
 lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets)
@@ -88,40 +88,15 @@ lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistribut
 ## Fetch initial guess parameters ##
 ####################################
 
-# get independent fit parameters
+# parameters: get optimal independent fit with informative prior on R0
 pars_model_0 = pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=1)
 pars_model_0 = pars_model_0[pars_model_0['strains']==strains][seasons]
-
-# parameters
 pars_0 = list(pars_model_0.transpose().values.flatten())
 
-# hyperparameters
-if not strains:
-    hyperpars_0 = [
-                5.0, 1.0e-02,                                                                   # rho_i
-                1.6,                                                                            # T_h
-                5.0, 1.0e-03,                                                                   # rho_h
-                0.55, 0.055,                                                                    # beta
-                12, 16,                                                                         # f_R
-                5.0, 3.0e-05,                                                                   # f_I
-                -0.07, -0.04, -0.01, 0.01, 0.14, -0.10, -0.01, 0.10, 0.05, 0.04, 0.05, -0.01,   # delta_beta_temporal_mu
-                0.025, 0.05, 0.03, 0.06, 0.09, 0.10, 0.08, 0.09, 0.11, 0.14, 0.16, 0.10,        # delta_beta_temporal_sigma
-                    ]
-else:
-    hyperpars_0 = [
-            5.0, 1.0e-02,                                                                   # rho_i_a, rho_i_scale
-            2.9,                                                                            # T_h_scale
-            5.0, 5.0,                                                                       # rho_h_a
-            1.0e-03, 1.0e-03,                                                               # rho_h_scale
-            0.55, 0.55,                                                                     # beta_mu
-            0.055, 0.055,                                                                   # beta_sigma
-            12.0, 12.0,                                                                     # f_R_a
-            16.0, 16.0,                                                                     # f_R_b
-            5.0, 5.0,                                                                       # f_I_a
-            3.0e-05, 3.0e-05,                                                               # f_I_scale
-            -0.08, -0.05, -0.04, -0.005, 0.09, -0.09, -0.005, 0.11, 0.06, 0.05, 0.05, -0.03,    # delta_beta_temporal_mu
-            0.05, 0.02, 0.04, 0.03, 0.08, 0.09, 0.06, 0.07, 0.07, 0.11, 0.14, 0.16,          # delta_beta_temporal_sigma
-                ]
+# hyperparameters: use all seasons included as starting point
+hyperpars_0 = pd.read_csv('../data/interim/calibration/hyperparameters.csv')
+hyperpars_0 = list(hyperpars_0.loc[((hyperpars_0['model'] == model_name) & (hyperpars_0['use_ED_visits'] == use_ED_visits)), (['parameter', 'exclude-2024-2025'])].set_index('parameter').squeeze())
+
 # combine
 theta_0 = hyperpars_0 + pars_0
 

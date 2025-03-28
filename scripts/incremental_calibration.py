@@ -54,12 +54,10 @@ strains = False
 fips_state = 37
 season_start = int(season[0:4])                     # start of season
 start_simulation = datetime(season_start, 10, 1)    # date simulation is started
-L1_weight = 1                                       # Forcing strength on temporal modifiers 
-stdev = 0.10                                        # Expected standard deviation on temporal modifiers
 
 # optimization parameters
 ## dates
-start_calibration = datetime(season_start+1, 4, 25)           # incremental calibration will start from here
+start_calibration = datetime(season_start+1, 4, 24)           # incremental calibration will start from here
 end_calibration = datetime(season_start+1, 5, 1)            # and incrementally (weekly) calibrate until this date
 end_validation = datetime(season_start+1, 5, 1)             # enddate used on plots
 ## frequentist optimization
@@ -81,17 +79,17 @@ else:
     model_name = 'SIR-1S'
 
 # calibration parameters
-pars = ['rho_i', 'T_h', 'rho_h', 'beta', 'f_R', 'f_I', 'delta_beta_temporal']                                   # parameters to calibrate
-bounds = [(1e-4,0.10), (0.5, 14), (1e-4,0.01), (0.01,1), (0.1,0.9), (1e-7,1e-3), (-0.50,0.50)]                # parameter bounds
-labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$', r'$\beta$',  r'$f_{R}$', r'$f_{I}$', r'$\Delta \beta_{t}$']   # labels in output figures
+pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                           # parameters to calibrate
+bounds = [(1e-4,0.10), (0.5, 14), (1e-4,0.01), (0.01,0.70), (1e-7,1e-3), (0.01,1), (-0.50,0.50)]                  # parameter bounds
+labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']   # labels in output figures
 # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 if not informed:
     # change name to build save path
     informed = 'uninformed'
-    # assign priors
-    log_prior_prob_fcn = 6*[log_prior_uniform,] + [log_prior_normal,]                                                                                   # prior probability functions
+    # assign priors (R0 ~ N(1.6, 0.2); all other: uninformative)
+    log_prior_prob_fcn = 5*[log_prior_uniform,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
     log_prior_prob_fcn_args = [{'bounds':  bounds[0]}, {'bounds':  bounds[1]}, {'bounds':  bounds[2]}, {'bounds':  bounds[3]}, {'bounds':  bounds[4]},
-                                {'bounds':  bounds[5]}, {'avg':  0, 'stdev': stdev, 'weight': L1_weight}]   # arguments prior functions
+                                {'avg':  0.455, 'stdev': 0.057}, {'avg':  0, 'stdev': 0.15}]   # arguments prior functions
 # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 else:
     # change name to build save path
@@ -126,7 +124,7 @@ else:
 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 ## starting guestimate NM:
-theta = pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1]).loc[(strains, slice(None))].mean(axis=1)
+theta = list(pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1]).loc[(strains, slice(None))].mean(axis=1))
 
 ##########################################
 ## Prepare pySODM llp dataset arguments ##
@@ -154,7 +152,7 @@ if __name__ == '__main__':
     incremental_enddates = data[0].loc[slice(start_calibration, end_calibration)].index
 
     for end_date in incremental_enddates:
-
+        
         print(f"Working on calibration ending on {end_date.strftime('%Y-%m-%d')}, HubVerse reference date: {(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}")
 
         # Make folder structure
@@ -210,7 +208,7 @@ if __name__ == '__main__':
         ##########
 
         # Perturbate previously obtained estimate
-        ndim, nwalkers, pos = perturbate_theta(theta, pert=0.2*np.ones(len(theta)), multiplier=multiplier_mcmc, bounds=lpp.expanded_bounds)
+        ndim, nwalkers, pos = perturbate_theta(theta, pert=0.1*np.ones(len(theta)), multiplier=multiplier_mcmc, bounds=lpp.expanded_bounds)
         # Append some usefull settings to the samples dictionary
         settings={'start_simulation': start_simulation.strftime('%Y-%m-%d'), 'start_calibration': start_calibration.strftime('%Y-%m-%d'), 'end_calibration': end_date.strftime('%Y-%m-%d'),
                   'season': season, 'starting_estimate': theta}
