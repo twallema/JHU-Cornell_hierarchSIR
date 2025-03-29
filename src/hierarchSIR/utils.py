@@ -69,9 +69,9 @@ def initialise_model(strains=False, immunity_linking=False, season=None, fips_st
         ICF = initial_condition_function(population, historic_cumulative_incidence).wo_immunity_linking
 
     # adjust parameters dictionary
+    parameters['season'] = season
     if immunity_linking:
         del parameters['f_R']
-        parameters['season'] = season
         parameters['iota_1'] = parameters['iota_2'] = parameters['iota_3'] = np.ones(n_strains) * 1e-5
 
     return SIR(parameters, ICF, n_strains)
@@ -84,7 +84,7 @@ class initial_condition_function():
         self.historic_cumulative_incidence = historic_cumulative_incidence
         pass
 
-    def wo_immunity_linking(self, f_I, f_R):
+    def wo_immunity_linking(self, f_I, f_R, season):
         """
         A function generating the model's initial condition -- no immunity linking; direct estimation recovered population
         
