@@ -146,6 +146,9 @@ class log_posterior_probability():
                     theta_season[k] = pars_model_bounds[k][0]
                     lpp += - np.inf
 
+            # Respect hyperdistribution parameter constraints
+            # TODO
+
             # convert to a dictionary for ease
             theta_season = list_to_dict(theta_season, self.par_shapes, retain_floats=True)
 
