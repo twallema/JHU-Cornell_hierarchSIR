@@ -54,14 +54,13 @@ season = args.season
 ##############
 
 # model settings
-strains = True
 fips_state = 37
 season_start = int(season[0:4])                     # start of season
 start_simulation = datetime(season_start, 10, 1)    # date simulation is started
 
 # optimization parameters
 ## dates
-start_calibration = datetime(season_start+1, 1, 19)           # incremental calibration will start from here
+start_calibration = datetime(season_start+1, 4, 25)           # incremental calibration will start from here
 end_calibration = datetime(season_start+1, 5, 1)            # and incrementally (weekly) calibrate until this date
 end_validation = datetime(season_start+1, 5, 1)             # enddate used on plots
 ## frequentist optimization
@@ -168,7 +167,7 @@ else:
                                    {'avg':  0.455, 'stdev': 0.055}, {'avg':  0, 'stdev': 0.15}]   # arguments prior functions
     
 ## starting guestimate NM:
-theta = list(pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2]).loc[(strains, immunity_linking, slice(None))].mean(axis=1))
+theta = list(pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2]).loc[(model_name, immunity_linking, slice(None))].mean(axis=1))
 
 ##########################################
 ## Prepare pySODM llp dataset arguments ##

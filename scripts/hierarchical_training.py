@@ -19,22 +19,23 @@ from hierarchSIR.utils import initialise_model, make_data_pySODM_compatible
 ##############
 
 # calibration settings
-strains = True
+strains = False
+immunity_linking = False
 use_ED_visits = True                                                                                    # use both ED admission (hospitalisation) and ED visits (ILI) data 
 seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024']    # season to include in calibration excercise
 start_calibration_month = 10                                                                             # start calibration on month 10, day 1
 end_calibration_month = 5                                                                                # end calibration on month 5, day 1
 
 # Define number of chains
-max_n = 40000
-n_chains = 400
-pert = 0.10
+max_n = 100000
+n_chains = 500
+pert = 0.02
 run_date = datetime.today().strftime("%Y-%m-%d")
 identifier = 'exclude-2024-2025'
-print_n =  40000
+print_n =  50
 backend =  None
-discard = 36000
-thin = 100
+discard = 0
+thin = 1
 processes = int(os.environ.get('NUM_CORES', '16'))
 
 # Make folder structure
@@ -42,11 +43,8 @@ if strains:
     model_name = 'SIR-2S'
 else:
     model_name = 'SIR-1S'
-
-if use_ED_visits:
-    samples_path=fig_path=f'../data/interim/calibration/hierarchical-training/{model_name}/use_ED_visits/' # Path to backend
-else:
-    samples_path=fig_path=f'../data/interim/calibration/hierarchical-training/{model_name}/not_use_ED_visits/' # Path to backend
+# define samples path
+samples_path=fig_path=f'../data/interim/calibration/hierarchical-training/{model_name}/immunity_linking-{immunity_linking}/ED_visits-{use_ED_visits}/' # Path to backend
 # check if samples folder exists, if not, make it
 if not os.path.exists(samples_path):
     os.makedirs(samples_path)
@@ -69,7 +67,7 @@ for start_calibration, end_calibration, season in zip(start_calibrations, end_ca
 ## Setup model ##
 #################
 
-model = initialise_model(strains=strains)
+model = initialise_model(strains=strains, immunity_linking=immunity_linking, season='2014-2015')
 
 ##########################################
 ## Setup posterior probability function ##
@@ -77,25 +75,28 @@ model = initialise_model(strains=strains)
 
 # define model parameters to calibrate to every season and their bounds
 # not how we're not cutting out the parameters associated with the ED visit data
-par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
-par_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.02), (0.001,0.999), (1e-9,1e-3), (0.01,1), (-1,1)]
-par_hyperdistributions = ['gamma', 'expon', 'gamma', 'beta', 'gamma', 'normal', 'normal']
-
+if not immunity_linking:
+    par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
+    par_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.02), (0.001,0.999), (1e-9,1e-3), (0.01,1), (-1,1)]
+    par_hyperdistributions = ['gamma', 'expon', 'gamma', 'beta', 'gamma', 'normal', 'normal']
+else:
+    par_names = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']
+    par_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.02), (0,2E-3), (0,2E-3), (0,2E-3), (1e-9,1e-3), (0.01,1), (-1,1)]
+    par_hyperdistributions = ['gamma', 'expon', 'gamma', 'gamma', 'gamma', 'gamma', 'gamma', 'normal', 'normal']
 # setup lpp function
-lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets)
+lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)
 
 ####################################
 ## Fetch initial guess parameters ##
 ####################################
 
-# parameters: get optimal independent fit with informative prior on R0
-pars_model_0 = pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=1)
-pars_model_0 = pars_model_0[pars_model_0['strains']==strains][seasons]
-pars_0 = list(pars_model_0.transpose().values.flatten())
+# parameters: get optimal independent fit with weakly informative prior on R0 and immunity
+pars_model_0 = pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2])
+pars_0 = list(pars_model_0.loc[(model_name, immunity_linking, slice(None)), seasons].transpose().values.flatten().tolist())
 
-# hyperparameters: use all seasons included as starting point
-hyperpars_0 = pd.read_csv('../data/interim/calibration/hyperparameters.csv')
-hyperpars_0 = list(hyperpars_0.loc[((hyperpars_0['model'] == model_name) & (hyperpars_0['use_ED_visits'] == use_ED_visits)), (['parameter', 'exclude-2024-2025'])].set_index('parameter').squeeze())
+# hyperparameters: use all seasons included as the default starting point
+hyperpars_0 = pd.read_csv('../data/interim/calibration/hyperparameters.csv', index_col=[0,1,2,3])
+hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, use_ED_visits, slice(None)), 'exclude-2024-2025'].values.tolist()
 
 # combine
 theta_0 = hyperpars_0 + pars_0
