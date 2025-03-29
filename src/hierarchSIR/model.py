@@ -30,13 +30,14 @@ class SIR():
         # TODO: docstring
         """
 
-        # take in the initial condition function and retrieve its arguments
-        self.ICF = initial_condition_function
-        self.ICF_args_names = list(inspect.signature(initial_condition_function).parameters.keys())
-
         # assign variables to object
         self.parameters = parameters
         self.n_strains = n_strains
+
+        # take in the initial condition function and retrieve its arguments
+        self.ICF = initial_condition_function
+        self.ICF_args_names = list(inspect.signature(initial_condition_function).parameters.keys())
+        self.initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
 
         # attributes needed to make model compatible with pySODM's optimization module
         self.states_names = ['S', 'I', 'R', 'I_inc', 'H_inc']
@@ -69,11 +70,11 @@ class SIR():
                 if ((shape == (1,)) & (par not in ['T_h', 'gamma', 'sigma', 'modifier_length']) & (par != 'delta_beta_temporal')):
                     self.parameters[par] = np.array([self.parameters[par],])
             # build initial condition
-            initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
+            self.initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
             # remove ICF arguments from the parameters
             self.parameters = {key: value for key, value in self.parameters.items() if key not in self.ICF_args_names}
             # simulate model
-            simout = sir_model.integrate(*time, **initial_condition, **self.parameters)
+            simout = sir_model.integrate(*time, **self.initial_condition, **self.parameters)
             # format and append output
             output.append(self.format_output(np.array(simout), start_date, self.states_names, self.n_strains))
             # Reset parameter dictionary
