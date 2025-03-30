@@ -181,6 +181,8 @@ class log_posterior_probability():
             # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
             if math.isnan(lpp):
                 return -np.inf
+            # R0 = 1.6 pm 0.2
+            lpp += np.sum(norm.logpdf(theta_hyperpars['beta_mu'], loc=0.455, scale=0.055))  
             # or huge delta_beta_temporal_mu/sigma
             if ((any(((x < -1) | (x > 1)) for x in theta_hyperpars['delta_beta_temporal_mu'])) | (any(((x < 0) | (x > 1)) for x in theta_hyperpars['delta_beta_temporal_sigma']))):
                 return -np.inf
