@@ -90,7 +90,8 @@ if not immunity_linking:
     if not informed:
         # assign priors (R0 ~ N(1.6, 0.2); all other: uninformative)
         log_prior_prob_fcn = 5*[log_prior_uniform,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
-        log_prior_prob_fcn_args = [{'bounds':  bounds[0]}, {'bounds':  bounds[1]}, {'bounds':  bounds[2]}, {'bounds':  bounds[3]}, {'bounds':  bounds[4]},
+        log_prior_prob_fcn_args = [{'bounds':  bounds[0]},
+                                   {'bounds':  bounds[1]}, {'bounds':  bounds[2]}, {'bounds':  bounds[3]}, {'bounds':  bounds[4]},
                                     {'avg':  0.455, 'stdev': 0.057}, {'avg':  0, 'stdev': 0.15}]   # arguments prior functions
     # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     else:
@@ -161,7 +162,8 @@ else:
     if not informed:
         # assign priors (R0 ~ N(1.6, 0.2); all other: uninformative)
         log_prior_prob_fcn = 3*[log_prior_uniform,] + 3*[log_prior_gamma] + 1*[log_prior_uniform,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
-        log_prior_prob_fcn_args = [{'bounds':  bounds[0]}, {'bounds':  bounds[1]}, {'bounds':  bounds[2]},
+        log_prior_prob_fcn_args = [{'bounds':  bounds[0]},
+                                   {'bounds':  bounds[1]}, {'bounds':  bounds[2]},
                                    {'a': 1, 'loc': 0, 'scale': 2E-04}, {'a': 1, 'loc': 0, 'scale': 2E-04}, {'a': 1, 'loc': 0, 'scale': 2E-04},
                                    {'bounds':  bounds[6]},
                                    {'avg':  0.455, 'stdev': 0.055}, {'avg':  0, 'stdev': 0.15}]   # arguments prior functions
