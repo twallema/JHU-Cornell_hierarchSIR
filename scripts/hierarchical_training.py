@@ -19,8 +19,9 @@ from hierarchSIR.utils import initialise_model, make_data_pySODM_compatible
 ##############
 
 # calibration settings
-strains = False
-immunity_linking = False
+fips_state = 37
+strains = True
+immunity_linking = True
 use_ED_visits = True                                                                                    # use both ED admission (hospitalisation) and ED visits (ILI) data 
 seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024']    # season to include in calibration excercise
 start_calibration_month = 10                                                                             # start calibration on month 10, day 1
@@ -67,7 +68,7 @@ for start_calibration, end_calibration, season in zip(start_calibrations, end_ca
 ## Setup model ##
 #################
 
-model = initialise_model(strains=strains, immunity_linking=immunity_linking, season='2014-2015')
+model = initialise_model(strains=strains, immunity_linking=immunity_linking, season='2014-2015', fips_state=fips_state)
 
 ##########################################
 ## Setup posterior probability function ##
