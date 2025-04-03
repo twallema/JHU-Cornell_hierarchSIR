@@ -7,6 +7,7 @@ __author__      = "Tijs Alleman"
 __copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group, Johns Hopkins Bloomberg School of Public Health. All Rights Reserved."
 
 import sys,os
+import argparse
 import random
 import emcee
 import numpy as np
@@ -19,17 +20,11 @@ from pySODM.optimization.utils import assign_theta, add_poisson_noise
 from pySODM.optimization.objective_functions import log_posterior_probability
 from pySODM.optimization.mcmc import perturbate_theta, run_EnsembleSampler
 # hierarchSIR functions
-from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, make_data_pySODM_compatible, get_priors
+from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, make_data_pySODM_compatible, get_priors, str_to_bool
 
 #####################
 ## Parse arguments ##
 #####################
-
-import argparse
-# helper function
-def str_to_bool(value):
-    """Convert string arguments to boolean (for SLURM environment variables)."""
-    return value.lower() in ["true", "1", "yes"]
 
 # parse arguments
 parser = argparse.ArgumentParser()
