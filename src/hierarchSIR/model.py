@@ -48,7 +48,7 @@ class SIR():
 
         pass
 
-    def sim(self, simtime, N=1, draw_function=None, draw_function_kwargs={}):
+    def sim(self, simtime, atol=1e-2, rtol=1e-5, N=1, draw_function=None, draw_function_kwargs={}):
         """
         # TODO: docstring
         """
@@ -74,7 +74,7 @@ class SIR():
             # remove ICF arguments from the parameters
             self.parameters = {key: value for key, value in self.parameters.items() if key not in self.ICF_args_names}
             # simulate model
-            simout = sir_model.integrate(*time, **self.initial_condition, **self.parameters)
+            simout = sir_model.integrate(*time, atol, rtol, **self.initial_condition, **self.parameters)
             # format and append output
             output.append(self.format_output(np.array(simout), start_date, self.states_names, self.n_strains))
             # Reset parameter dictionary

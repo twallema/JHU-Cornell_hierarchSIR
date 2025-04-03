@@ -142,12 +142,13 @@ std::vector<std::vector<double>> interpolate_results(const std::vector<std::vect
 
 // Function to integrate the SIR model
 std::vector<std::vector<double>> solve(double t_start, double t_end,
-                                           std::vector<double> S0, std::vector<double> I0, std::vector<double> R0,
-                                           std::vector<double> beta, std::vector<double> gamma, std::vector<double> rho_i, std::vector<double> rho_h, double T_h,
-                                           const std::vector<double>& delta_beta_temporal, 
-                                           int modifier_length, double sigma
-                                           ) {
-    double dt = 7;                  // initial guess for step size
+                                        double atol, double rtol,
+                                        std::vector<double> S0, std::vector<double> I0, std::vector<double> R0,
+                                        std::vector<double> beta, std::vector<double> gamma, std::vector<double> rho_i, std::vector<double> rho_h, double T_h,
+                                        const std::vector<double>& delta_beta_temporal, 
+                                        int modifier_length, double sigma
+                                        ) {
+    double dt = 1;                  // initial guess for step size
     int num_strains = S0.size();    // determines number of strains
     int total_days = static_cast<int>(t_end) + 1;
     std::vector<double> beta_modifiers = process_beta_modifiers(delta_beta_temporal, modifier_length, total_days, sigma);
@@ -185,16 +186,17 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
     
     SIR sir_system(beta, gamma, rho_i, rho_h, T_h,  beta_modifiers);
     runge_kutta_dopri5<std::vector<double>> stepper;
-    integrate_adaptive(make_controlled(1e-1, 1e-6, stepper), sir_system, y, t_start, t_end, dt, observer);
+    integrate_adaptive(make_controlled(atol, rtol, stepper), sir_system, y, t_start, t_end, dt, observer);
     return interpolate_results(results, t_start, t_end);
 }
 
 // Bind C++ module to Python
 PYBIND11_MODULE(sir_model, m) {
     m.def("integrate", &solve, "Solve a strain-stratified SIR model",
-          py::arg("t_start"), py::arg("t_end"),
-          py::arg("S0"), py::arg("I0"), py::arg("R0"),
-          py::arg("beta"), py::arg("gamma"), py::arg("rho_i"), py::arg("rho_h"), py::arg("T_h"),
-          py::arg("delta_beta_temporal"), py::arg("modifier_length"), py::arg("sigma")
+          py::arg("t_start"), py::arg("t_end"),                                                         // solve between t_start and t_end
+          py::arg("atol"), py::arg("rtol"),                                                             // solver accuracy        
+          py::arg("S0"), py::arg("I0"), py::arg("R0"),                                                  // initial condition
+          py::arg("beta"), py::arg("gamma"), py::arg("rho_i"), py::arg("rho_h"), py::arg("T_h"),        // SIR parameters
+          py::arg("delta_beta_temporal"), py::arg("modifier_length"), py::arg("sigma")                  // modifier parameters
           );
 }
