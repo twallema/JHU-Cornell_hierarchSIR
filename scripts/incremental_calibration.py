@@ -281,7 +281,7 @@ if __name__ == '__main__':
         data_valid = [df.loc[slice(end_date+timedelta(days=1), end_validation)] for df in data]
 
         # normalisation weights for lpp
-        weights = [1/max(df) for df in data]
+        weights = [1/max(df) for df in data_calib]
         weights = np.array(weights) / np.mean(weights)
 
         # Setup objective function (no priors defined = uniform priors based on bounds)
