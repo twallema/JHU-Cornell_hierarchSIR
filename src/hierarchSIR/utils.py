@@ -806,4 +806,10 @@ def plot_fit(simout: xr.Dataset,
     plt.savefig(fig_path+f'{identifier}-FIT.pdf')
     plt.close()
 
+# helper function
+import argparse
+def str_to_bool(value):
+    """Convert string arguments to boolean (for SLURM environment variables)."""
+    return value.lower() in ["true", "1", "yes"]
+
 
