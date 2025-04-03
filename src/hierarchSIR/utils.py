@@ -472,7 +472,7 @@ def simout_to_hubverse(simout: xr.Dataset,
 
 
 from pySODM.optimization.objective_functions import log_posterior_probability, log_prior_normal, log_prior_uniform, log_prior_gamma, log_prior_normal, log_prior_beta
-def get_priors(model_name, strains, immunity_linking, use_ED_visits, informed, hyperparameters):
+def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparameters):
     """
     A function to help prepare the pySODM-compatible priors
     """
@@ -481,7 +481,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, informed, h
         bounds = [(1e-4,0.10), (0.5, 14), (1e-4,0.01), (0.01,0.70), (1e-7,1e-3), (0.01,1), (-0.50,0.50)]                    # parameter bounds
         labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']       # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        if not informed:
+        if not hyperparameters:
             # assign priors (R0 ~ N(1.6, 0.2); all other: uninformative)
             log_prior_prob_fcn = 5*[log_prior_uniform,] + 2*[log_prior_normal,]
             log_prior_prob_fcn_args = [{'bounds':  bounds[0]},
@@ -556,7 +556,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, informed, h
         bounds = [(1e-4,0.10), (0.5, 14), (1e-4,0.01), (0,2e-3), (0,2e-3), (0,2e-3), (1e-7,1e-3), (0.01,1), (-0.50,0.50)]                               # parameter bounds
         labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']     # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-        if not informed:
+        if not hyperparameters:
             # assign priors (R0 ~ N(1.6, 0.2); all other: uninformative)
             log_prior_prob_fcn = 3*[log_prior_uniform,] + 3*[log_prior_gamma] + 1*[log_prior_uniform,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
             log_prior_prob_fcn_args = [{'bounds':  bounds[0]},

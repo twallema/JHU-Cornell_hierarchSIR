@@ -1,4 +1,4 @@
-﻿model,immunity_linking,use_ED_visits,parameter,exclude-2024-2025,exclude-2023-2024,exclude-2019-2020,exclude-2018-2019,exclude-2017-2018,exclude-2016-2017,exclude-2015-2016,exclude-2014-2015
+﻿model,immunity_linking,use_ED_visits,parameter,exclude_2024-2025,exclude-2023-2024,exclude_2019-2020,exclude_2018-2019,exclude_2017-2018,exclude_2016-2017,exclude_2015-2016,exclude_2014-2015
 SIR-1S,FALSE,FALSE,rho_i_a,7.317992305,,,,,,,
 SIR-1S,FALSE,FALSE,rho_i_scale,0.007032564,,,,,,,
 SIR-1S,FALSE,FALSE,T_h_scale,3.273026106,,,,,,,
