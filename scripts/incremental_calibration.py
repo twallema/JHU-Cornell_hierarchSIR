@@ -63,12 +63,12 @@ n_pso = 1000                                                # Number of PSO iter
 multiplier_pso = 10                                         # PSO swarm size
 ## bayesian inference
 n_mcmc = 10000                                              # Number of MCMC iterations
-multiplier_mcmc = 5                                         # Total number of Markov chains = number of parameters * multiplier_mcmc
+multiplier_mcmc = 3                                         # Total number of Markov chains = number of parameters * multiplier_mcmc
 print_n = 10000                                              # Print diagnostics every `print_n`` iterations
 discard = 8000                                             # Discard first `discard` iterations as burn-in
 thin = 50                                                 # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', '16'))          # Number of CPUs to use
-n = 200                                                     # Number of simulations performed in MCMC goodness-of-fit figure
+n = 500                                                     # Number of simulations performed in MCMC goodness-of-fit figure
 ## format model name
 if strains:
     model_name = 'SIR-2S'
