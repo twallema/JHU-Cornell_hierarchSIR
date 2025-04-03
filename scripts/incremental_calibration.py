@@ -19,7 +19,7 @@ from pySODM.optimization.utils import assign_theta, add_poisson_noise
 from pySODM.optimization.objective_functions import log_posterior_probability, log_prior_normal, log_prior_uniform, log_prior_gamma, log_prior_normal, log_prior_beta
 from pySODM.optimization.mcmc import perturbate_theta, run_EnsembleSampler
 # hierarchSIR functions
-from hierarchSIR.utils import initialise_model, pySODM_to_hubverse, plot_fit, make_data_pySODM_compatible # influenza model
+from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, make_data_pySODM_compatible # influenza model
 
 #####################
 ## Parse arguments ##
@@ -361,7 +361,7 @@ if __name__ == '__main__':
             pass
 
         # Save as a .csv in hubverse format / raw netcdf
-        df = pySODM_to_hubverse(simout, fips_state, end_date+timedelta(weeks=1), 'wk inc flu hosp', 'H_inc', samples_path, quantiles=True)
+        df = simout_to_hubverse(simout, fips_state, end_date+timedelta(weeks=1), 'wk inc flu hosp', 'H_inc', samples_path, quantiles=True)
         simout.to_netcdf(samples_path+f'{identifier}_simulation-output.nc')
 
         # Visualise goodnes-of-fit
