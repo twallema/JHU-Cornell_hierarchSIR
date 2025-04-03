@@ -202,7 +202,7 @@ if __name__ == '__main__':
         
         # Add sampling noise
         try:
-            simout = add_poisson_noise(simout)
+            simout = add_poisson_noise(simout+0.1)
         except:
             print('no poisson resampling performed')
             sys.stdout.flush()
