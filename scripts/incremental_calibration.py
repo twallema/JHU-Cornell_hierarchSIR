@@ -277,15 +277,15 @@ if __name__ == '__main__':
         ##################################
 
         # split data in calibration and validation dataset
-        df_calib = data = [df.loc[slice(start_simulation, end_date)] for df in data]
-        df_valid = [df.loc[slice(end_date+timedelta(days=1), end_validation)] for df in data]
+        data_calib = [df.loc[slice(start_simulation, end_date)] for df in data]
+        data_valid = [df.loc[slice(end_date+timedelta(days=1), end_validation)] for df in data]
 
         # normalisation weights for lpp
         weights = [1/max(df) for df in data]
         weights = np.array(weights) / np.mean(weights)
 
         # Setup objective function (no priors defined = uniform priors based on bounds)
-        lpp = log_posterior_probability(model, pars, bounds, data, states, log_likelihood_fnc, log_likelihood_fnc_args,
+        lpp = log_posterior_probability(model, pars, bounds, data_calib, states, log_likelihood_fnc, log_likelihood_fnc_args,
                                                         log_prior_prob_fnc=log_prior_prob_fcn, log_prior_prob_fnc_args=log_prior_prob_fcn_args,
                                                         start_sim=start_simulation, weights=weights, labels=labels)
 
@@ -306,7 +306,7 @@ if __name__ == '__main__':
         # Simulate model
         simout = model.sim([start_simulation, end_validation])
         # visualise output
-        plot_fit(simout, data, states, fig_path, identifier,
+        plot_fit(simout, data_calib, data_valid, states, fig_path, identifier,
                 lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data)
 
         ##########
@@ -365,7 +365,7 @@ if __name__ == '__main__':
         simout.to_netcdf(samples_path+f'{identifier}_simulation-output.nc')
 
         # Visualise goodnes-of-fit
-        plot_fit(simout, data, states, fig_path, identifier,
+        plot_fit(simout, data_calib, data_valid, states, fig_path, identifier,
                 lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data)
         
 

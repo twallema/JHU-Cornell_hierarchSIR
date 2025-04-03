@@ -450,7 +450,7 @@ def get_transmission_coefficient_timeseries(modifier_vector, sigma=2.5):
 ## Plot fit helper function ##
 ##############################
 
-def plot_fit(simout, data, states, fig_path, identifier,
+def plot_fit(simout, data_calibration, data_validation, states, fig_path, identifier,
                 coordinates_data_also_in_model, aggregate_over, additional_axes_data):
     """
     Visualises the goodness of fit for every season
@@ -476,7 +476,7 @@ def plot_fit(simout, data, states, fig_path, identifier,
 
     # loop over datasets
     k=0
-    for i, df in enumerate(data):
+    for i, (df_calib, df_valid) in enumerate(zip(data_calibration, data_validation)):
         
         # aggregate data
         for dimension in simout.dims:
@@ -490,7 +490,9 @@ def plot_fit(simout, data, states, fig_path, identifier,
                 dim_name = additional_axes_data[i][0]
                 coord = coord[0]
                 # plot
-                ax[k].scatter(df.index.get_level_values('date').values, 7*df.loc[slice(None), coord].values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                ax[k].scatter(df_calib.index.get_level_values('date').values, 7*df_calib.loc[slice(None), coord].values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                ax[k].scatter(df_valid.index.get_level_values('date').values, 7*df_valid.loc[slice(None), coord].values, color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                
                 if samples:
                     ax[k].fill_between(simout['date'], 7*simout[states[i]].sel({dim_name: coord}).quantile(dim='draws', q=0.05/2),
                             7*simout[states[i]].sel({dim_name: coord}).quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
@@ -502,7 +504,8 @@ def plot_fit(simout, data, states, fig_path, identifier,
                 k += 1
         else:
             # plot
-            ax[k].scatter(df.index, 7*df.values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+            ax[k].scatter(df_calib.index, 7*df_calib.values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+            ax[k].scatter(df_valid.index, 7*df_valid.values, color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
             if samples:
                 ax[k].fill_between(simout['date'], 7*simout[states[i]].quantile(dim='draws', q=0.05/2),
                             7*simout[states[i]].quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
