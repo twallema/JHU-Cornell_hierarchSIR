@@ -478,7 +478,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
     """
     if not immunity_linking:
         pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                                       # parameters to calibrate
-        bounds = [(1e-4,0.10), (0.5, 14), (1e-4,0.01), (0.01,0.70), (1e-7,1e-3), (0.01,1), (-0.50,0.50)]                    # parameter bounds
+        bounds = [(1e-3,0.075), (0.5, 7), (0.0001,0.0075), (0.20,0.40), (1e-6,0.0006), (0.345,0.565), (-0.30,0.30)]          # parameter bounds
         labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']       # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
@@ -553,7 +553,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
 
     else:
         pars = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']                                            # parameters to calibrate
-        bounds = [(1e-4,0.10), (0.5, 14), (1e-4,0.01), (0,2e-3), (0,2e-3), (0,2e-3), (1e-7,1e-3), (0.01,1), (-0.50,0.50)]                               # parameter bounds
+        bounds = [(1e-3,0.075), (0.5, 7), (1e-4,0.01), (0,0.00025), (0,0.00025), (0,0.00025), (1e-6,0.0006), (0.345,0.565), (-0.30,0.30)]               # parameter bounds
         labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']     # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
