@@ -12,7 +12,22 @@ from hierarchSIR.model import SIR
 
 def initialise_model(strains=False, immunity_linking=False, season=None, fips_state=37):
     """
-    A function to intialise the model
+    A function to intialise the hierarchSIR model
+
+    input
+    -----
+
+    - strains: bool
+        - do we want a strain-stratified model?
+
+    - immunity_linking: bool
+        - do we want to use a structure relationship to model the population's immunity?
+    
+    - season: str
+        - what season do we want to model (only used in combination with `immunity_linking`).
+    
+    fips_state: int
+        - '37': North Carolina
     """
 
     if strains == True:
@@ -80,6 +95,19 @@ def initialise_model(strains=False, immunity_linking=False, season=None, fips_st
 class initial_condition_function():
 
     def __init__(self, population, historic_cumulative_incidence):
+        """
+        Set up the model's initial condition function
+
+        input
+        -----
+
+        - population: int
+            - number of individuals in the modeled population.
+        
+        - historic_cumulative_incidence: pd.DataFrame
+            - index: season, horizon. columns: I_inc, H_inc, H_inc_A, H_inc_B.
+            - obtained using hierarchSIR.utils.get_NC_cumulatives_per_season
+        """
         self.population = population 
         self.historic_cumulative_incidence = historic_cumulative_incidence
         pass
@@ -91,20 +119,20 @@ class initial_condition_function():
         input
         -----
 
-        population: int
-            Number of inhabitants in modeled US state
+        - population: int
+            - Number of inhabitants in modeled US state
 
-        f_I: float
-            Fraction of the population initially infected
+        - f_I: float
+            - Fraction of the population initially infected
         
-        f_R: float
-            Fraction of the population initially immune
+        - f_R: float
+            - Fraction of the population initially immune
 
         output
         ------
 
-        initial_condition: dict
-            Keys: 'S0', ... . Values: np.ndarray.
+        - initial_condition: dict
+            - Keys: 'S0', 'I0', 'R0'. Values: int.
         """
 
         # construct initial condition
@@ -120,18 +148,18 @@ class initial_condition_function():
         input
         -----
 
-        f_I: float
-            Fraction of the population initially infected
+        - f_I: float
+            - Fraction of the population initially infected
         
-        iota_n: float
-            Relative influence of cumulative cases n seasons ago -- used to compute the fraction of the population initially immune
+        - iota_n: float
+            - Relative influence of cumulative cases n seasons ago -- used to compute the fraction of the population initially immune
 
 
         output
         ------
 
-        initial_condition: dict
-            Keys: 'S', ... . Values: np.ndarray (n_age x n_loc).
+        - initial_condition: dict
+            - Keys: 'S0', 'I0', 'R0'. Values: int.
         """
 
         # immunity link function
@@ -157,7 +185,7 @@ class initial_condition_function():
                 'R0': f_R * self.population,
                 }
 
-def get_demography(fips_state):
+def get_demography(fips_state: int) -> int:
     """
     A function retrieving the total population of a US state
 
@@ -184,7 +212,9 @@ def get_demography(fips_state):
 ## Data and output formatting ##
 ################################
 
-def get_NC_influenza_data(startdate, enddate, season):
+def get_NC_influenza_data(startdate: datetime,
+                          enddate: datetime,
+                          season: str) -> pd.DataFrame:
     """
     Get the North Carolina Influenza dataset -- containing ED visits, ED admissions and subtype information -- for a given season
 
@@ -240,9 +270,15 @@ def get_NC_influenza_data(startdate, enddate, season):
     return df_merged[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B']].loc[slice(startdate,enddate)]
 
 
-def get_NC_cumulatives_per_season():
+def get_NC_cumulatives_per_season() -> pd.DataFrame:
     """
     A function that returns, for each season, the cumulative total H_inc, I_inc, H_inc_A and H_inc_B in the season - 0, season - 1 and season - 2.
+
+    output
+    ------
+
+    cumulatives: pd.DataFrame
+        index: season, horizon. columns: I_inc, H_inc, H_inc_A, H_inc_B.
     """
     # define seasons we want output for
     seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']
@@ -280,9 +316,46 @@ def get_NC_cumulatives_per_season():
 
 
 from pySODM.optimization.objective_functions import ll_poisson
-def make_data_pySODM_compatible(strains, use_ED_visits, start_date, end_date, season): 
+def make_data_pySODM_compatible(strains: bool,
+                                use_ED_visits: bool,
+                                start_date: datetime,
+                                end_date: datetime,
+                                season: str): 
     """
     A function formatting the NC Influenza data in pySODM format depending on the desire to use strain or ED visit information
+
+    
+    input:
+    ------
+
+    - strains: bool
+        - do we want a strain-stratified model?
+
+    - use_ED_visits: bool
+        - do we want to calibrate to the ED visit stream?
+
+    - start_date: datetime
+        - desired startdate of data
+
+    - end_date: datetime
+        - desired enddate of data
+    
+    output:
+    -------
+
+    - data: list containing pd.DataFrame
+        - contains datasets the model should be calibrated to.
+    
+    - states: list containing str
+        - contains names of model states that should be matched to the datasets in `data`.
+        - length: `len(data)`
+    
+    - log_likelihood_fnc: list containing log likelihood function
+        - pySODM.optimization.objective_functions.ll_poisson
+        - length: `len(data)`
+    
+    - log_likelihood_fnc_args: list containing empty lists
+        - length: `len(data)`
     """
 
     if strains:
@@ -321,7 +394,7 @@ def make_data_pySODM_compatible(strains, use_ED_visits, start_date, end_date, se
     return data, states, log_likelihood_fnc, log_likelihood_fnc_args
 
 
-def pySODM_to_hubverse(simout: xr.Dataset,
+def simout_to_hubverse(simout: xr.Dataset,
                         location: int,
                         reference_date: datetime,
                         target: str,
@@ -329,12 +402,12 @@ def pySODM_to_hubverse(simout: xr.Dataset,
                         path: str=None,
                         quantiles: bool=False) -> pd.DataFrame:
     """
-    Convert pySODM simulation result to Hubverse format
+    Convert simulation result to Hubverse format
 
     Parameters
     ----------
     - simout: xr.Dataset
-        - pySODM simulation output. must contain `model_state`.
+        - simulation output (pySODM-compatible) . must contain `model_state`.
 
     - location: int
         - state FIPS code.
@@ -402,10 +475,9 @@ def pySODM_to_hubverse(simout: xr.Dataset,
 ## Transmission rate: equivalent Python implementation ##
 #########################################################
 
-from datetime import datetime
 from scipy.ndimage import gaussian_filter1d
-
-def get_transmission_coefficient_timeseries(modifier_vector, sigma=2.5):
+def get_transmission_coefficient_timeseries(modifier_vector: np.ndarray,
+                                            sigma: float=2.5) -> np.ndarray:
     """
     A function mapping the modifier_vectors between Sep 15 and May 15 and smoothing it with a gaussian filter
 
@@ -414,10 +486,10 @@ def get_transmission_coefficient_timeseries(modifier_vector, sigma=2.5):
 
     - modifier_vector: np.ndarray
         - 1D numpy array (time) or 2D numpy array (time x spatial unit).
-        - Each entry represents a value of a knotted temporal modifier, the length of each modifier is equal to the number of days between Oct 15 and Apr 15 divided by `len(modifier_vector)`.
+        - Each entry represents a value of a knotted temporal modifier, the length of each modifier is equal to the time between Oct 15 and Apr 15 (182 days) divided by `len(modifier_vector)`.
 
     - sigma: float 
-        - gaussian smoother's standard deviation. higher values represent more smooth trajectories but increase runtime. None represents no smoothing (fastest).
+        - gaussian smoother's standard deviation. higher values represent more smooth trajectories but increase runtime. `None` represents no smoothing (fastest).
 
     output
     ------
@@ -450,10 +522,56 @@ def get_transmission_coefficient_timeseries(modifier_vector, sigma=2.5):
 ## Plot fit helper function ##
 ##############################
 
-def plot_fit(simout, data_calibration, data_validation, states, fig_path, identifier,
-                coordinates_data_also_in_model, aggregate_over, additional_axes_data):
+def plot_fit(simout: xr.Dataset,
+             data_calibration: list,
+             data_validation: list,
+             states: list,
+             fig_path: str,
+             identifier: str,
+             coordinates_data_also_in_model: list,
+             aggregate_over: list,
+             additional_axes_data: list) -> None:
     """
-    Visualises the goodness of fit for every season
+    A function used to visualise the goodness of fit 
+
+    #TODO: LIMITED TO ONE COORDINATE PER DIMENSION PER DATASET !!!
+
+    input
+    -----
+
+    - simout: xr.Dataset
+        - simulation output (pySODM-compatible) . must contain all states listed in `states`.
+    
+    - data_calibration: list containing pySODM-compatible pd.DataFrame
+        - data model was calibrated to.
+        - obtained using hierarchSIR.utils.make_data_pySODM_compatible.
+        - length: `len(states)`
+    
+    - data_validation: list containing pySODM-compatible pd.DataFrame
+        - data model was not calibrated to (validation).
+        - obtained using hierarchSIR.utils.make_data_pySODM_compatible.
+        - length: `len(states)`
+
+    - states: list containing str
+        - names of model states that were matched with data in `data_calibration`.
+    
+    - fig_path: str
+        - path where figure should be stored, relative to path of file this function is called from.
+    
+    - identifier: str
+        - an ID used to name the output figure.
+    
+    - coordinates_data_also_in_model: list
+        - contains a list for every dataset. contains a list for every model dimension besides 'date'/'time', containing the coordinates present in the data and also in the model.
+        - obtained from pySODM.optimization.log_posterior_probability
+    
+    - aggregate_over: list
+        - list of length len(data). contains, per dataset, the remaining model dimensions not present in the dataset. these are then automatically summed over while calculating the log likelihood.
+        - obtained from pySODM.optimization.log_posterior_probability
+    
+    - additional_axes_data: list
+        - axes in dataset, excluding the 'time'/'date' axes.
+        - obtained from pySODM.optimization.log_posterior_probability
     """
 
     # check if 'draws' are provided
@@ -486,7 +604,7 @@ def plot_fit(simout, data_calibration, data_validation, states, fig_path, identi
         # loop over coordinates 
         if coordinates_data_also_in_model[i]:
             for coord in coordinates_data_also_in_model[i]:
-                # get dimension coord is in #TODO: LIMITED TO ONE COORDINATE PER DIMENSION PER DATASET !!!
+                # get dimension coord is in 
                 dim_name = additional_axes_data[i][0]
                 coord = coord[0]
                 # plot
