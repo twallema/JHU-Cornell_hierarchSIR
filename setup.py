@@ -30,6 +30,6 @@ setup(
     description='An SIR influenza model for the USA',
     author='Dr. Tijs W. Alleman, Johns Hopkins University, Cornell University',
     license='CC-BY-NC-SA',
-    install_requires=['emcee',],
+    install_requires=['emcee','pySODM==0.2.6'],
     ext_modules=ext_modules
 )
