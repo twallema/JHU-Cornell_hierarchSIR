@@ -10,9 +10,24 @@ from hierarchSIR.model import SIR
 ## Model initialisation ##
 ##########################
 
-def initialise_model(strains=False, fips_state=37):
+def initialise_model(strains=False, immunity_linking=False, season=None, fips_state=37):
     """
-    A function to intialise the model
+    A function to intialise the hierarchSIR model
+
+    input
+    -----
+
+    - strains: bool
+        - do we want a strain-stratified model?
+
+    - immunity_linking: bool
+        - do we want to use a structure relationship to model the population's immunity?
+    
+    - season: str
+        - what season do we want to model (only used in combination with `immunity_linking`).
+    
+    fips_state: int
+        - '37': North Carolina
     """
 
     if strains == True:
@@ -58,38 +73,66 @@ def initialise_model(strains=False, fips_state=37):
     population = np.ones(n_strains) * get_demography(fips_state)
 
     # initialise initial condition function
-    ICF = initial_condition_function(population)
+    if immunity_linking:
+        if strains:
+            historic_cumulative_incidence = get_NC_cumulatives_per_season()[['H_inc_A', 'H_inc_B']]
+        else:
+            historic_cumulative_incidence = get_NC_cumulatives_per_season()['H_inc']
+        ICF = initial_condition_function(population, historic_cumulative_incidence).w_immunity_linking
+    else:
+        historic_cumulative_incidence = get_NC_cumulatives_per_season()['H_inc']
+        ICF = initial_condition_function(population, historic_cumulative_incidence).wo_immunity_linking
+
+    # adjust parameters dictionary
+    parameters['season'] = season
+    if immunity_linking:
+        del parameters['f_R']
+        parameters['iota_1'] = parameters['iota_2'] = parameters['iota_3'] = np.ones(n_strains) * 1e-5
 
     return SIR(parameters, ICF, n_strains)
 
 
 class initial_condition_function():
 
-    def __init__(self, population):
+    def __init__(self, population, historic_cumulative_incidence):
+        """
+        Set up the model's initial condition function
+
+        input
+        -----
+
+        - population: int
+            - number of individuals in the modeled population.
+        
+        - historic_cumulative_incidence: pd.DataFrame
+            - index: season, horizon. columns: I_inc, H_inc, H_inc_A, H_inc_B.
+            - obtained using hierarchSIR.utils.get_NC_cumulatives_per_season
+        """
         self.population = population 
+        self.historic_cumulative_incidence = historic_cumulative_incidence
         pass
 
-    def __call__(self, f_I, f_R):
+    def wo_immunity_linking(self, f_I, f_R, season):
         """
-        A function generating the model's initial condition.
+        A function generating the model's initial condition -- no immunity linking; direct estimation recovered population
         
         input
         -----
 
-        population: int
-            Number of inhabitants in modeled US state
+        - population: int
+            - Number of inhabitants in modeled US state
 
-        f_I: float
-            Fraction of the population initially infected
+        - f_I: float
+            - Fraction of the population initially infected
         
-        f_R: float
-            Fraction of the population initially immune
+        - f_R: float
+            - Fraction of the population initially immune
 
         output
         ------
 
-        initial_condition: dict
-            Keys: 'S0', ... . Values: np.ndarray.
+        - initial_condition: dict
+            - Keys: 'S0', 'I0', 'R0'. Values: int.
         """
 
         # construct initial condition
@@ -97,9 +140,52 @@ class initial_condition_function():
                 'I0': f_I * self.population,   
                 'R0': f_R * self.population,
                 }
+    
+    def w_immunity_linking(self, f_I, iota_1, iota_2, iota_3,  season):
+        """
+        A function setting the model's initial condition.
+        
+        input
+        -----
+
+        - f_I: float
+            - Fraction of the population initially infected
+        
+        - iota_n: float
+            - Relative influence of cumulative cases n seasons ago -- used to compute the fraction of the population initially immune
 
 
-def get_demography(fips_state):
+        output
+        ------
+
+        - initial_condition: dict
+            - Keys: 'S0', 'I0', 'R0'. Values: int.
+        """
+
+        # immunity link function
+        ##  get data
+        if len(iota_1) > 1:
+            C_min1 = self.historic_cumulative_incidence.loc[(season,-1)].values
+            C_min2 = self.historic_cumulative_incidence.loc[(season,-2)].values
+            C_min3 = self.historic_cumulative_incidence.loc[(season,-3)].values
+        else:
+            C_min1 = self.historic_cumulative_incidence.loc[(season,-1)]
+            C_min2 = self.historic_cumulative_incidence.loc[(season,-2)]
+            C_min3 = self.historic_cumulative_incidence.loc[(season,-3)]
+        ## flatten parameters
+        iota_1 = np.squeeze(iota_1)
+        iota_2 = np.squeeze(iota_2)
+        iota_3 = np.squeeze(iota_3)
+        
+        ## compute immunity (bounded linear model)
+        f_R = (iota_1 * C_min1 + iota_2 * C_min2 + iota_3 * C_min3) / (1 + iota_1 * C_min1 + iota_2 * C_min2 + iota_3 * C_min3)
+
+        return {'S0':  (1 - f_I - f_R) * self.population,
+                'I0': f_I * self.population,   
+                'R0': f_R * self.population,
+                }
+
+def get_demography(fips_state: int) -> int:
     """
     A function retrieving the total population of a US state
 
@@ -126,7 +212,9 @@ def get_demography(fips_state):
 ## Data and output formatting ##
 ################################
 
-def get_NC_influenza_data(startdate, enddate, season):
+def get_NC_influenza_data(startdate: datetime,
+                          enddate: datetime,
+                          season: str) -> pd.DataFrame:
     """
     Get the North Carolina Influenza dataset -- containing ED visits, ED admissions and subtype information -- for a given season
 
@@ -182,10 +270,92 @@ def get_NC_influenza_data(startdate, enddate, season):
     return df_merged[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B']].loc[slice(startdate,enddate)]
 
 
+def get_NC_cumulatives_per_season() -> pd.DataFrame:
+    """
+    A function that returns, for each season, the cumulative total H_inc, I_inc, H_inc_A and H_inc_B in the season - 0, season - 1 and season - 2.
+
+    output
+    ------
+
+    cumulatives: pd.DataFrame
+        index: season, horizon. columns: I_inc, H_inc, H_inc_A, H_inc_B.
+    """
+    # define seasons we want output for
+    seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']
+
+    # loop over them
+    seasons_collect = []
+    for season in seasons:
+        # get the season start
+        season_start = int(season[0:4])
+        # go back two seasons
+        horizons_collect = []
+        for i in [0, -1, -2, -3]:
+            # get the data
+            data = get_NC_influenza_data(datetime(season_start+i,10,1), datetime(season_start+1+i,5,1), f'{season_start+i}-{season_start+1+i}')*7
+            # calculate cumulative totals
+            column_sums = {
+                "horizon": i,
+                "H_inc": data["H_inc"].sum(),
+                "I_inc": data["I_inc"].sum(),
+                "H_inc_A": data["H_inc_A"].sum(),
+                 "H_inc_B": data["H_inc_B"].sum(),
+            }
+            # create the DataFrame
+            horizons_collect.append(pd.DataFrame([column_sums]))
+        # concatenate data
+        data = pd.concat(horizons_collect)
+        # add current season
+        data['season'] = season    
+        # add to archive
+        seasons_collect.append(data)
+    # concatenate across seasons
+    data = pd.concat(seasons_collect).set_index(['season', 'horizon'])
+
+    return data
+
+
 from pySODM.optimization.objective_functions import ll_poisson
-def make_data_pySODM_compatible(strains, use_ED_visits, start_date, end_date, season): 
+def make_data_pySODM_compatible(strains: bool,
+                                use_ED_visits: bool,
+                                start_date: datetime,
+                                end_date: datetime,
+                                season: str): 
     """
     A function formatting the NC Influenza data in pySODM format depending on the desire to use strain or ED visit information
+
+    
+    input:
+    ------
+
+    - strains: bool
+        - do we want a strain-stratified model?
+
+    - use_ED_visits: bool
+        - do we want to calibrate to the ED visit stream?
+
+    - start_date: datetime
+        - desired startdate of data
+
+    - end_date: datetime
+        - desired enddate of data
+    
+    output:
+    -------
+
+    - data: list containing pd.DataFrame
+        - contains datasets the model should be calibrated to.
+    
+    - states: list containing str
+        - contains names of model states that should be matched to the datasets in `data`.
+        - length: `len(data)`
+    
+    - log_likelihood_fnc: list containing log likelihood function
+        - pySODM.optimization.objective_functions.ll_poisson
+        - length: `len(data)`
+    
+    - log_likelihood_fnc_args: list containing empty lists
+        - length: `len(data)`
     """
 
     if strains:
@@ -224,7 +394,7 @@ def make_data_pySODM_compatible(strains, use_ED_visits, start_date, end_date, se
     return data, states, log_likelihood_fnc, log_likelihood_fnc_args
 
 
-def pySODM_to_hubverse(simout: xr.Dataset,
+def simout_to_hubverse(simout: xr.Dataset,
                         location: int,
                         reference_date: datetime,
                         target: str,
@@ -232,12 +402,12 @@ def pySODM_to_hubverse(simout: xr.Dataset,
                         path: str=None,
                         quantiles: bool=False) -> pd.DataFrame:
     """
-    Convert pySODM simulation result to Hubverse format
+    Convert simulation result to Hubverse format
 
     Parameters
     ----------
     - simout: xr.Dataset
-        - pySODM simulation output. must contain `model_state`.
+        - simulation output (pySODM-compatible) . must contain `model_state`.
 
     - location: int
         - state FIPS code.
@@ -301,14 +471,178 @@ def pySODM_to_hubverse(simout: xr.Dataset,
     return df
 
 
+from pySODM.optimization.objective_functions import log_posterior_probability, log_prior_normal, log_prior_uniform, log_prior_gamma, log_prior_normal, log_prior_beta
+def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparameters):
+    """
+    A function to help prepare the pySODM-compatible priors
+    """
+    if not immunity_linking:
+        pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                                       # parameters to calibrate
+        bounds = [(1e-3,0.075), (0.5, 7), (0.0001,0.0075), (0.20,0.40), (1e-6,0.0006), (0.345,0.565), (-0.30,0.30)]          # parameter bounds
+        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']       # labels in output figures
+        # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        if not hyperparameters:
+            # assign priors (R0 ~ N(1.6, 0.2); all other: uninformative)
+            log_prior_prob_fcn = 5*[log_prior_uniform,] + 2*[log_prior_normal,]
+            log_prior_prob_fcn_args = [{'bounds':  bounds[0]},
+                                       {'bounds':  bounds[1]},
+                                       {'bounds':  bounds[2]},
+                                       {'bounds':  bounds[3]},
+                                       {'bounds':  bounds[4]},
+                                       {'avg':  0.455, 'stdev': 0.057},
+                                       {'avg':  0, 'stdev': 0.15}]
+        # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        else:
+            # load and select priors
+            priors = pd.read_csv('../data/interim/calibration/hyperparameters.csv')
+            priors = priors.loc[((priors['model'] == model_name) & (priors['immunity_linking'] == immunity_linking) & (priors['use_ED_visits'] == use_ED_visits)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
+            # assign values
+            if not strains:
+                log_prior_prob_fcn = 3*[log_prior_gamma,] + 1*[log_prior_beta,] + 1*[log_prior_gamma,] + 1*[log_prior_normal,] + 12*[log_prior_normal,] 
+                log_prior_prob_fcn_args = [ 
+                                        # ED visits
+                                        {'a': priors['rho_i_a'], 'loc': 0, 'scale': priors['rho_i_scale']},                             # rho_i
+                                        {'a': 1, 'loc': 0, 'scale': priors['T_h_scale']},                                               # T_h
+                                        # >>>>>>>>>
+                                        {'a': priors['rho_h_a'], 'loc': 0, 'scale': priors['rho_h_scale']},                             # rho_h
+                                        {'a': priors['f_R_a'], 'b': priors['f_R_b'], 'loc': 0, 'scale': 1},                             # f_R
+                                        {'a': priors['f_I_a'], 'loc': 0, 'scale': priors['f_I_scale']},                                 # f_I
+                                        {'avg': priors['beta_mu'], 'stdev': priors['beta_sigma']},                                      # beta
+                                        {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},    # delta_beta_temporal
+                                        {'avg': priors['delta_beta_temporal_mu_1'], 'stdev': priors['delta_beta_temporal_sigma_1']},    # ...
+                                        {'avg': priors['delta_beta_temporal_mu_2'], 'stdev': priors['delta_beta_temporal_sigma_2']},
+                                        {'avg': priors['delta_beta_temporal_mu_3'], 'stdev': priors['delta_beta_temporal_sigma_3']},
+                                        {'avg': priors['delta_beta_temporal_mu_4'], 'stdev': priors['delta_beta_temporal_sigma_4']},
+                                        {'avg': priors['delta_beta_temporal_mu_5'], 'stdev': priors['delta_beta_temporal_sigma_5']},
+                                        {'avg': priors['delta_beta_temporal_mu_6'], 'stdev': priors['delta_beta_temporal_sigma_6']},
+                                        {'avg': priors['delta_beta_temporal_mu_7'], 'stdev': priors['delta_beta_temporal_sigma_7']},
+                                        {'avg': priors['delta_beta_temporal_mu_8'], 'stdev': priors['delta_beta_temporal_sigma_8']},
+                                        {'avg': priors['delta_beta_temporal_mu_9'], 'stdev': priors['delta_beta_temporal_sigma_9']},
+                                        {'avg': priors['delta_beta_temporal_mu_10'], 'stdev': priors['delta_beta_temporal_sigma_10']},
+                                        {'avg': priors['delta_beta_temporal_mu_11'], 'stdev': priors['delta_beta_temporal_sigma_11']},
+                                        ]          
+            else:
+                log_prior_prob_fcn = 4*[log_prior_gamma,] + 2*[log_prior_beta,] + 2*[log_prior_gamma,] + 2*[log_prior_normal,] + 12*[log_prior_normal,] 
+                log_prior_prob_fcn_args = [ 
+                                        # ED visits
+                                        {'a': priors['rho_i_a'], 'loc': 0, 'scale': priors['rho_i_scale']},                             # rho_i
+                                        {'a': 1, 'loc': 0, 'scale': priors['T_h_scale']},                                               # T_h
+                                        # >>>>>>>>>
+                                        {'a': priors['rho_h_a_0'], 'loc': 0, 'scale': priors['rho_h_scale_0']},                         # rho_h_0
+                                        {'a': priors['rho_h_a_1'], 'loc': 0, 'scale': priors['rho_h_scale_1']},                         # rho_h_1
+                                        {'a': priors['f_R_a_0'], 'b': priors['f_R_b_0'], 'loc': 0, 'scale': 1},                         # f_R_0
+                                        {'a': priors['f_R_a_1'], 'b': priors['f_R_b_1'], 'loc': 0, 'scale': 1},                         # f_R_1
+                                        {'a': priors['f_I_a_0'], 'loc': 0, 'scale': priors['f_I_scale_0']},                             # f_I_0
+                                        {'a': priors['f_I_a_1'], 'loc': 0, 'scale': priors['f_I_scale_1']},                             # f_I_1
+                                        {'avg': priors['beta_mu_0'], 'stdev': priors['beta_sigma_0']},                                  # beta_0
+                                        {'avg': priors['beta_mu_1'], 'stdev': priors['beta_sigma_1']},                                  # beta_1
+                                        {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},    # delta_beta_temporal
+                                        {'avg': priors['delta_beta_temporal_mu_1'], 'stdev': priors['delta_beta_temporal_sigma_1']},    # ...
+                                        {'avg': priors['delta_beta_temporal_mu_2'], 'stdev': priors['delta_beta_temporal_sigma_2']},
+                                        {'avg': priors['delta_beta_temporal_mu_3'], 'stdev': priors['delta_beta_temporal_sigma_3']},
+                                        {'avg': priors['delta_beta_temporal_mu_4'], 'stdev': priors['delta_beta_temporal_sigma_4']},
+                                        {'avg': priors['delta_beta_temporal_mu_5'], 'stdev': priors['delta_beta_temporal_sigma_5']},
+                                        {'avg': priors['delta_beta_temporal_mu_6'], 'stdev': priors['delta_beta_temporal_sigma_6']},
+                                        {'avg': priors['delta_beta_temporal_mu_7'], 'stdev': priors['delta_beta_temporal_sigma_7']},
+                                        {'avg': priors['delta_beta_temporal_mu_8'], 'stdev': priors['delta_beta_temporal_sigma_8']},
+                                        {'avg': priors['delta_beta_temporal_mu_9'], 'stdev': priors['delta_beta_temporal_sigma_9']},
+                                        {'avg': priors['delta_beta_temporal_mu_10'], 'stdev': priors['delta_beta_temporal_sigma_10']},
+                                        {'avg': priors['delta_beta_temporal_mu_11'], 'stdev': priors['delta_beta_temporal_sigma_11']},
+                                        ] 
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+    else:
+        pars = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']                                            # parameters to calibrate
+        bounds = [(1e-3,0.075), (0.5, 7), (1e-4,0.01), (0,0.00025), (0,0.00025), (0,0.00025), (1e-6,0.0006), (0.345,0.565), (-0.30,0.30)]               # parameter bounds
+        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']     # labels in output figures
+        # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        if not hyperparameters:
+            # assign priors (R0 ~ N(1.6, 0.2); all other: uninformative)
+            log_prior_prob_fcn = 3*[log_prior_uniform,] + 3*[log_prior_gamma] + 1*[log_prior_uniform,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
+            log_prior_prob_fcn_args = [{'bounds':  bounds[0]},
+                                       {'bounds':  bounds[1]},
+                                       {'bounds':  bounds[2]},
+                                       {'a': 1, 'loc': 0, 'scale': 2E-04},
+                                       {'a': 1, 'loc': 0, 'scale': 2E-04},
+                                       {'a': 1, 'loc': 0, 'scale': 2E-04},
+                                       {'bounds':  bounds[6]},
+                                       {'avg':  0.455, 'stdev': 0.055},
+                                       {'avg':  0, 'stdev': 0.15}]
+        # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+        else:
+            # load and select priors
+            priors = pd.read_csv('../data/interim/calibration/hyperparameters.csv')
+            priors = priors.loc[((priors['model'] == model_name) & (priors['immunity_linking'] == immunity_linking) & (priors['use_ED_visits'] == use_ED_visits)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
+            # assign values
+            if not strains:
+                log_prior_prob_fcn = 7*[log_prior_gamma,] + 13*[log_prior_normal,] 
+                log_prior_prob_fcn_args = [ 
+                                        # ED visits
+                                        {'a': priors['rho_i_a'], 'loc': 0, 'scale': priors['rho_i_scale']},                             # rho_i
+                                        {'a': 1, 'loc': 0, 'scale': priors['T_h_scale']},                                               # T_h
+                                        # >>>>>>>>>
+                                        {'a': priors['rho_h_a'], 'loc': 0, 'scale': priors['rho_h_scale']},                             # rho_h
+                                        {'a': priors['iota_1_a'], 'loc': 0, 'scale': priors['iota_1_scale']},                           # iota_1
+                                        {'a': priors['iota_2_a'], 'loc': 0, 'scale': priors['iota_2_scale']},                           # iota_2
+                                        {'a': priors['iota_3_a'], 'loc': 0, 'scale': priors['iota_3_scale']},                           # iota_3
+                                        {'a': priors['f_I_a'], 'loc': 0, 'scale': priors['f_I_scale']},                                 # f_I
+                                        {'avg': priors['beta_mu'], 'stdev': priors['beta_sigma']},                                      # beta
+                                        {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},    # delta_beta_temporal
+                                        {'avg': priors['delta_beta_temporal_mu_1'], 'stdev': priors['delta_beta_temporal_sigma_1']},    # ...
+                                        {'avg': priors['delta_beta_temporal_mu_2'], 'stdev': priors['delta_beta_temporal_sigma_2']},
+                                        {'avg': priors['delta_beta_temporal_mu_3'], 'stdev': priors['delta_beta_temporal_sigma_3']},
+                                        {'avg': priors['delta_beta_temporal_mu_4'], 'stdev': priors['delta_beta_temporal_sigma_4']},
+                                        {'avg': priors['delta_beta_temporal_mu_5'], 'stdev': priors['delta_beta_temporal_sigma_5']},
+                                        {'avg': priors['delta_beta_temporal_mu_6'], 'stdev': priors['delta_beta_temporal_sigma_6']},
+                                        {'avg': priors['delta_beta_temporal_mu_7'], 'stdev': priors['delta_beta_temporal_sigma_7']},
+                                        {'avg': priors['delta_beta_temporal_mu_8'], 'stdev': priors['delta_beta_temporal_sigma_8']},
+                                        {'avg': priors['delta_beta_temporal_mu_9'], 'stdev': priors['delta_beta_temporal_sigma_9']},
+                                        {'avg': priors['delta_beta_temporal_mu_10'], 'stdev': priors['delta_beta_temporal_sigma_10']},
+                                        {'avg': priors['delta_beta_temporal_mu_11'], 'stdev': priors['delta_beta_temporal_sigma_11']},
+                                        ]          # arguments of prior functions
+            else:
+                log_prior_prob_fcn = 12*[log_prior_gamma,] + 14*[log_prior_normal,]
+                log_prior_prob_fcn_args = [ 
+                                        # ED visits
+                                        {'a': priors['rho_i_a'], 'loc': 0, 'scale': priors['rho_i_scale']},                             # rho_i
+                                        {'a': 1, 'loc': 0, 'scale': priors['T_h_scale']},                                               # T_h
+                                        # >>>>>>>>>
+                                        {'a': priors['rho_h_a_0'], 'loc': 0, 'scale': priors['rho_h_scale_0']},                         # rho_h_0
+                                        {'a': priors['rho_h_a_1'], 'loc': 0, 'scale': priors['rho_h_scale_1']},                         # rho_h_1
+                                        {'a': priors['iota_1_a_0'], 'loc': 0, 'scale': priors['iota_1_scale_0']},                       # iota_1_0
+                                        {'a': priors['iota_1_a_1'], 'loc': 0, 'scale': priors['iota_1_scale_1']},                       # iota_1_1
+                                        {'a': priors['iota_2_a_0'], 'loc': 0, 'scale': priors['iota_2_scale_0']},                       # iota_2_0
+                                        {'a': priors['iota_2_a_1'], 'loc': 0, 'scale': priors['iota_2_scale_1']},                       # iota_2_1
+                                        {'a': priors['iota_3_a_0'], 'loc': 0, 'scale': priors['iota_3_scale_0']},                       # iota_3_0
+                                        {'a': priors['iota_3_a_1'], 'loc': 0, 'scale': priors['iota_3_scale_1']},                       # iota_3_1
+                                        {'a': priors['f_I_a_0'], 'loc': 0, 'scale': priors['f_I_scale_0']},                             # f_I_0
+                                        {'a': priors['f_I_a_1'], 'loc': 0, 'scale': priors['f_I_scale_1']},                             # f_I_1
+                                        {'avg': priors['beta_mu_0'], 'stdev': priors['beta_sigma_0']},                                  # beta_0
+                                        {'avg': priors['beta_mu_1'], 'stdev': priors['beta_sigma_1']},                                  # beta_1
+                                        {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},    # delta_beta_temporal
+                                        {'avg': priors['delta_beta_temporal_mu_1'], 'stdev': priors['delta_beta_temporal_sigma_1']},    # ...
+                                        {'avg': priors['delta_beta_temporal_mu_2'], 'stdev': priors['delta_beta_temporal_sigma_2']},
+                                        {'avg': priors['delta_beta_temporal_mu_3'], 'stdev': priors['delta_beta_temporal_sigma_3']},
+                                        {'avg': priors['delta_beta_temporal_mu_4'], 'stdev': priors['delta_beta_temporal_sigma_4']},
+                                        {'avg': priors['delta_beta_temporal_mu_5'], 'stdev': priors['delta_beta_temporal_sigma_5']},
+                                        {'avg': priors['delta_beta_temporal_mu_6'], 'stdev': priors['delta_beta_temporal_sigma_6']},
+                                        {'avg': priors['delta_beta_temporal_mu_7'], 'stdev': priors['delta_beta_temporal_sigma_7']},
+                                        {'avg': priors['delta_beta_temporal_mu_8'], 'stdev': priors['delta_beta_temporal_sigma_8']},
+                                        {'avg': priors['delta_beta_temporal_mu_9'], 'stdev': priors['delta_beta_temporal_sigma_9']},
+                                        {'avg': priors['delta_beta_temporal_mu_10'], 'stdev': priors['delta_beta_temporal_sigma_10']},
+                                        {'avg': priors['delta_beta_temporal_mu_11'], 'stdev': priors['delta_beta_temporal_sigma_11']},
+                                        ]          # arguments of prior functions
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+    return pars, bounds, labels, log_prior_prob_fcn, log_prior_prob_fcn_args
+
+
 #########################################################
 ## Transmission rate: equivalent Python implementation ##
 #########################################################
 
-from datetime import datetime
 from scipy.ndimage import gaussian_filter1d
-
-def get_transmission_coefficient_timeseries(modifier_vector, sigma=2.5):
+def get_transmission_coefficient_timeseries(modifier_vector: np.ndarray,
+                                            sigma: float=2.5) -> np.ndarray:
     """
     A function mapping the modifier_vectors between Sep 15 and May 15 and smoothing it with a gaussian filter
 
@@ -317,10 +651,10 @@ def get_transmission_coefficient_timeseries(modifier_vector, sigma=2.5):
 
     - modifier_vector: np.ndarray
         - 1D numpy array (time) or 2D numpy array (time x spatial unit).
-        - Each entry represents a value of a knotted temporal modifier, the length of each modifier is equal to the number of days between Oct 15 and Apr 15 divided by `len(modifier_vector)`.
+        - Each entry represents a value of a knotted temporal modifier, the length of each modifier is equal to the time between Oct 15 and Apr 15 (182 days) divided by `len(modifier_vector)`.
 
     - sigma: float 
-        - gaussian smoother's standard deviation. higher values represent more smooth trajectories but increase runtime. None represents no smoothing (fastest).
+        - gaussian smoother's standard deviation. higher values represent more smooth trajectories but increase runtime. `None` represents no smoothing (fastest).
 
     output
     ------
@@ -353,10 +687,56 @@ def get_transmission_coefficient_timeseries(modifier_vector, sigma=2.5):
 ## Plot fit helper function ##
 ##############################
 
-def plot_fit(simout, data, states, fig_path, identifier,
-                coordinates_data_also_in_model, aggregate_over, additional_axes_data):
+def plot_fit(simout: xr.Dataset,
+             data_calibration: list,
+             data_validation: list,
+             states: list,
+             fig_path: str,
+             identifier: str,
+             coordinates_data_also_in_model: list,
+             aggregate_over: list,
+             additional_axes_data: list) -> None:
     """
-    Visualises the goodness of fit for every season
+    A function used to visualise the goodness of fit 
+
+    #TODO: LIMITED TO ONE COORDINATE PER DIMENSION PER DATASET !!!
+
+    input
+    -----
+
+    - simout: xr.Dataset
+        - simulation output (pySODM-compatible) . must contain all states listed in `states`.
+    
+    - data_calibration: list containing pySODM-compatible pd.DataFrame
+        - data model was calibrated to.
+        - obtained using hierarchSIR.utils.make_data_pySODM_compatible.
+        - length: `len(states)`
+    
+    - data_validation: list containing pySODM-compatible pd.DataFrame
+        - data model was not calibrated to (validation).
+        - obtained using hierarchSIR.utils.make_data_pySODM_compatible.
+        - length: `len(states)`
+
+    - states: list containing str
+        - names of model states that were matched with data in `data_calibration`.
+    
+    - fig_path: str
+        - path where figure should be stored, relative to path of file this function is called from.
+    
+    - identifier: str
+        - an ID used to name the output figure.
+    
+    - coordinates_data_also_in_model: list
+        - contains a list for every dataset. contains a list for every model dimension besides 'date'/'time', containing the coordinates present in the data and also in the model.
+        - obtained from pySODM.optimization.log_posterior_probability
+    
+    - aggregate_over: list
+        - list of length len(data). contains, per dataset, the remaining model dimensions not present in the dataset. these are then automatically summed over while calculating the log likelihood.
+        - obtained from pySODM.optimization.log_posterior_probability
+    
+    - additional_axes_data: list
+        - axes in dataset, excluding the 'time'/'date' axes.
+        - obtained from pySODM.optimization.log_posterior_probability
     """
 
     # check if 'draws' are provided
@@ -379,7 +759,7 @@ def plot_fit(simout, data, states, fig_path, identifier,
 
     # loop over datasets
     k=0
-    for i, df in enumerate(data):
+    for i, (df_calib, df_valid) in enumerate(zip(data_calibration, data_validation)):
         
         # aggregate data
         for dimension in simout.dims:
@@ -389,11 +769,13 @@ def plot_fit(simout, data, states, fig_path, identifier,
         # loop over coordinates 
         if coordinates_data_also_in_model[i]:
             for coord in coordinates_data_also_in_model[i]:
-                # get dimension coord is in #TODO: LIMITED TO ONE COORDINATE PER DIMENSION PER DATASET !!!
+                # get dimension coord is in 
                 dim_name = additional_axes_data[i][0]
                 coord = coord[0]
                 # plot
-                ax[k].scatter(df.index.get_level_values('date').values, 7*df.loc[slice(None), coord].values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                ax[k].scatter(df_calib.index.get_level_values('date').values, 7*df_calib.loc[slice(None), coord].values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                ax[k].scatter(df_valid.index.get_level_values('date').values, 7*df_valid.loc[slice(None), coord].values, color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                
                 if samples:
                     ax[k].fill_between(simout['date'], 7*simout[states[i]].sel({dim_name: coord}).quantile(dim='draws', q=0.05/2),
                             7*simout[states[i]].sel({dim_name: coord}).quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
@@ -405,7 +787,8 @@ def plot_fit(simout, data, states, fig_path, identifier,
                 k += 1
         else:
             # plot
-            ax[k].scatter(df.index, 7*df.values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+            ax[k].scatter(df_calib.index, 7*df_calib.values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+            ax[k].scatter(df_valid.index, 7*df_valid.values, color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
             if samples:
                 ax[k].fill_between(simout['date'], 7*simout[states[i]].quantile(dim='draws', q=0.05/2),
                             7*simout[states[i]].quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
@@ -422,5 +805,11 @@ def plot_fit(simout, data, states, fig_path, identifier,
     plt.tight_layout()
     plt.savefig(fig_path+f'{identifier}-FIT.pdf')
     plt.close()
+
+# helper function
+import argparse
+def str_to_bool(value):
+    """Convert string arguments to boolean (for SLURM environment variables)."""
+    return value.lower() in ["true", "1", "yes"]
 
 

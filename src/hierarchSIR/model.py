@@ -30,24 +30,25 @@ class SIR():
         # TODO: docstring
         """
 
-        # take in the initial condition function and retrieve its arguments
-        self.ICF = initial_condition_function
-        self.ICF_args_names = list(inspect.signature(initial_condition_function).parameters.keys())
-
         # assign variables to object
         self.parameters = parameters
         self.n_strains = n_strains
+
+        # take in the initial condition function and retrieve its arguments
+        self.ICF = initial_condition_function
+        self.ICF_args_names = list(inspect.signature(initial_condition_function).parameters.keys())
+        self.initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
 
         # attributes needed to make model compatible with pySODM's optimization module
         self.states_names = ['S', 'I', 'R', 'I_inc', 'H_inc']
         self.coordinates = {'strain': np.linspace(start=0, stop=n_strains-1, num=n_strains).tolist()}
         self.state_shapes, self.dimensions_per_state, self.state_coordinates = build_state_sizes_dimensions(self.coordinates, self.states_names, None)
         self.initial_states = {'S': np.zeros(n_strains),  'I': np.zeros(n_strains), 'R': np.zeros(n_strains), 'I_inc': np.zeros(n_strains), 'H_inc': np.zeros(n_strains)}
-        _, self.parameter_shapes = validate_calibrated_parameters(self.parameters.keys(), self.parameters)
+        _, self.parameter_shapes = validate_calibrated_parameters([par for par in self.parameters.keys() if par != 'season'], self.parameters)
 
         pass
 
-    def sim(self, simtime, N=1, draw_function=None, draw_function_kwargs={}):
+    def sim(self, simtime, atol=1e-2, rtol=1e-5, N=1, draw_function=None, draw_function_kwargs={}):
         """
         # TODO: docstring
         """
@@ -69,11 +70,11 @@ class SIR():
                 if ((shape == (1,)) & (par not in ['T_h', 'gamma', 'sigma', 'modifier_length']) & (par != 'delta_beta_temporal')):
                     self.parameters[par] = np.array([self.parameters[par],])
             # build initial condition
-            initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
+            self.initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
             # remove ICF arguments from the parameters
             self.parameters = {key: value for key, value in self.parameters.items() if key not in self.ICF_args_names}
             # simulate model
-            simout = sir_model.integrate(*time, **initial_condition, **self.parameters)
+            simout = sir_model.integrate(*time, atol, rtol, **self.initial_condition, **self.parameters)
             # format and append output
             output.append(self.format_output(np.array(simout), start_date, self.states_names, self.n_strains))
             # Reset parameter dictionary

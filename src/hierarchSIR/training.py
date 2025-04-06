@@ -24,7 +24,7 @@ from pySODM.optimization.objective_functions import ll_poisson, validate_calibra
 
 class log_posterior_probability():
 
-    def __init__(self, model, par_names, par_bounds, par_hyperdistributions, datasets):
+    def __init__(self, model, par_names, par_bounds, par_hyperdistributions, datasets, seasons):
 
         # get the shapes of the model parameters
         self.par_sizes, self.par_shapes = validate_calibrated_parameters(par_names, model.parameters)
@@ -98,6 +98,7 @@ class log_posterior_probability():
         self.par_hyperdistributions = par_hyperdistributions
         self.par_bounds = par_bounds
         self.datasets = datasets
+        self.seasons = seasons
 
         pass
 
@@ -128,11 +129,11 @@ class log_posterior_probability():
         theta_hyperpars = list_to_dict(theta_hyperpars, self.hyperpar_shapes, retain_floats=True)
 
         # loop over the seasons
-        for i, data in enumerate(self.datasets):
+        for i, (season, data) in enumerate(zip(self.seasons, self.datasets)):
 
             # get this season's parameters for the model
             theta_season = theta_pars[i*self.n_pars:(i+1)*self.n_pars]
-
+ 
             # expand the model parameters bounds (beta_temporal is 1D)
             pars_model_bounds = expand_bounds(self.par_sizes, self.par_bounds)
             
@@ -144,6 +145,9 @@ class log_posterior_probability():
                 elif theta < pars_model_bounds[k][0]:
                     theta_season[k] = pars_model_bounds[k][0]
                     lpp += - np.inf
+
+            # Respect hyperdistribution parameter constraints
+            # TODO
 
             # convert to a dictionary for ease
             theta_season = list_to_dict(theta_season, self.par_shapes, retain_floats=True)
@@ -177,9 +181,8 @@ class log_posterior_probability():
             # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
             if math.isnan(lpp):
                 return -np.inf
-            # nor are negative betas
-            #if (any(x <= 0) for x in theta_hyperpars['beta_mu']):
-            #    return -np.inf
+            # R0 = 1.6 pm 0.2
+            lpp += np.sum(norm.logpdf(theta_hyperpars['beta_mu'], loc=0.455, scale=0.055))  
             # or huge delta_beta_temporal_mu/sigma
             if ((any(((x < -1) | (x > 1)) for x in theta_hyperpars['delta_beta_temporal_mu'])) | (any(((x < 0) | (x > 1)) for x in theta_hyperpars['delta_beta_temporal_sigma']))):
                 return -np.inf
@@ -190,6 +193,8 @@ class log_posterior_probability():
             for par in self.par_names:
                 if ((par != 'delta_beta_temporal') & (self.model.parameter_shapes[par] == (1,))):
                     self.model.parameters[par] = np.array([theta_season[par],])
+            # Set the right season (needed for the immunity linking)
+            self.model.parameters['season'] = season
 
             # run the forward simulation
             simout = self.model.sim(self.simtimes[i])
@@ -227,7 +232,6 @@ class log_posterior_probability():
                         raise ValueError(f"simulation output contains nan, most likely due to numerical unstability. try using more conservative bounds.")
                     # compute lpp
                     lpp += self.w[i,j] * ll_poisson(x, y)
-
         return lpp
 
 ######################
@@ -627,6 +631,9 @@ def plot_fit(model, datasets, simtimes, samples_xr, parameter_shapes, path, iden
     # LOOP seasons
     simout=[]
     for season, data, simtime in zip(list(samples_xr.coords['season'].values), datasets, simtimes):
+
+        # set the season
+        model.parameters['season'] = season
 
         # simulate model
         out = model.sim(simtime, N=100, draw_function=draw_function,

@@ -7,7 +7,7 @@ t_start = datetime(2023, 10, 1)
 t_stop = datetime(2024, 8, 1)
 
 # Set up model
-model = initialise_model(strains=True)
+model = initialise_model(strains=True, immunity_linking=True, season='2019-2020')
 
 # Wrapper for timer
 import timeit
@@ -32,7 +32,6 @@ ax[0].legend()
 ## incidence
 ax[1].plot(t, simout['I_inc'].sel(strain=0), label="I_inc")
 ax[1].plot(t, simout['H_inc'].sel(strain=0), label="H_inc")
-
 plt.xlabel("Time (days)")
 plt.ylabel("Population")
 plt.legend()
