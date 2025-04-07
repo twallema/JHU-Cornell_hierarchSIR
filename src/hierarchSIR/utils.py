@@ -30,51 +30,32 @@ def initialise_model(strains=False, immunity_linking=False, season=None, fips_st
         - '37': North Carolina
     """
 
-    if strains == True:
-        n_strains = 2
-        # Parameters
-        parameters = {
+    # Parameters
+    parameters = {
         # initial condition function
-        'f_I': np.array([1e-4, 1e-6]),
-        'f_R': np.array([0.35, 0.35]), 
+        'f_I': np.array(strains * [1e-4,]),
+        'f_R': np.array(strains * [0.35,]),
         # SIR parameters
-        'beta': [0.5, 0.5],
-        'gamma': [1/3.5, 1/3.5],
+        'beta': strains *[0.5,],
+        'gamma': strains * [1/3.5,],
         # modifiers
         'delta_beta_temporal': np.array([1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5])-1,
         'modifier_length': 15,
         'sigma': 2.5,
         # observation parameters
         'rho_i': [0.025,],
-        'rho_h': [0.025, 0.025],
+        'rho_h': strains*[0.025,],
         'T_h': 3.5
         }
-    else:
-        n_strains = 1
-        # Parameters
-        parameters = {
-        # initial condition function
-        'f_I': np.array([1e-4,]),
-        'f_R': np.array([0.35,]), 
-        # SIR parameters
-        'beta': [0.5,],
-        'gamma': [1/3.5,],
-        # modifiers
-        'delta_beta_temporal': np.array([1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5])-1,
-        'modifier_length': 15,
-        'sigma': 2.5,
-        # observation parameters
-        'rho_i': [0.025,],
-        'rho_h': [0.0025,],
-        'T_h': 3.5
-        }
-
+    
     # get inhabitants
-    population = np.ones(n_strains) * get_demography(fips_state)
+    population = np.ones(strains) * get_demography(fips_state)
 
     # initialise initial condition function
     if immunity_linking:
-        if strains:
+        if strains==3:
+            historic_cumulative_incidence = get_NC_cumulatives_per_season()[['H_inc_AH1', 'H_inc_AH3', 'H_inc_B']]
+        elif strains==2:
             historic_cumulative_incidence = get_NC_cumulatives_per_season()[['H_inc_A', 'H_inc_B']]
         else:
             historic_cumulative_incidence = get_NC_cumulatives_per_season()['H_inc']
@@ -87,9 +68,9 @@ def initialise_model(strains=False, immunity_linking=False, season=None, fips_st
     parameters['season'] = season
     if immunity_linking:
         del parameters['f_R']
-        parameters['iota_1'] = parameters['iota_2'] = parameters['iota_3'] = np.ones(n_strains) * 1e-5
+        parameters['iota_1'] = parameters['iota_2'] = parameters['iota_3'] = np.ones(strains) * 1e-5
 
-    return SIR(parameters, ICF, n_strains)
+    return SIR(parameters, ICF, strains)
 
 
 class initial_condition_function():
@@ -216,7 +197,7 @@ def get_NC_influenza_data(startdate: datetime,
                           enddate: datetime,
                           season: str) -> pd.DataFrame:
     """
-    Get the North Carolina Influenza dataset -- containing ED visits, ED admissions and subtype information -- for a given season
+    Get the North Carolina Influenza dataset -- containing ED visits, ED admissions and all subtype information -- for a given season
 
     input
     -----
@@ -289,13 +270,13 @@ def get_NC_influenza_data(startdate: datetime,
 
 def get_NC_cumulatives_per_season() -> pd.DataFrame:
     """
-    A function that returns, for each season, the cumulative total H_inc, I_inc, H_inc_A and H_inc_B in the season - 0, season - 1 and season - 2.
+    A function that returns, for each season, the cumulative total incidence in the season - 0, season - 1 and season - 2.
 
     output
     ------
 
     cumulatives: pd.DataFrame
-        index: season, horizon. columns: I_inc, H_inc, H_inc_A, H_inc_B.
+        index: season, horizon. columns: I_inc, H_inc, H_inc_A, H_inc_B, H_inc_AH1, H_inc_AH3.
     """
     # define seasons we want output for
     seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']
@@ -316,7 +297,9 @@ def get_NC_cumulatives_per_season() -> pd.DataFrame:
                 "H_inc": data["H_inc"].sum(),
                 "I_inc": data["I_inc"].sum(),
                 "H_inc_A": data["H_inc_A"].sum(),
-                 "H_inc_B": data["H_inc_B"].sum(),
+                "H_inc_B": data["H_inc_B"].sum(),
+                "H_inc_AH1": data["H_inc_AH1"].sum(),
+                "H_inc_AH3": data["H_inc_AH3"].sum(),
             }
             # create the DataFrame
             horizons_collect.append(pd.DataFrame([column_sums]))
@@ -333,7 +316,7 @@ def get_NC_cumulatives_per_season() -> pd.DataFrame:
 
 
 from pySODM.optimization.objective_functions import ll_poisson
-def make_data_pySODM_compatible(strains: bool,
+def make_data_pySODM_compatible(strains: int,
                                 use_ED_visits: bool,
                                 start_date: datetime,
                                 end_date: datetime,
@@ -345,8 +328,8 @@ def make_data_pySODM_compatible(strains: bool,
     input:
     ------
 
-    - strains: bool
-        - do we want a strain-stratified model?
+    - strains: int
+        - how many strains are modeled? 1: flu, 2: flu A, flu B, 3: flu A H1, flu A H3, flu B.
 
     - use_ED_visits: bool
         - do we want to calibrate to the ED visit stream?
@@ -374,8 +357,32 @@ def make_data_pySODM_compatible(strains: bool,
     - log_likelihood_fnc_args: list containing empty lists
         - length: `len(data)`
     """
-
-    if strains:
+    if strains == 3:
+        # pySODM llp data arguments
+        states = ['I_inc', 'H_inc', 'H_inc', 'H_inc']
+        log_likelihood_fnc = [ll_poisson, ll_poisson, ll_poisson, ll_poisson]
+        log_likelihood_fnc_args = [[],[],[], []]
+        # pySODM formatting for flu A H1
+        flu_AH1 = get_NC_influenza_data(start_date, end_date, season)['H_inc_AH1']
+        flu_AH1 = flu_AH1.rename('H_inc') # pd.Series needs to have matching model state's name
+        flu_AH1 = flu_AH1.reset_index()
+        flu_AH1['strain'] = 0
+        flu_AH1 = flu_AH1.set_index(['date', 'strain']).squeeze()
+        # pySODM formatting for flu A H3
+        flu_AH3 = get_NC_influenza_data(start_date, end_date, season)['H_inc_AH3']
+        flu_AH3 = flu_AH3.rename('H_inc') # pd.Series needs to have matching model state's name
+        flu_AH3 = flu_AH3.reset_index()
+        flu_AH3['strain'] = 1
+        flu_AH3 = flu_AH3.set_index(['date', 'strain']).squeeze()
+        # pySODM formatting for flu B
+        flu_B = get_NC_influenza_data(start_date, end_date, season)['H_inc_B']
+        flu_B = flu_B.rename('H_inc') # pd.Series needs to have matching model state's name
+        flu_B = flu_B.reset_index()
+        flu_B['strain'] = 2
+        flu_B = flu_B.set_index(['date', 'strain']).squeeze()
+        # attach all datasets
+        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_AH1, flu_AH3, flu_B]
+    elif strains == 2:
         # pySODM llp data arguments
         states = ['I_inc', 'H_inc', 'H_inc']
         log_likelihood_fnc = [ll_poisson, ll_poisson, ll_poisson]
@@ -394,7 +401,7 @@ def make_data_pySODM_compatible(strains: bool,
         flu_B = flu_B.set_index(['date', 'strain']).squeeze()
         # attach all datasets
         data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_A, flu_B]
-    else:
+    elif strains == 1:
         # pySODM llp data arguments
         states = ['I_inc', 'H_inc']
         log_likelihood_fnc = [ll_poisson, ll_poisson]
