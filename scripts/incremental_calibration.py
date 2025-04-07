@@ -28,7 +28,7 @@ from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, ma
 
 # parse arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("--strains", type=str_to_bool, help="Use a two strain model.")
+parser.add_argument("--strains", type=int, help="Number of strains. Valid options are: 1, 2 (flu A, B) or 3 (flu AH1, AH3, B).")
 parser.add_argument("--immunity_linking", type=str_to_bool, help="Use an immunity linking function.")
 parser.add_argument("--use_ED_visits", type=str_to_bool, help="Use ED visit data (ILI) in addition to ED admission data (hosp. adm.).")
 args = parser.parse_args()
@@ -39,8 +39,8 @@ immunity_linking = args.immunity_linking
 use_ED_visits = args.use_ED_visits
 
 # define seasons and hyperparameter combo's to loop over
-season_lst = ['2024-2025', '2023-2024', '2019-2020', '2018-2019', '2017-2018', '2016-2017', '2015-2016', '2014-2015']
-hyperparameters_lst = ['exclude_2024-2025', 'exclude_2023-2024', 'exclude_2019-2020', 'exclude_2018-2019', 'exclude_2017-2018', 'exclude_2016-2017', 'exclude_2015-2016', 'exclude_2014-2015']
+season_lst = ['2024-2025',]
+hyperparameters_lst = [None,]
 
 ##############
 ## Settings ##
@@ -62,7 +62,7 @@ thin = 50                                                   # Thinning factor em
 processes = int(os.environ.get('NUM_CORES', '16'))          # Number of CPUs to use
 n = 500                                                     # Number of simulations performed in MCMC goodness-of-fit figure
 ## format model name
-model_name = 'SIR-2S' if strains else 'SIR-1S'
+model_name = f'SIR-{strains}S'
 
 # Needed for multiprocessing to work properly
 if __name__ == '__main__':
