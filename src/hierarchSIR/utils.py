@@ -234,7 +234,7 @@ def get_NC_influenza_data(startdate: datetime,
     ------
 
     - data: pd.DataFrame
-        - index: 'date' [datetime], columns: 'H_inc', 'I_inc', 'H_inc_A', 'H_inc_B' (frequency: weekly, converted to daily)
+        - index: 'date' [datetime], columns: 'H_inc', 'I_inc', 'H_inc_A', 'H_inc_B', 'H_inc_AH1', 'H_inc_AH3' (frequency: weekly, converted to daily)
     """
 
     # load raw Hospitalisation and ILI data + convert to daily incidence
@@ -267,7 +267,24 @@ def get_NC_influenza_data(startdate: datetime,
     # throw out rows with na
     df_merged = df_merged.dropna()
     # throw out `fraction_A`
-    return df_merged[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B']].loc[slice(startdate,enddate)]
+    df = df_merged[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B']].loc[slice(startdate,enddate)]
+    # load FluVIEW subtype data to get flu A (H1) vs. flu A (H3)
+    df_subtype = pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/cases/subtypes_FluVIEW-interactive_14-25.csv'))
+    # select South HHS region
+    df_subtype = df_subtype[df_subtype['REGION'] == 'Region 4']
+    # convert year + week to a date YYYY-MM-DD index on Saturday
+    df_subtype['date'] = pd.to_datetime(df_subtype['YEAR'].astype(str) + df_subtype['WEEK'].astype(str) + '0', format='%Y%U%w')
+    df_subtype['date'] = df_subtype['date'] + pd.DateOffset(days=6) - pd.DateOffset(weeks=1)
+    # compute ratios of Flu A (H1) / Flu A (H3)
+    df_subtype['ratio_H1'] = df_subtype['A (H1)'] / (df_subtype['A (H1)'] + df_subtype['A (H3)'])
+    # retain only relevant columns
+    df_subtype = df_subtype[['date', 'ratio_H1']].set_index('date').squeeze()
+    # merge with dataset
+    df_merged = df.merge(df_subtype, left_index=True, right_index=True, how='left')
+    # compute A (H1) and A (H3)
+    df_merged['H_inc_AH1'] = df_merged['H_inc_A'] * df_merged['ratio_H1']
+    df_merged['H_inc_AH3'] = df_merged['H_inc_A'] * (1 - df_merged['ratio_H1'])
+    return df_merged[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B', 'H_inc_AH1', 'H_inc_AH3']]
 
 
 def get_NC_cumulatives_per_season() -> pd.DataFrame:
