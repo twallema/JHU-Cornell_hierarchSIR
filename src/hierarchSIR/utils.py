@@ -809,7 +809,8 @@ def plot_fit(simout: xr.Dataset,
                 coord = coord[0]
                 # plot
                 ax[k].scatter(df_calib.index.get_level_values('date').values, 7*df_calib.loc[slice(None), coord].values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-                ax[k].scatter(df_valid.index.get_level_values('date').values, 7*df_valid.loc[slice(None), coord].values, color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                if not df_valid.empty:
+                    ax[k].scatter(df_valid.index.get_level_values('date').values, 7*df_valid.loc[slice(None), coord].values, color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
                 
                 if samples:
                     ax[k].fill_between(simout['date'], 7*simout[states[i]].sel({dim_name: coord}).quantile(dim='draws', q=0.05/2),
@@ -823,7 +824,8 @@ def plot_fit(simout: xr.Dataset,
         else:
             # plot
             ax[k].scatter(df_calib.index, 7*df_calib.values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
-            ax[k].scatter(df_valid.index, 7*df_valid.values, color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+            if not df_valid.empty:
+                ax[k].scatter(df_valid.index, 7*df_valid.values, color='red', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
             if samples:
                 ax[k].fill_between(simout['date'], 7*simout[states[i]].quantile(dim='draws', q=0.05/2),
                             7*simout[states[i]].quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
