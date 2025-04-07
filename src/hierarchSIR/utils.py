@@ -253,9 +253,10 @@ def get_NC_influenza_data(startdate: datetime,
     df_subtype = pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/cases/subtypes_FluVIEW-interactive_14-25.csv'))
     # select South HHS region
     df_subtype = df_subtype[df_subtype['REGION'] == 'Region 4']
-    # convert year + week to a date YYYY-MM-DD index on Saturday
-    df_subtype['date'] = pd.to_datetime(df_subtype['YEAR'].astype(str) + df_subtype['WEEK'].astype(str) + '0', format='%Y%U%w')
-    df_subtype['date'] = df_subtype['date'] + pd.DateOffset(days=6) - pd.DateOffset(weeks=1)
+    # convert year + week to a date YYYY-MM-DD index on Saturday --> #TODO: use CDC epi weeks to avoid Nan
+    #df_subtype['date'] = pd.to_datetime(df_subtype['YEAR'].astype(str) + df_subtype['WEEK'].astype(str) + '0', format='%Y%U%w')
+    #df_subtype['date'] = df_subtype['date'] + pd.DateOffset(days=6) - pd.DateOffset(weeks=1)
+    df_subtype['date'] = df_subtype.apply(lambda row: get_cdc_week_saturday(row['YEAR'], row['WEEK']), axis=1)
     # compute ratios of Flu A (H1) / Flu A (H3)
     df_subtype['ratio_H1'] = df_subtype['A (H1)'] / (df_subtype['A (H1)'] + df_subtype['A (H3)'])
     # retain only relevant columns
@@ -267,6 +268,16 @@ def get_NC_influenza_data(startdate: datetime,
     df_merged['H_inc_AH3'] = df_merged['H_inc_A'] * (1 - df_merged['ratio_H1'])
     return df_merged[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B', 'H_inc_AH1', 'H_inc_AH3']]
 
+def get_cdc_week_saturday(year, week):
+    # CDC epiweeks start on Sunday and end on Saturday
+    # CDC week 1 is the week with at least 4 days in January
+    # Start from Jan 4th and find the Sunday of that week
+    jan4 = datetime(year, 1, 4)
+    start_of_week1 = jan4 - timedelta(days=jan4.weekday() + 1)  # Move to previous Sunday
+
+    # Add (week - 1) weeks and 6 days to get Saturday
+    saturday_of_week = start_of_week1 + timedelta(weeks=week-1, days=6)
+    return saturday_of_week
 
 def get_NC_cumulatives_per_season() -> pd.DataFrame:
     """
