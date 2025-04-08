@@ -32,7 +32,7 @@ Contains an overview of the raw data sources, and the conversion scripts used to
 
 + `subtypes_NC_14-25.csv`: Number of positive tests reported by PHE facilities attributed to Influenza A versus Influenza B Influenza. Data for 2014-2024 were extracted from the end-of-season reports available in the raw data folder: `influenza-surveillance-summary_NC_xx-xx.pdf`. Data for 2025 were downloaded from https://covid19.ncdhhs.gov/dashboard/respiratory-virus-surveillance. The seasons 2012-2013 and 2013-2014 contain the reported season's cumulative totals, repeated from Oct-May.
 
-+ `subtypes_FluVIEW-interactive_14-25.csv`: Contains the weekly subtype interformation for the US' HHS regions from 2014-2025. Columns: "REGION TYPE", "YEAR", "WEEK", "A (H1)", "A(H3)", "B".  Built by combining `ICL_NREVSS_Combined_prior_to_2015_16.csv` and `ICL_NREVSS_Public_Health_Labs.csv`.
++ `subtypes_FluVIEW-interactive_14-25.csv`: Contains the weekly subtype interformation for the US' HHS regions from 2014-2025. Columns: "REGION TYPE", "YEAR", "WEEK", "A (H1)", "A(H3)", "B".  Built by combining `ICL_NREVSS_Combined_prior_to_2015_16.csv` and `ICL_NREVSS_Public_Health_Labs.csv`. Week 53 of 2015 had to be inserted manually, it is a copy of week 52. Week 53 of 2014 had to be removed, for some weird reason.
 
 ### Calibration
 
