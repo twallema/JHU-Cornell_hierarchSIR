@@ -253,12 +253,12 @@ def get_NC_influenza_data(startdate: datetime,
     df_subtype = pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/cases/subtypes_FluVIEW-interactive_14-25.csv'))
     # select South HHS region
     df_subtype = df_subtype[df_subtype['REGION'] == 'Region 4']
-    # convert year + week to a date YYYY-MM-DD index on Saturday --> #TODO: use CDC epi weeks to avoid Nan
-    #df_subtype['date'] = pd.to_datetime(df_subtype['YEAR'].astype(str) + df_subtype['WEEK'].astype(str) + '0', format='%Y%U%w')
-    #df_subtype['date'] = df_subtype['date'] + pd.DateOffset(days=6) - pd.DateOffset(weeks=1)
+    # convert year + week to a date YYYY-MM-DD index on Saturday
     df_subtype['date'] = df_subtype.apply(lambda row: get_cdc_week_saturday(row['YEAR'], row['WEEK']), axis=1)
     # compute ratios of Flu A (H1) / Flu A (H3)
     df_subtype['ratio_H1'] = df_subtype['A (H1)'] / (df_subtype['A (H1)'] + df_subtype['A (H3)'])
+    # what if there is no flu A (H1) or flu A (H3)
+    df_subtype['ratio_H1'] = df_subtype['ratio_H1'].fillna(1)
     # retain only relevant columns
     df_subtype = df_subtype[['date', 'ratio_H1']].set_index('date').squeeze()
     # merge with dataset
@@ -513,7 +513,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
     """
     if not immunity_linking:
         pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                                       # parameters to calibrate
-        bounds = [(1e-3,0.075), (0.5, 7), (0.0001,0.0075), (0.20,0.40), (1e-6,0.0006), (0.345,0.565), (-0.30,0.30)]          # parameter bounds
+        bounds = [(1e-3,0.075), (0.5, 14), (0.0001,0.0075), (0.10,0.90), (1e-6,0.0006), (0.30,0.60), (-0.40,0.40)]          # parameter bounds
         labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']       # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
@@ -588,7 +588,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
 
     else:
         pars = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']                                            # parameters to calibrate
-        bounds = [(1e-3,0.075), (0.5, 7), (1e-4,0.01), (0,0.00025), (0,0.00025), (0,0.00025), (1e-6,0.0006), (0.345,0.565), (-0.30,0.30)]               # parameter bounds
+        bounds = [(1e-3,0.075), (0.5, 14), (1e-4,0.01), (0,0.001), (0,0.001), (0,0.001), (1e-6,0.0006), (0.30,0.60), (-0.40,0.40)]                  # parameter bounds
         labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']     # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
