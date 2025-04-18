@@ -14,7 +14,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime, timedelta
-from scipy.stats import expon, beta, norm, gamma
+from scipy.stats import expon, beta, norm, gamma, lognorm
 from pySODM.optimization.utils import list_to_dict, add_poisson_noise
 from pySODM.optimization.objective_functions import ll_poisson, validate_calibrated_parameters, expand_bounds, validate_dataset, create_fake_xarray_output, compare_data_model_coordinates
 
@@ -44,6 +44,9 @@ class log_posterior_probability():
             elif hyperdist == 'beta':
                 hyperpar_shapes[f'{name}_a'] = shape
                 hyperpar_shapes[f'{name}_b'] = shape
+            elif hyperdist == 'lognormal':
+                hyperpar_shapes[f'{name}_s'] = shape
+                hyperpar_shapes[f'{name}_scale'] = shape
             else:
                 ValueError(f"'{hyperdist}' is not a valid hyperdistribution.")
         self.hyperpar_shapes = hyperpar_shapes
@@ -177,15 +180,18 @@ class log_posterior_probability():
                     b_name = f'{pars_model_name}_b'
                     ### compute lpp
                     lpp += np.sum(beta.logpdf(theta_season[pars_model_name], a=theta_hyperpars[a_name], b=theta_hyperpars[b_name]))       
+                elif pars_model_hyperdistribution == 'lognormal':
+                    ### construct hyperpars names
+                    s_name = f'{pars_model_name}_s'
+                    scale_name = f'{pars_model_name}_scale'
+                    ### compute lpp
+                    lpp += np.sum(lognorm.logpdf(theta_season[pars_model_name], s=theta_hyperpars[s_name], scale=theta_hyperpars[scale_name]))   
 
             # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
             if math.isnan(lpp):
                 return -np.inf
             # R0 = 1.6 pm 0.2
             lpp += np.sum(norm.logpdf(theta_hyperpars['beta_mu'], loc=0.455, scale=0.055))  
-            # or huge delta_beta_temporal_mu/sigma
-            if ((any(((x < -1) | (x > 1)) for x in theta_hyperpars['delta_beta_temporal_mu'])) | (any(((x < 0) | (x > 1)) for x in theta_hyperpars['delta_beta_temporal_sigma']))):
-                return -np.inf
 
             # Assign model parameters
             self.model.parameters.update(theta_season)
