@@ -21,7 +21,7 @@ from hierarchSIR.utils import initialise_model, make_data_pySODM_compatible, str
 
 # parse arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("--strains", type=str_to_bool, help="Use a two strain model.")
+parser.add_argument("--strains", type=int, help="Number of strains. Valid options are: 1, 2 (flu A, B) or 3 (flu AH1, AH3, B).")
 parser.add_argument("--immunity_linking", type=str_to_bool, help="Use an immunity linking function.")
 parser.add_argument("--use_ED_visits", type=str_to_bool, help="Use ED visit data (ILI) in addition to ED admission data (hosp. adm.).")
 args = parser.parse_args()
@@ -35,32 +35,32 @@ use_ED_visits = args.use_ED_visits
 ## Settings ##
 ##############
 
+# model settings
+fips_state = 37
+
 # calibration settings
-fips_state = 37                                                                                                     # use both ED admission (hospitalisation) and ED visits (ILI) data 
-identifiers_list = ['exclude_2024-2025','exclude_2024-2025_bis']                                                                           # identifiers of training datasets
+## datasets
+identifiers_list = ['exclude_2024-2025',]                                                                           # identifiers of training datasets
 seasons_list = [                                                                                                    # season to include in training
-        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024'],
         ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024'],
         ]                                                                                                                   
 start_calibration_month = 10                                                                                        # start calibration on month 10, day 1
 end_calibration_month = 5                                                                                           # end calibration on month 5, day 1
 run_date = datetime.today().strftime("%Y-%m-%d")
-processes = int(os.environ.get('NUM_CORES', '16'))
-
-# Define number of chains
-max_n = 200
-n_chains = 500
+## define number of chains
+max_n = 500
+n_chains = 600
 pert = 0.05
-
-# Printing and postprocessing
-print_n = 200
+processes = int(os.environ.get('NUM_CORES', '16'))
+## printing and postprocessing
+print_n = 500
 backend = None
 discard = 0
 thin = 1
 
 # Make folder structure
 ## format model name
-model_name = 'SIR-2S' if strains else 'SIR-1S'
+model_name = f'SIR-{strains}S'
 ## define samples path
 samples_path=fig_path=f'../data/interim/calibration/hierarchical-training/{model_name}/immunity_linking-{immunity_linking}/ED_visits-{use_ED_visits}/' # Path to backend
 ## check if samples folder exists, if not, make it

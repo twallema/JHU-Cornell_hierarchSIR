@@ -409,7 +409,7 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, hyperpars_s
     nrows = int((n_subfigs - (n_subfigs % ncols))/ncols + 1)
     
     # make figure
-    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(8.3,11.7/5*4))
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(8.3,11.7/5*nrows))
 
     ax = axes.flatten()
 
