@@ -149,9 +149,6 @@ class log_posterior_probability():
                     theta_season[k] = pars_model_bounds[k][0]
                     lpp += - np.inf
 
-            # Respect hyperdistribution parameter constraints
-            # TODO
-
             # convert to a dictionary for ease
             theta_season = list_to_dict(theta_season, self.par_shapes, retain_floats=True)
 
@@ -161,38 +158,44 @@ class log_posterior_probability():
                     ### construct hyperpars names
                     a_name = f'{pars_model_name}_a'
                     scale_name = f'{pars_model_name}_scale'
-                    ### compute lpp
+                    ### compute within-season parameter's lpp
                     lpp += np.sum(gamma.logpdf(theta_season[pars_model_name], loc=0, a=theta_hyperpars[a_name], scale=theta_hyperpars[scale_name]))
                 elif pars_model_hyperdistribution == 'expon':
                     ### construct hyperpars names
                     scale_name = f'{pars_model_name}_scale'
-                    ### compute lpp
+                    ### compute within-season parameter's lpp
                     lpp += np.sum(expon.logpdf(theta_season[pars_model_name], scale=theta_hyperpars[scale_name]))
                 elif pars_model_hyperdistribution == 'normal':
                     ### construct hyperpars names
                     mu_name = f'{pars_model_name}_mu'
                     sigma_name = f'{pars_model_name}_sigma'
-                    ### compute lpp
+                    ### compute within-season parameter's lpp
                     lpp += np.sum(norm.logpdf(theta_season[pars_model_name], loc=theta_hyperpars[mu_name], scale=theta_hyperpars[sigma_name]))   
                 elif pars_model_hyperdistribution == 'beta':
                     ### construct hyperpars names
                     a_name = f'{pars_model_name}_a'
                     b_name = f'{pars_model_name}_b'
-                    ### compute lpp
+                    ### compute within-season parameter's lpp
                     lpp += np.sum(beta.logpdf(theta_season[pars_model_name], a=theta_hyperpars[a_name], b=theta_hyperpars[b_name]))       
                 elif pars_model_hyperdistribution == 'lognormal':
                     ### construct hyperpars names
                     s_name = f'{pars_model_name}_s'
                     scale_name = f'{pars_model_name}_scale'
-                    ### compute lpp
+                    ### compute within-season parameter's lpp
                     lpp += np.sum(lognorm.logpdf(theta_season[pars_model_name], s=theta_hyperpars[s_name], scale=theta_hyperpars[scale_name]))   
+                    ### exponential prior on lognormal hyperdistribution's `s` --> nudges towards a bell-shaped rather than a heavy-tailed lognormal distribution
+                    lpp += np.sum(expon.logpdf(theta_hyperpars[s_name], scale=1/3*np.ones(len(theta_hyperpars[s_name]))))
+
+            # Hyperdistribution prior: R0 ~ N(1.6, 0.2)
+            lpp += np.sum(norm.logpdf(theta_hyperpars['beta_mu'], loc=0.455, scale=0.055))  
+
+            # Hyperdistribution prior: delta_beta_mu --> exponential: if no information in dataset suggests delta_beta_mu is different than zero
+            lpp += np.sum(expon.logpdf(theta_hyperpars['delta_beta_temporal_mu'], scale=0.5/3*np.ones(len(theta_hyperpars['delta_beta_temporal_mu']))))
 
             # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
             if math.isnan(lpp):
                 return -np.inf
-            # R0 = 1.6 pm 0.2
-            lpp += np.sum(norm.logpdf(theta_hyperpars['beta_mu'], loc=0.455, scale=0.055))  
-
+            
             # Assign model parameters
             self.model.parameters.update(theta_season)
             # But make sure they're vectors (if using one strain)
