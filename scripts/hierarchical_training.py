@@ -53,10 +53,10 @@ n_chains = 600
 pert = 0.05
 processes = int(os.environ.get('NUM_CORES', '16'))
 ## printing and postprocessing
-print_n = 5000
+print_n = 1
 backend = None
 discard = 0
-thin = 1
+thin = 100
 
 # Make folder structure
 ## format model name
@@ -107,8 +107,8 @@ if __name__ == '__main__':
             par_hyperdistributions = ['gamma', 'expon', 'gamma', 'beta', 'gamma', 'normal', 'normal']
         else:
             par_names = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']
-            par_bounds = [(1e-5,0.15), (1, 15), (1e-5,0.02), (0,2E-3), (0,2E-3), (0,2E-3), (1e-9,1e-3), (0.01,1), (-1,1)]
-            par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'normal', 'normal']
+            par_bounds = [(1e-5,0.15), (1, 15), (1e-5,0.02), (0,1E-3), (0,1E-3), (0,1E-3), (1e-9,1e-3), (0.01,1), (-1,1)]
+            par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'norm', 'norm']
         # setup lpp function
         lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)
 
