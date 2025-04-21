@@ -10,7 +10,7 @@ Contains an overview of the raw data sources, and the conversion scripts used to
 
 + `sc-est2023-agesex-civ.csv`: Contains the estimated population per year of age, sex and US state. Downloaded from https://www.census.gov/data/tables/time-series/demo/popest/2020s-state-detail.html 
 
-### cases
+### Cases
 
 + `influenza-surveillance-summary_NC_xx-xx.pdf`: End-of-season report on the xx-xx Influenza season in North Carolina. Of special interest is the figure at the bottom of page 6 titled 'Influenza Positive Tests Reported by PHE Facilities', whose data will be extracted using WebPlotDigitizer. Downloaded from https://flu.ncdhhs.gov/data.htm
 
@@ -21,6 +21,10 @@ Contains an overview of the raw data sources, and the conversion scripts used to
 + `ICL_NREVSS_Combined_prior_to_2015_16.csv`: Downloaded from FluVIEW interactive https://gis.cdc.gov/grasp/fluview/fluportaldashboard.html. 
 
 + `ICL_NREVSS_Public_Health_Labs.csv`: Downloaded from FluVIEW interactive https://gis.cdc.gov/grasp/fluview/fluportaldashboard.html. Removed the first row. 
+
+### Vaccination
+
++ `vacc_alldoses_age_Flu_2024_R1_allflu_allseasons.csv`: Contains, from the 2010-2011 to the 2023-2024 season, the weekly number of administered vaccines ('vacc_age'), per age group ('age_group'), per US state ('subpop'). Obtained from Shaun Truelove.
 
 ## Interim
 
@@ -34,6 +38,10 @@ Contains an overview of the raw data sources, and the conversion scripts used to
 
 + `subtypes_FluVIEW-interactive_14-25.csv`: Contains the weekly subtype interformation for the US' HHS regions from 2014-2025. Columns: "REGION TYPE", "YEAR", "WEEK", "A (H1)", "A(H3)", "B".  Built by combining `ICL_NREVSS_Combined_prior_to_2015_16.csv` and `ICL_NREVSS_Public_Health_Labs.csv`. Week 53 of 2015 had to be inserted manually, it is a copy of week 52. Week 53 of 2014 had to be removed, for some weird reason.
 
+### Vaccination
+ 
++ `vaccination_incidences_2010-2024.csv`: Formats the raw vaccination data from 2010-2024, `vacc_alldoses_age_Flu_2024_R1_allflu_allseasons.csv`, to use the naming conventions used in this software.
+
 ### Calibration
 
 ## Conversion
@@ -41,3 +49,7 @@ Contains an overview of the raw data sources, and the conversion scripts used to
 ### Demography
 
 + `build-demography.py`: Script used to build the US state-level demography.
+
+### Vaccination
+
++ `build-vaccination.py`: A script that formats the vaccination rates of the 2010-2024 season.
