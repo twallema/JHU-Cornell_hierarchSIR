@@ -30,30 +30,23 @@ def determine_season(date):
 ## Construct a dataframe with the desired format ##
 ###################################################
 
-# use demography to determine what the age groups and spatial units are
-#demography = pd.read_csv(os.path.join(os.getcwd(), '../../interim/demography/demography_states_2023.csv'), dtype={'fips': str}) # state, age, population
-#ages = demography['age'].unique()
-#states = demography['fips'].unique()
 # load the data
 vaccination = pd.read_csv(os.path.join(os.getcwd(), '../../raw/vaccination/vacc_alldoses_age_Flu_2024_R1_allflu_allseasons.csv'), parse_dates=True, dtype={'subpop': str})
 # retain only relevant columns
-vaccination = vaccination[['date_admin', 'subpop', 'age_group', 'vacc_age_daily']]
-# sum over age groups + convert daily incidence to weekly incidence
-vaccination = 7*vaccination.groupby(by=['date_admin', 'subpop'])['vacc_age_daily'].sum()
+vaccination = vaccination[['date_admin', 'subpop', 'age_group', 'vacc_age_daily', 'vacc_age']]
+# sum over age groups
+vaccination = vaccination.groupby(['date_admin', 'subpop'], as_index=True)[['vacc_age_daily', 'vacc_age']].sum()
+# convert daily incidence to weekly incidence
+vaccination['vacc_age_daily'] *= 7
 # drop index
 vaccination = vaccination.reset_index()
 # rename columns
-vaccination = vaccination.rename(columns={'date_admin':'date', 'subpop': 'fips_state', 'vacc_age_daily': 'incidence'})
+vaccination = vaccination.rename(columns={'date_admin':'date', 'subpop': 'fips_state', 'vacc_age_daily': 'incidence', 'vacc_age': 'cumulative'})
 # make sure dates are datetime
 vaccination['date'] = pd.to_datetime(vaccination['date'])
 # convert fips_state from str to int
 vaccination['fips_state'] = vaccination['fips_state'].apply(lambda x: int(x[0:2]))
-# re-introduce index
-vaccination = vaccination.set_index(['date', 'fips_state'])
-# take cumulative sum
-vaccination['cumulative'] = vaccination.groupby(by=['fips_state'])['incidence'].cumsum()
 # re-introduce season
-vaccination = vaccination.reset_index()
 vaccination['season'] = vaccination['date'].apply(lambda x: determine_season(x))
 
 #################
