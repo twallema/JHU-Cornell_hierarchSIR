@@ -191,7 +191,7 @@ class log_posterior_probability():
             lpp += np.sum(expon.logpdf(theta_hyperpars['beta_sigma'], scale=0.055))
 
             # Hyperdistribution prior: delta_beta_mu --> exponential: if no information in dataset suggests delta_beta_mu is different than zero
-            lpp += np.sum(expon.logpdf(np.abs(theta_hyperpars['delta_beta_temporal_mu']), scale=np.ones(len(theta_hyperpars['delta_beta_temporal_mu']))))
+            #lpp += np.sum(expon.logpdf(np.abs(theta_hyperpars['delta_beta_temporal_mu']), scale=np.ones(len(theta_hyperpars['delta_beta_temporal_mu']))))
 
             # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
             if math.isnan(lpp):
