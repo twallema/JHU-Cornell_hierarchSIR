@@ -184,14 +184,14 @@ class log_posterior_probability():
                     ### compute within-season parameter's lpp
                     lpp += np.sum(lognorm.logpdf(theta_season[pars_model_name], s=theta_hyperpars[s_name], scale=theta_hyperpars[scale_name]))   
                     ### exponential prior on lognormal hyperdistribution's `s` --> nudges towards a bell-shaped rather than a heavy-tailed lognormal distribution
-                    lpp += np.sum(expon.logpdf(theta_hyperpars[s_name], scale=1/3))
+                    lpp += np.sum(expon.logpdf(theta_hyperpars[s_name], scale=1))
 
             # Hyperdistribution prior: R0 ~ N(1.6, 0.2)
             lpp += np.sum(norm.logpdf(theta_hyperpars['beta_mu'], loc=0.455, scale=0.055))
             lpp += np.sum(expon.logpdf(theta_hyperpars['beta_sigma'], scale=0.055))
 
             # Hyperdistribution prior: delta_beta_mu --> exponential: if no information in dataset suggests delta_beta_mu is different than zero
-            #lpp += np.sum(expon.logpdf(np.abs(theta_hyperpars['delta_beta_temporal_mu']), scale=np.ones(len(theta_hyperpars['delta_beta_temporal_mu']))))
+            lpp += np.sum(expon.logpdf(np.abs(theta_hyperpars['delta_beta_temporal_mu']), scale=np.ones(len(theta_hyperpars['delta_beta_temporal_mu']))))
 
             # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
             if math.isnan(lpp):
@@ -792,6 +792,7 @@ def traceplot(samples_xr, pars_model_shapes, hyperpars_shapes, path, identifier,
                 ax = axes[i,:]
                 # traces
                 ax[0].plot(s.values, color='black', alpha=0.05)
+                ax[0].plot(np.median(s.values,axis=1), color='red', linewidth=1)
                 ax[0].set_xlim(0, len(s.coords['iteration']))
                 ax[0].set_ylabel(par_name, fontsize=9)
                 # marginal distribution
@@ -803,6 +804,7 @@ def traceplot(samples_xr, pars_model_shapes, hyperpars_shapes, path, identifier,
                     ax=axes[i+j,:]
                     # traces
                     ax[0].plot(s.values[:,:,j], color='black', alpha=0.05)
+                    ax[0].plot(np.median(s.values[:,:,j],axis=1), color='red', linewidth=1)
                     ax[0].set_ylabel(f'{par_name}_{j}', fontsize=7)
                     # marginal distribution
                     d = np.random.choice(s.values[:,:,j].flatten(), 5000)
@@ -827,6 +829,7 @@ def traceplot(samples_xr, pars_model_shapes, hyperpars_shapes, path, identifier,
             ax = axes[i,:]
             # traces
             ax[0].plot(s.values, color='black', alpha=0.05)
+            ax[0].plot(np.median(s.values,axis=1), color='red', linewidth=1)
             ax[0].set_xlim(0, len(s.coords['iteration']))
             ax[0].set_ylabel(par_name, fontsize=9)
             # marginal distribution
@@ -838,6 +841,7 @@ def traceplot(samples_xr, pars_model_shapes, hyperpars_shapes, path, identifier,
                 ax=axes[i+j,:]
                 # traces
                 ax[0].plot(s.values[:,:,j], color='black', alpha=0.05)
+                ax[0].plot(np.median(s.values[:,:,j],axis=1), color='red', linewidth=1)
                 ax[0].set_ylabel(f'{par_name}_{j}', fontsize=7)
                 # marginal distribution
                 d = np.random.choice(s.values[:,:,j].flatten(), 5000)
