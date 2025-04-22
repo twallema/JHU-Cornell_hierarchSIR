@@ -39,8 +39,8 @@ immunity_linking = args.immunity_linking
 use_ED_visits = args.use_ED_visits
 
 # define seasons and hyperparameter combo's to loop over
-season_lst = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024']
-hyperparameters_lst = [None, None, None, None, None, None, None]
+season_lst = ['2024-2025', '2023-2024', '2019-2020', '2018-2019', '2017-2018', '2016-2017', '2015-2016', '2014-2015']
+hyperparameters_lst = ['exclude_2024-2025', None, None, None, None, None, None, None]
 
 ##############
 ## Settings ##
@@ -54,10 +54,10 @@ fips_state = 37
 n_pso = 1000                                                # Number of PSO iterations
 multiplier_pso = 10                                         # PSO swarm size
 ## bayesian inferen           ce
-n_mcmc = 15000                                              # Number of MCMC iterations
+n_mcmc = 10000                                              # Number of MCMC iterations
 multiplier_mcmc = 3                                         # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 15000                                             # Print diagnostics every `print_n`` iterations
-discard = 10000                                              # Discard first `discard` iterations as burn-in
+print_n = 10000                                             # Print diagnostics every `print_n`` iterations
+discard = 8000                                              # Discard first `discard` iterations as burn-in
 thin = 50                                                   # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', '16'))          # Number of CPUs to use
 n = 100                                                     # Number of simulations performed in MCMC goodness-of-fit figure
@@ -77,7 +77,7 @@ if __name__ == '__main__':
         ## dates
         season_start = int(season[0:4])                             # start year of season
         start_simulation = datetime(season_start, 10, 1)            # date forward simulation is started
-        start_calibration = datetime(season_start+1, 4, 25)           # incremental calibration will start from here
+        start_calibration = datetime(season_start, 11, 15)           # incremental calibration will start from here
         end_calibration = datetime(season_start+1, 5, 1)            # and incrementally (weekly) calibrate until this date
         end_validation = datetime(season_start+1, 5, 1)             # enddate of validation data used on plots
 
