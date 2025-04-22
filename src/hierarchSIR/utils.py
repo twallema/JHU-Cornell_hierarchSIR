@@ -290,7 +290,7 @@ def get_NC_cumulatives_per_season() -> pd.DataFrame:
         index: season, horizon. columns: I_inc, H_inc, H_inc_A, H_inc_B, H_inc_AH1, H_inc_AH3.
     """
     # define seasons we want output for
-    seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']
+    seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2022-2023', '2023-2024', '2024-2025']
 
     # loop over them
     seasons_collect = []
