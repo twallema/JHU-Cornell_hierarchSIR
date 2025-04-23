@@ -53,7 +53,7 @@ class SIR():
         # TODO: docstring
         """
 
-        # translate start and stop relative to mid Nov
+        # translate start and stop relative to mid Oct
         start_date, stop_date = simtime
         time = self.convert_dates_to_timesteps(start_date, stop_date)
 
