@@ -42,7 +42,7 @@ fips_state = 37
 ## datasets
 identifiers_list = ['exclude_2024-2025',]                                                                           # identifiers of training datasets
 seasons_list = [                                                                                                    # season to include in training
-        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2022-2023', '2023-2024'],
+        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024'],
         ]                                                                                                                   
 start_calibration_month = 10                                                                                        # start calibration on month 10, day 1
 end_calibration_month = 5                                                                                           # end calibration on month 5, day 1
@@ -53,7 +53,7 @@ n_chains = 600
 pert = 0.05
 processes = int(os.environ.get('NUM_CORES', '16'))
 ## printing and postprocessing
-print_n = 1
+print_n = 10000
 backend = None
 discard = 0
 thin = 100
