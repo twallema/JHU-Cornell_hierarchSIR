@@ -517,7 +517,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
         labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']       # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
-            # assign priors (R0 ~ N(1.6, 0.2); all other: uninformative)
+            # assign priors (R0 ~ N(1.6, 0.2); modifiers nudged to zero; all others uninformative)
             log_prior_prob_fcn = 5*[log_prior_uniform,] + 2*[log_prior_normal,]
             log_prior_prob_fcn_args = [{'bounds':  bounds[0]},
                                        {'bounds':  bounds[1]},
@@ -525,7 +525,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
                                        {'bounds':  bounds[3]},
                                        {'bounds':  bounds[4]},
                                        {'avg':  0.455, 'stdev': 0.057},
-                                       {'avg':  0, 'stdev': 0.15}]
+                                       {'avg':  0, 'stdev': 0.10}]
         # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         else:
             # load and select priors
@@ -624,7 +624,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
         labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']     # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
-            # assign priors (R0 ~ N(1.6, 0.2); all other: uninformative)
+            # assign priors (R0 ~ N(1.6, 0.2); modifiers and immunity parameters nudged to zero; all others uninformative)
             log_prior_prob_fcn = 3*[log_prior_uniform,] + 3*[log_prior_gamma] + 1*[log_prior_uniform,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
             log_prior_prob_fcn_args = [{'bounds':  bounds[0]},
                                        {'bounds':  bounds[1]},
@@ -634,7 +634,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
                                        {'a': 1, 'loc': 0, 'scale': 2E-04},
                                        {'bounds':  bounds[6]},
                                        {'avg':  0.455, 'stdev': 0.055},
-                                       {'avg':  0, 'stdev': 0.15}]
+                                       {'avg':  0, 'stdev': 0.10}]
         # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         else:
             # load and select priors
