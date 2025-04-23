@@ -39,8 +39,8 @@ immunity_linking = args.immunity_linking
 use_ED_visits = args.use_ED_visits
 
 # define seasons and hyperparameter combo's to loop over
-season_lst = ['2024-2025', '2023-2024', '2022-2023', '2019-2020', '2018-2019', '2017-2018', '2016-2017', '2015-2016', '2014-2015']
-hyperparameters_lst = [None, None, None, None, None, None, None, None, None]
+season_lst = ['2024-2025', '2023-2024', '2019-2020', '2018-2019', '2017-2018', '2016-2017', '2015-2016', '2014-2015']
+hyperparameters_lst = [None, None, None, None, None, None, None, None]
 
 ##############
 ## Settings ##
