@@ -48,7 +48,7 @@ class log_posterior_probability():
                 hyperpar_shapes[f'{name}_s'] = shape
                 hyperpar_shapes[f'{name}_scale'] = shape
             else:
-                ValueError(f"'{hyperdist}' is not a valid hyperdistribution.")
+                raise ValueError(f"'{hyperdist}' is not a valid hyperdistribution.")
         self.hyperpar_shapes = hyperpar_shapes
         self.n_hyperpars = sum(value[0] for value in self.hyperpar_shapes.values())
 
