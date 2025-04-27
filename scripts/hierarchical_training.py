@@ -104,7 +104,7 @@ if __name__ == '__main__':
         if not immunity_linking:
             par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
             par_bounds = [(1e-5,0.15), (0.5, 15), (1e-5,0.02), (0.01,0.99), (1e-9,1e-3), (0.01,1), (-1,1)]
-            par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'normal', 'lognorm', 'norm', 'norm']
+            par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'norm', 'lognorm', 'norm', 'norm']
         else:
             par_names = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']
             par_bounds = [(1e-5,0.15), (0.5, 15), (1e-5,0.02), (0,1E-3), (0,1E-3), (0,1E-3), (1e-9,1e-3), (0.01,1), (-1,1)]
