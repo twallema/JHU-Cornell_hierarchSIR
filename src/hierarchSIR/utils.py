@@ -533,14 +533,14 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
             priors = priors.loc[((priors['model'] == model_name) & (priors['immunity_linking'] == immunity_linking) & (priors['use_ED_visits'] == use_ED_visits)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
             # assign values
             if strains == 1:
-                log_prior_prob_fcn = 3*[log_prior_lognormal,] + 1*[log_prior_beta,] + 1*[log_prior_lognormal,] + 1*[log_prior_normal,] + 12*[log_prior_normal,] 
+                log_prior_prob_fcn = 3*[log_prior_lognormal,] + 1*[log_prior_normal,] + 1*[log_prior_lognormal,] + 1*[log_prior_normal,] + 12*[log_prior_normal,] 
                 log_prior_prob_fcn_args = [ 
                                         # ED visits
                                         {'s': priors['rho_i_s'], 'scale': priors['rho_i_scale']},                                       # rho_i
                                         {'s': priors['T_h_s'], 'scale': priors['T_h_scale']},                                           # T_h
                                         # >>>>>>>>>
                                         {'s': priors['rho_h_s'], 'scale': priors['rho_h_scale']},                                       # rho_h
-                                        {'a': priors['f_R_a'], 'b': priors['f_R_b']},                                                   # f_R
+                                        {'avg': priors['f_R_mu'], 'stdev': priors['f_R_sigma']},                                        # f_R
                                         {'s': priors['f_I_s'], 'scale': priors['f_I_scale']},                                           # f_I
                                         {'avg': priors['beta_mu'], 'stdev': priors['beta_sigma']},                                      # beta
                                         {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},    # delta_beta_temporal
@@ -557,7 +557,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
                                         {'avg': priors['delta_beta_temporal_mu_11'], 'stdev': priors['delta_beta_temporal_sigma_11']},
                                         ]          
             elif strains == 2:
-                log_prior_prob_fcn = 4*[log_prior_lognormal,] + 2*[log_prior_beta,] + 2*[log_prior_lognormal,] + 2*[log_prior_normal,] + 12*[log_prior_normal,] 
+                log_prior_prob_fcn = 4*[log_prior_lognormal,] + 2*[log_prior_normal,] + 2*[log_prior_lognormal,] + 2*[log_prior_normal,] + 12*[log_prior_normal,] 
                 log_prior_prob_fcn_args = [ 
                                         # ED visits
                                         {'s': priors['rho_i_s'], 'scale': priors['rho_i_scale']},                                       # rho_i
@@ -565,8 +565,8 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
                                         # >>>>>>>>>
                                         {'s': priors['rho_h_s_0'], 'scale': priors['rho_h_scale_0']},                                   # rho_h_0
                                         {'s': priors['rho_h_s_1'], 'scale': priors['rho_h_scale_1']},                                   # rho_h_1
-                                        {'a': priors['f_R_a_0'], 'b': priors['f_R_b_0']},                                               # f_R_0
-                                        {'a': priors['f_R_a_1'], 'b': priors['f_R_b_1']},                                               # f_R_1
+                                        {'avg': priors['f_R_mu_0'], 'stdev': priors['f_R_sigma_0']},                                    # f_R_0
+                                        {'avg': priors['f_R_mu_1'], 'stdev': priors['f_R_sigma_1']},                                    # f_R_1
                                         {'s': priors['f_I_s_0'], 'scale': priors['f_I_scale_0']},                                       # f_I_0
                                         {'s': priors['f_I_s_1'], 'scale': priors['f_I_scale_1']},                                       # f_I_1
                                         {'avg': priors['beta_mu_0'], 'stdev': priors['beta_sigma_0']},                                  # beta_0
@@ -585,7 +585,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
                                         {'avg': priors['delta_beta_temporal_mu_11'], 'stdev': priors['delta_beta_temporal_sigma_11']},
                                         ] 
             elif strains == 3:
-                log_prior_prob_fcn = 5*[log_prior_lognormal,] + 3*[log_prior_beta,] + 3*[log_prior_lognormal,] + 3*[log_prior_normal,] + 12*[log_prior_normal,] 
+                log_prior_prob_fcn = 5*[log_prior_lognormal,] + 3*[log_prior_normal,] + 3*[log_prior_lognormal,] + 3*[log_prior_normal,] + 12*[log_prior_normal,] 
                 log_prior_prob_fcn_args = [ 
                                         # ED visits
                                         {'s': priors['rho_i_s'], 'scale': priors['rho_i_scale']},                                       # rho_i
@@ -594,9 +594,9 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
                                         {'s': priors['rho_h_s_0'], 'scale': priors['rho_h_scale_0']},                                   # rho_h_0
                                         {'s': priors['rho_h_s_1'], 'scale': priors['rho_h_scale_1']},                                   # rho_h_1
                                         {'s': priors['rho_h_s_2'], 'scale': priors['rho_h_scale_2']},                                   # rho_h_2
-                                        {'a': priors['f_R_a_0'], 'b': priors['f_R_b_0']},                                               # f_R_0
-                                        {'a': priors['f_R_a_1'], 'b': priors['f_R_b_1']},                                               # f_R_1
-                                        {'a': priors['f_R_a_2'], 'b': priors['f_R_b_2']},                                               # f_R_2
+                                        {'avg': priors['f_R_mu_0'], 'stdev': priors['f_R_sigma_0']},                                    # f_R_0
+                                        {'avg': priors['f_R_mu_1'], 'stdev': priors['f_R_sigma_1']},                                    # f_R_1
+                                        {'avg': priors['f_R_mu_2'], 'stdev': priors['f_R_sigma_2']},                                    # f_R_2
                                         {'s': priors['f_I_s_0'], 'scale': priors['f_I_scale_0']},                                       # f_I_0
                                         {'s': priors['f_I_s_1'], 'scale': priors['f_I_scale_1']},                                       # f_I_1
                                         {'s': priors['f_I_s_2'], 'scale': priors['f_I_scale_2']},                                       # f_I_2

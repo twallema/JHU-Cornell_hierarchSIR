@@ -77,8 +77,8 @@ if __name__ == '__main__':
         ## dates
         season_start = int(season[0:4])                             # start year of season
         start_simulation = datetime(season_start, 10, 1)            # date forward simulation is started
-        start_calibration = datetime(season_start, 11, 15)           # incremental calibration will start from here
-        end_calibration = datetime(season_start+1, 5, 1)            # and incrementally (weekly) calibrate until this date
+        start_calibration = datetime(season_start, 11, 15)          # incremental calibration will start from here
+        end_calibration = datetime(season_start+1, 4, 7)            # and incrementally (weekly) calibrate until this date
         end_validation = datetime(season_start+1, 5, 1)             # enddate of validation data used on plots
 
         ##########################################
