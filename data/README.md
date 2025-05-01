@@ -6,9 +6,7 @@ Contains an overview of the raw data sources, and the conversion scripts used to
 
 ### Demography
 
-+ `national_state2020.txt`: Contains the 2020 US state names and corresponding two-digit FIPS. Downloaded from https://www.census.gov/library/reference/code-lists/ansi.html
-
-+ `sc-est2023-agesex-civ.csv`: Contains the estimated population per year of age, sex and US state. Downloaded from https://www.census.gov/data/tables/time-series/demo/popest/2020s-state-detail.html 
++ `national_state2020.txt`: Contains the 2020 US state names, abbreviation and corresponding two-digit FIPS. Downloaded from https://www.census.gov/library/reference/code-lists/ansi.html
 
 ### Cases
 
