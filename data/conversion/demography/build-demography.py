@@ -9,12 +9,6 @@ A script to build a list containing US state and county names and corresponding 
 import os
 import pandas as pd
 
-#####################
-## Script settings ##
-#####################
-
-
-
 #######################
 ## Format FIPS codes ##
 #######################
