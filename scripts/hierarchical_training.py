@@ -40,23 +40,23 @@ fips_state = 37
 
 # calibration settings
 ## datasets
-identifiers_list = ['exclude_2024-2025',]                                                                           # identifiers of training datasets
+identifiers_list = ['exclude_None',]                                                                                # identifiers of training datasets
 seasons_list = [                                                                                                    # season to include in training
-        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024'],
+        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025'],
         ]                                                                                                                   
 start_calibration_month = 10                                                                                        # start calibration on month 10, day 1
 end_calibration_month = 5                                                                                           # end calibration on month 5, day 1
 run_date = datetime.today().strftime("%Y-%m-%d")
 ## define number of chains
-max_n = 500
+max_n = 100000
 n_chains = 600
 pert = 0.05
 processes = int(os.environ.get('NUM_CORES', '16'))
 ## printing and postprocessing
-print_n = 500
+print_n = 10000
 backend = None
 discard = 0
-thin = 1
+thin = 100
 
 # Make folder structure
 ## format model name
@@ -103,12 +103,12 @@ if __name__ == '__main__':
         # not how we're not cutting out the parameters associated with the ED visit data
         if not immunity_linking:
             par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
-            par_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.02), (0.001,0.999), (1e-9,1e-3), (0.01,1), (-1,1)]
-            par_hyperdistributions = ['gamma', 'expon', 'gamma', 'beta', 'gamma', 'normal', 'normal']
+            par_bounds = [(1e-5,0.15), (0.5, 15), (1e-5,0.02), (0.01,0.99), (1e-9,1e-3), (0.01,1), (-1,1)]
+            par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'norm', 'lognorm', 'norm', 'norm']
         else:
             par_names = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']
-            par_bounds = [(1e-5,0.15), (0.1, 15), (1e-5,0.02), (0,2E-3), (0,2E-3), (0,2E-3), (1e-9,1e-3), (0.01,1), (-1,1)]
-            par_hyperdistributions = ['gamma', 'expon', 'gamma', 'gamma', 'gamma', 'gamma', 'gamma', 'normal', 'normal']
+            par_bounds = [(1e-5,0.15), (0.5, 15), (1e-5,0.02), (0,1E-3), (0,1E-3), (0,1E-3), (1e-9,1e-3), (0.01,1), (-1,1)]
+            par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'norm', 'norm']
         # setup lpp function
         lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)
 

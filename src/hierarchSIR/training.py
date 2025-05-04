@@ -14,7 +14,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime, timedelta
-from scipy.stats import expon, beta, norm, gamma
+from scipy.stats import expon, beta, norm, gamma, lognorm
 from pySODM.optimization.utils import list_to_dict, add_poisson_noise
 from pySODM.optimization.objective_functions import ll_poisson, validate_calibrated_parameters, expand_bounds, validate_dataset, create_fake_xarray_output, compare_data_model_coordinates
 
@@ -38,14 +38,17 @@ class log_posterior_probability():
                 hyperpar_shapes[f'{name}_scale'] = shape
             elif hyperdist == 'expon':
                 hyperpar_shapes[f'{name}_scale'] = shape
-            elif hyperdist == 'normal':
+            elif hyperdist == 'norm':
                 hyperpar_shapes[f'{name}_mu'] = shape
                 hyperpar_shapes[f'{name}_sigma'] = shape
             elif hyperdist == 'beta':
                 hyperpar_shapes[f'{name}_a'] = shape
                 hyperpar_shapes[f'{name}_b'] = shape
+            elif hyperdist == 'lognorm':
+                hyperpar_shapes[f'{name}_s'] = shape
+                hyperpar_shapes[f'{name}_scale'] = shape
             else:
-                ValueError(f"'{hyperdist}' is not a valid hyperdistribution.")
+                raise ValueError(f"'{hyperdist}' is not a valid hyperdistribution.")
         self.hyperpar_shapes = hyperpar_shapes
         self.n_hyperpars = sum(value[0] for value in self.hyperpar_shapes.values())
 
@@ -146,9 +149,6 @@ class log_posterior_probability():
                     theta_season[k] = pars_model_bounds[k][0]
                     lpp += - np.inf
 
-            # Respect hyperdistribution parameter constraints
-            # TODO
-
             # convert to a dictionary for ease
             theta_season = list_to_dict(theta_season, self.par_shapes, retain_floats=True)
 
@@ -158,33 +158,43 @@ class log_posterior_probability():
                     ### construct hyperpars names
                     a_name = f'{pars_model_name}_a'
                     scale_name = f'{pars_model_name}_scale'
-                    ### compute lpp
+                    ### compute within-season parameter's lpp
                     lpp += np.sum(gamma.logpdf(theta_season[pars_model_name], loc=0, a=theta_hyperpars[a_name], scale=theta_hyperpars[scale_name]))
                 elif pars_model_hyperdistribution == 'expon':
                     ### construct hyperpars names
                     scale_name = f'{pars_model_name}_scale'
-                    ### compute lpp
+                    ### compute within-season parameter's lpp
                     lpp += np.sum(expon.logpdf(theta_season[pars_model_name], scale=theta_hyperpars[scale_name]))
-                elif pars_model_hyperdistribution == 'normal':
+                elif pars_model_hyperdistribution == 'norm':
                     ### construct hyperpars names
                     mu_name = f'{pars_model_name}_mu'
                     sigma_name = f'{pars_model_name}_sigma'
-                    ### compute lpp
+                    ### compute within-season parameter's lpp
                     lpp += np.sum(norm.logpdf(theta_season[pars_model_name], loc=theta_hyperpars[mu_name], scale=theta_hyperpars[sigma_name]))   
                 elif pars_model_hyperdistribution == 'beta':
                     ### construct hyperpars names
                     a_name = f'{pars_model_name}_a'
                     b_name = f'{pars_model_name}_b'
-                    ### compute lpp
+                    ### compute within-season parameter's lpp
                     lpp += np.sum(beta.logpdf(theta_season[pars_model_name], a=theta_hyperpars[a_name], b=theta_hyperpars[b_name]))       
+                elif pars_model_hyperdistribution == 'lognorm':
+                    ### construct hyperpars names
+                    s_name = f'{pars_model_name}_s'
+                    scale_name = f'{pars_model_name}_scale'
+                    ### compute within-season parameter's lpp
+                    lpp += np.sum(lognorm.logpdf(theta_season[pars_model_name], s=theta_hyperpars[s_name], scale=theta_hyperpars[scale_name]))   
+                    ### exponential prior on lognormal hyperdistribution's `s` --> nudges towards a bell-shaped rather than a heavy-tailed lognormal distribution
+                    lpp += np.sum(expon.logpdf(theta_hyperpars[s_name], scale=1))
+
+            # Hyperdistribution prior: R0 ~ N(1.6, 0.2)
+            lpp += np.sum(norm.logpdf(theta_hyperpars['beta_mu'], loc=0.455, scale=0.055))
+            lpp += np.sum(expon.logpdf(theta_hyperpars['beta_sigma'], scale=0.055))
+
+            # Hyperdistribution prior: delta_beta_mu --> exponential: if no information in dataset suggests delta_beta_mu is different than zero
+            lpp += np.sum(expon.logpdf(np.abs(theta_hyperpars['delta_beta_temporal_mu']), scale=np.ones(len(theta_hyperpars['delta_beta_temporal_mu']))))
 
             # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
             if math.isnan(lpp):
-                return -np.inf
-            # R0 = 1.6 pm 0.2
-            lpp += np.sum(norm.logpdf(theta_hyperpars['beta_mu'], loc=0.455, scale=0.055))  
-            # or huge delta_beta_temporal_mu/sigma
-            if ((any(((x < -1) | (x > 1)) for x in theta_hyperpars['delta_beta_temporal_mu'])) | (any(((x < 0) | (x > 1)) for x in theta_hyperpars['delta_beta_temporal_sigma']))):
                 return -np.inf
 
             # Assign model parameters
@@ -394,7 +404,7 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, hyperpars_s
                 scale_name = f'{par}_scale'
                 ### get shapes
                 n_subfigs += hyperpars_shapes[scale_name][0]
-            elif hyperdistribution == 'normal':
+            elif hyperdistribution == 'norm':
                 ### construct hyperpars names
                 mu_name = f'{par}_mu'
                 ### get shapes
@@ -404,6 +414,12 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, hyperpars_s
                 a_name = f'{par}_a'
                 ### get shapes
                 n_subfigs += hyperpars_shapes[a_name][0]
+            elif hyperdistribution == 'lognorm':
+                ### construct hyperpars names
+                s_name = f'{par}_s'
+                ### get shapes
+                n_subfigs += hyperpars_shapes[s_name][0]
+
     # compute subfigure shape
     ncols = 2
     nrows = int((n_subfigs - (n_subfigs % ncols))/ncols + 1)
@@ -518,12 +534,12 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, hyperpars_s
                                 ax[i+j].set_ylabel(f'{par_name}_{j}')
                 i+=n_strains
 
-            elif par_hyperdistribution == 'normal':
+            elif par_hyperdistribution == 'norm':
                 ### construct hyperpars names
                 mu_name = f'{par_name}_mu'
                 sigma_name = f'{par_name}_sigma'
                 ### get shape
-                n_strains = hyperpars_shapes[a_name][0]
+                n_strains = hyperpars_shapes[mu_name][0]
                 for j in range(n_strains):
                     # loop over the number of iterations
                     for k in range(N):
@@ -587,6 +603,42 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, hyperpars_s
                                 ax[i+j].plot(x, beta.pdf(x, a=samples_xr[a_name].sel({f'{a_name}_dim': j}).median(dim=['iteration', 'chain']).values, b=samples_xr[b_name].sel({f'{b_name}_dim': j}).median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
                                 #### textbox
                                 ax[i+j].text(0.05, 0.95, f"a={samples_xr[a_name].sel({f'{a_name}_dim': j}).median(dim=['iteration', 'chain']).values:.1e}, b={samples_xr[b_name].sel({f'{b_name}_dim': j}).median(dim=['iteration', 'chain']).values:.1e}", transform=ax[i+j].transAxes, fontsize=7,
+                                            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                                ax[i+j].set_ylabel(f'{par_name}_{j}')
+                i+=n_strains
+
+            elif par_hyperdistribution == 'lognorm':
+                ### construct hyperpars names
+                s_name = f'{par_name}_s'
+                scale_name = f'{par_name}_scale'
+                ### get shape
+                n_strains = hyperpars_shapes[s_name][0]
+                for j in range(n_strains):
+                    # loop over the number of iterations
+                    for k in range(N):
+                        ## draw a random sample
+                        m = random.randint(0, len(samples_xr.coords['iteration'])-1)
+                        n = random.randint(0, len(samples_xr.coords['chain'])-1)
+                        if n_strains == 1:
+                            ### add sample to plot
+                            ax[i+j].plot(x, lognorm.pdf(x, s=samples_xr[s_name].sel({'iteration': m, 'chain': n}).values, scale=samples_xr[scale_name].sel({'iteration': m, 'chain': n}).values), alpha=0.05, color='black')
+                            ### add mean
+                            if k == N-1:
+                                #### mean
+                                ax[i+j].plot(x, lognorm.pdf(x, s=samples_xr[s_name].median(dim=['iteration', 'chain']).values, scale=samples_xr[scale_name].median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                                #### textbox
+                                ax[i+j].text(0.05, 0.95, f"s={samples_xr[s_name].median(dim=['iteration', 'chain']).values:.1e}, scale={samples_xr[scale_name].median(dim=['iteration', 'chain']).values:.1e}", transform=ax[i+j].transAxes, fontsize=7,
+                                            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
+                                ax[i+j].set_ylabel(f'{par_name}')
+                        else:
+                            ### add sample to plot
+                            ax[i+j].plot(x, lognorm.pdf(x, s=samples_xr[s_name].sel({'iteration': m, 'chain': n, f'{s_name}_dim': j}).values, scale=samples_xr[scale_name].sel({'iteration': m, 'chain': n, f'{scale_name}_dim': j}).values), alpha=0.05, color='black')
+                            ### add mean
+                            if k == N-1:
+                                #### mean
+                                ax[i+j].plot(x, lognorm.pdf(x, s=samples_xr[s_name].sel({f'{s_name}_dim': j}).median(dim=['iteration', 'chain']).values, scale=samples_xr[scale_name].sel({f'{scale_name}_dim': j}).median(dim=['iteration', 'chain']).values), color='red', linestyle='--')
+                                #### textbox
+                                ax[i+j].text(0.05, 0.95, f"s={samples_xr[s_name].sel({f'{s_name}_dim': j}).median(dim=['iteration', 'chain']).values:.1e}, scale={samples_xr[scale_name].sel({f'{scale_name}_dim': j}).median(dim=['iteration', 'chain']).values:.1e}", transform=ax[i+j].transAxes, fontsize=7,
                                             verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=1))
                                 ax[i+j].set_ylabel(f'{par_name}_{j}')
                 i+=n_strains
@@ -740,6 +792,7 @@ def traceplot(samples_xr, pars_model_shapes, hyperpars_shapes, path, identifier,
                 ax = axes[i,:]
                 # traces
                 ax[0].plot(s.values, color='black', alpha=0.05)
+                ax[0].plot(np.median(s.values,axis=1), color='red', linewidth=1)
                 ax[0].set_xlim(0, len(s.coords['iteration']))
                 ax[0].set_ylabel(par_name, fontsize=9)
                 # marginal distribution
@@ -751,6 +804,7 @@ def traceplot(samples_xr, pars_model_shapes, hyperpars_shapes, path, identifier,
                     ax=axes[i+j,:]
                     # traces
                     ax[0].plot(s.values[:,:,j], color='black', alpha=0.05)
+                    ax[0].plot(np.median(s.values[:,:,j],axis=1), color='red', linewidth=1)
                     ax[0].set_ylabel(f'{par_name}_{j}', fontsize=7)
                     # marginal distribution
                     d = np.random.choice(s.values[:,:,j].flatten(), 5000)
@@ -775,6 +829,7 @@ def traceplot(samples_xr, pars_model_shapes, hyperpars_shapes, path, identifier,
             ax = axes[i,:]
             # traces
             ax[0].plot(s.values, color='black', alpha=0.05)
+            ax[0].plot(np.median(s.values,axis=1), color='red', linewidth=1)
             ax[0].set_xlim(0, len(s.coords['iteration']))
             ax[0].set_ylabel(par_name, fontsize=9)
             # marginal distribution
@@ -786,6 +841,7 @@ def traceplot(samples_xr, pars_model_shapes, hyperpars_shapes, path, identifier,
                 ax=axes[i+j,:]
                 # traces
                 ax[0].plot(s.values[:,:,j], color='black', alpha=0.05)
+                ax[0].plot(np.median(s.values[:,:,j],axis=1), color='red', linewidth=1)
                 ax[0].set_ylabel(f'{par_name}_{j}', fontsize=7)
                 # marginal distribution
                 d = np.random.choice(s.values[:,:,j].flatten(), 5000)
