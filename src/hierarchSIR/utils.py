@@ -36,15 +36,15 @@ def initialise_model(strains=False, immunity_linking=False, season=None, fips_st
         'f_I': np.array(strains * [1e-4,]),
         'f_R': np.array(strains * [0.35,]),
         # SIR parameters
-        'beta': strains *[0.5,],
-        'gamma': strains * [1/3.5,],
+        'beta': np.array(strains *[0.5,]),
+        'gamma': np.array(strains * [1/3.5,]),
         # modifiers
         'delta_beta_temporal': np.array([1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5, 1.5, 0.5])-1,
         'modifier_length': 15,
         'sigma': 2.5,
         # observation parameters
-        'rho_i': [0.025,],
-        'rho_h': strains*[0.025,],
+        'rho_i': np.array([0.025,]),
+        'rho_h': np.array(strains*[0.025,]),
         'T_h': 3.5
         }
     
