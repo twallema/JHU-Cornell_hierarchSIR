@@ -48,97 +48,113 @@ class log_posterior_probability():
             all_idxs.append(slice(offset+idxs.start, offset+idxs.stop))
         return all_idxs
 
+    # Gamma distribution prior
+    @staticmethod
+    def gamma_logpdf(theta, season, idxs_per_season, a_idxs, scale_idxs):
+        return np.sum(gamma.logpdf(
+            theta[idxs_per_season[season]],
+            loc=0, a=theta[a_idxs], scale=theta[scale_idxs]
+        ))
+
+    # Exponential distribution prior
+    @staticmethod
+    def expon_logpdf(theta, season, idxs_per_season, scale_idxs):
+        return np.sum(expon.logpdf(
+            theta[idxs_per_season[season]],
+            scale=theta[scale_idxs]
+        ))
+
+    # Normal distribution prior
+    @staticmethod
+    def norm_logpdf(theta, season, idxs_per_season, mu_idxs, sigma_idxs):
+        return np.sum(norm.logpdf(
+            theta[idxs_per_season[season]],
+            loc=theta[mu_idxs], scale=theta[sigma_idxs]
+        ))
+
+    # Beta distribution prior
+    @staticmethod
+    def beta_logpdf(theta, season, idxs_per_season, a_idxs, b_idxs):
+        return np.sum(beta.logpdf(
+            theta[idxs_per_season[season]],
+            a=theta[a_idxs], b=theta[b_idxs]
+        ))
+
+    # Log-Normal distribution prior
+    @staticmethod
+    def lognorm_logpdf(theta, season, idxs_per_season, s_idx, scale_idx):
+        return np.sum(lognorm.logpdf(
+            theta[idxs_per_season[season]],
+            s=theta[s_idx], scale=theta[scale_idx]
+        ) + expon.logpdf(theta[s_idx], scale=1))
+        
+    # Hyper priors for global parameters
+    @staticmethod
+    def norm_hyper_logpdf(theta, idxs, loc, scale):
+        return np.sum(norm.logpdf(theta[idxs], loc=loc, scale=scale))
+
+    @staticmethod
+    def expon_hyper_logpdf(theta, idxs, scale):
+        return np.sum(expon.logpdf(theta[idxs], scale=scale))
+    
+    @staticmethod
+    def delta_beta_temporal_logpdf(theta, idxs, scale):
+        return np.sum(expon.logpdf(np.abs(theta[idxs]), scale=scale))
+
+
     def build_prior_evaluation(self):
         """
         Build for every parameter (hyper and seasonal) the prior probability evaluation function
         and store them in the object.
         """
-        self.season_prior_lpp_fs = []
-        self.hyper_prior_lpp_fs = []
+        season_prior_lpp_fs = []
+        hyper_prior_lpp_fs = []
 
         for pars_model_name, pars_model_hyperdistribution in zip(self.par_names, self.par_hyperdistributions):
-                if pars_model_hyperdistribution == 'gamma':
-                    a_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_a']
-                    scale_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_scale']
-                    idxs_per_season = self.par_name_to_idx_per_season[pars_model_name]
-                    ### compute within-season parameter's lpp
-                    self.season_prior_lpp_fs.append(lambda theta, season, 
-                                                idxs_per_season=idxs_per_season,
-                                                a_idxs=a_idxs,
-                                                scale_idxs=scale_idxs : np.sum(gamma.logpdf(
-                        theta[idxs_per_season[season]],
-                        loc=0, a=theta[a_idxs], scale=theta[scale_idxs]
-                    )))
-                elif pars_model_hyperdistribution == 'expon':
-                    ### construct hyperpars names
-                    scale_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_scale']
-                    idxs_per_season = self.par_name_to_idx_per_season[pars_model_name]
-                    ### compute within-season parameter's lpp
-                    self.season_prior_lpp_fs.append(lambda theta, season,
-                                                idxs_per_season=idxs_per_season,
-                                                scale_idxs=scale_idxs : np.sum(expon.logpdf(
-                        theta[idxs_per_season[season]],
-                        scale=theta[scale_idxs]
-                    )))
-                elif pars_model_hyperdistribution == 'norm':
-                    ### construct hyperpars names
-                    mu_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_mu']
-                    sigma_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_sigma']
-                    idxs_per_season = self.par_name_to_idx_per_season[pars_model_name]
-                    ### compute within-season parameter's lpp
-                    self.season_prior_lpp_fs.append(lambda theta, season,
-                                                idxs_per_season=idxs_per_season,
-                                                mu_idxs=mu_idxs,
-                                                sigma_idxs=sigma_idxs: np.sum(norm.logpdf(
-                        theta[idxs_per_season[season]],
-                        loc=theta[mu_idxs], scale=theta[sigma_idxs]
-                    )))
-                elif pars_model_hyperdistribution == 'beta':
-                    ### construct hyperpars names
-                    a_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_a']
-                    b_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_b']
-                    idxs_per_season = self.par_name_to_idx_per_season[pars_model_name]
-                    ### compute within-season parameter's lpp
-                    self.season_prior_lpp_fs.append(lambda theta, season,
-                                                idxs_per_season=idxs_per_season,
-                                                a_idxs=a_idxs,
-                                                b_idxs=b_idxs : np.sum(beta.logpdf(
-                        theta[idxs_per_season[season]],
-                        a=theta[a_idxs], b=theta[b_idxs],
-                    )))
-                elif pars_model_hyperdistribution == 'lognorm':
-                    ### construct hyperpars names
-                    s_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_s']
-                    scale_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_scale']
-                    idxs_per_season = self.par_name_to_idx_per_season[pars_model_name]
-                    ### compute within-season parameter's lpp
-                    self.season_prior_lpp_fs.append(lambda theta, season,
-                                                idxs_per_season=idxs_per_season,
-                                                s_idx=s_idxs,
-                                                scale_idx=scale_idxs : np.sum(lognorm.logpdf(
-                        theta[idxs_per_season[season]],
-                        s=theta[s_idx], scale=theta[scale_idx],
-                    ) + expon.logpdf(theta[s_idx], scale=1)
-                    ))
-                else:
-                    raise ValueError(f"'{pars_model_hyperdistribution}' is not a valid hyperdistribution.")
+            idxs_per_season = self.par_name_to_idx_per_season[pars_model_name]
 
-        # Hyperdistribution prior: R0 ~ N(1.6, 0.2)
+            if pars_model_hyperdistribution == 'gamma':
+                a_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_a']
+                scale_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_scale']
+                season_prior_lpp_fs.append((self.gamma_logpdf, (idxs_per_season, a_idxs, scale_idxs)))
+
+            elif pars_model_hyperdistribution == 'expon':
+                scale_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_scale']
+                season_prior_lpp_fs.append((self.expon_logpdf, (idxs_per_season, scale_idxs)))
+
+            elif pars_model_hyperdistribution == 'norm':
+                mu_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_mu']
+                sigma_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_sigma']
+                season_prior_lpp_fs.append((self.norm_logpdf, (idxs_per_season, mu_idxs, sigma_idxs)))
+
+            elif pars_model_hyperdistribution == 'beta':
+                a_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_a']
+                b_idxs = self.hyper_par_name_to_idx[f'{pars_model_name}_b']
+                season_prior_lpp_fs.append((self.beta_logpdf, (idxs_per_season, a_idxs, b_idxs)))
+
+            elif pars_model_hyperdistribution == 'lognorm':
+                s_idx = self.hyper_par_name_to_idx[f'{pars_model_name}_s']
+                scale_idx = self.hyper_par_name_to_idx[f'{pars_model_name}_scale']
+                season_prior_lpp_fs.append((self.lognorm_logpdf, (idxs_per_season, s_idx, scale_idx)))
+
+            else:
+                raise ValueError(f"'{pars_model_hyperdistribution}' is not a valid hyperdistribution.")
+
+        # Hyperdistribution prior: R0 ~ N(0.455, 0.055)
         beta_mu_idxs = self.hyper_par_name_to_idx['beta_mu']
-        self.hyper_prior_lpp_fs.append(lambda theta : np.sum(norm.logpdf(
-            theta[beta_mu_idxs], loc=0.455, scale=0.055
-        )))
+        hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (beta_mu_idxs, 0.455, 0.055)))
+
+        # Hyperdistribution prior: beta_sigma ~ Exponential(0.055)
         beta_sigma_idxs = self.hyper_par_name_to_idx['beta_sigma']
-        self.hyper_prior_lpp_fs.append(lambda theta : np.sum(expon.logpdf(
-            theta[beta_sigma_idxs], scale=0.055
-        )))
-        # Hyperdistribution prior: delta_beta_mu --> exponential: if no information in dataset suggests delta_beta_mu is different than zero
+        hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (beta_sigma_idxs, 0.055)))
+
+        # Hyperdistribution prior: delta_beta_temporal_mu ~ Exponential(1)
         delta_beta_mu_idxs = self.hyper_par_name_to_idx['delta_beta_temporal_mu']
         delta_beta_scale = np.ones(delta_beta_mu_idxs.stop - delta_beta_mu_idxs.start)
-        self.hyper_prior_lpp_fs.append(lambda theta : np.sum(expon.logpdf(
-            np.abs(theta[delta_beta_mu_idxs]),
-            scale=delta_beta_scale
-        )))
+        hyper_prior_lpp_fs.append((self.delta_beta_temporal_logpdf, (delta_beta_mu_idxs, delta_beta_scale)))
+
+        return season_prior_lpp_fs, hyper_prior_lpp_fs
+
 
     def build_selection_dictionaries(self, additional_axes_data):
         """
@@ -238,12 +254,10 @@ class log_posterior_probability():
         self.n_seasons = len(seasons)
         # expand the model parameters bounds (beta_temporal is 1D)
         self.pars_model_bounds = expand_bounds(self.par_sizes, par_bounds)
-
         self.par_name_to_idx = self.build_par_idx_map(self.par_shapes)
         self.par_name_to_idx_per_season = {k: self.par_idxs_all_seasons(k) for k in self.par_name_to_idx.keys()}
         self.hyper_par_name_to_idx = self.build_par_idx_map(self.hyperpar_shapes)
-
-        self.build_prior_evaluation()
+        self.season_prior_lpp_fs, self.hyper_prior_lpp_fs = self.build_prior_evaluation()
 
         # Extract necessary information from datasets
         self.build_selection_dictionaries(additional_axes_data)
@@ -299,17 +313,16 @@ class log_posterior_probability():
         lpp = 0
 
          # compute hyperdistribution priors
-        for hyper_prior_lpp in self.hyper_prior_lpp_fs:
-            lpp += hyper_prior_lpp(theta)
-
+        for hyper_prior_lpp, pars in self.hyper_prior_lpp_fs:
+            lpp += hyper_prior_lpp(theta, *pars)
         lpp *= self.n_seasons
 
         # loop over the seasons
         for i, (season, data_x, data_date) in enumerate(zip(self.seasons, self.data_xs, self.data_dates)):
 
             # compute priors
-            for season_prior_lpp in self.season_prior_lpp_fs:
-                lpp += season_prior_lpp(theta, i)
+            for season_prior_lpp, pars in self.season_prior_lpp_fs:
+                lpp += season_prior_lpp(theta, i, *pars)
 
             # negative arguments in hyperparameters lead to a nan lpp --> redact to -np.inf and move on
             if math.isnan(lpp):
