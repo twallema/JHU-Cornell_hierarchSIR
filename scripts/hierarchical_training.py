@@ -122,7 +122,7 @@ if __name__ == '__main__':
 
         # hyperparameters: use all seasons included as the default starting point
         hyperpars_0 = pd.read_csv('../data/interim/calibration/hyperparameters.csv', index_col=[0,1,2,3])
-        hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, use_ED_visits, slice(None)), 'exclude_2024-2025'].values.tolist()
+        hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, use_ED_visits, slice(None)), 'exclude_None'].values.tolist()
 
         # combine
         theta_0 = hyperpars_0 + pars_0
