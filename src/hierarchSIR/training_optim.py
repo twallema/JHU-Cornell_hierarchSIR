@@ -209,7 +209,8 @@ class log_posterior_probability():
             states, addaxis = validate_dataset(data)
             self.corresponding_model_states.append(states)
             additional_axes_data.append(addaxis)
-
+        self.additional_axes_data = additional_axes_data
+        
         # check that across seasons, the corresponding states are identical (relaxing introduces additional overhead)
         if not all(sublist == self.corresponding_model_states[0] for sublist in self.corresponding_model_states):
             raise ValueError('across seasons, the states you want to match to must be identical')
