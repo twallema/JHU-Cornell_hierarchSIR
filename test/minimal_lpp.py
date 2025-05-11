@@ -33,17 +33,16 @@ par_hyperdistributions = ['beta', 'gamma', 'lognorm', 'norm', 'lognorm', 'norm',
 lpp_orig = orig.log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)
 lpp_optim = optim.log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)
 
-pars_model_0 = pd.read_csv('data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2])
+pars_model_0 = pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2])
 pars_0 = list(pars_model_0.loc[(model_name, immunity_linking, slice(None)), seasons].transpose().values.flatten().tolist())
 
 # hyperparameters: use all seasons included as the default starting point
-hyperpars_0 = pd.read_csv('data/interim/calibration/hyperparameters.csv', index_col=[0,1,2,3])
+hyperpars_0 = pd.read_csv('../data/interim/calibration/hyperparameters.csv', index_col=[0,1,2,3])
 hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, use_ED_visits, slice(None)), 'exclude_2024-2025'].values.tolist()
 
 # combine
 theta_0 = np.array(hyperpars_0 + pars_0)
 
-0.9224056
 assert np.isclose(lpp_orig(theta_0), lpp_optim(theta_0), atol=1e-5), f"Results differ: {lpp_orig(theta_0)} vs {lpp_optim(theta_0)}"
 
 # Time 25x200 evaluations of lpp
