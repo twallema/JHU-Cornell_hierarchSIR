@@ -27,9 +27,13 @@ setup(
     packages=find_packages("src", exclude=["*.tests"]),
     package_dir={'': 'src'},
     version='0.0',
-    description='An SIR influenza model for the USA',
+    description='A multi-strain SIR seasonal influenza model',
     author='Dr. Tijs W. Alleman, Johns Hopkins University, Cornell University',
     license='CC-BY-NC-SA',
-    install_requires=['emcee','pySODM==0.2.6'],
-    ext_modules=ext_modules
+    install_requires=['emcee','pySODM>=0.2.8'],
+    ext_modules=ext_modules,
+    python_requires='>3.12.0',
+    extras_require={
+        "develop":  ["pytest"]
+    }
 )
