@@ -1,5 +1,5 @@
-import pybind11
 from setuptools import find_packages, setup, Extension
+import pybind11
 
 # boost installation paths
 boost_include_dir = '/opt/homebrew/Cellar/boost/1.87.0_1/include' # brew info boost
@@ -30,7 +30,7 @@ setup(
     description='A multi-strain SIR seasonal influenza model',
     author='Dr. Tijs W. Alleman, Johns Hopkins University, Cornell University',
     license='CC-BY-NC-SA',
-    install_requires=['emcee','pySODM>=0.2.8', 'pybind11'],
+    install_requires=['emcee','pySODM>=0.2.8'],
     ext_modules=ext_modules,
     python_requires='>3.12.0',
     extras_require={
