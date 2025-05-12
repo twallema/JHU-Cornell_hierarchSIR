@@ -30,7 +30,7 @@ setup(
     description='A multi-strain SIR seasonal influenza model',
     author='Dr. Tijs W. Alleman, Johns Hopkins University, Cornell University',
     license='CC-BY-NC-SA',
-    install_requires=['emcee','pySODM>=0.2.8'],
+    install_requires=['emcee','pySODM>=0.2.8', 'pybind11'],
     ext_modules=ext_modules,
     python_requires='>3.12.0',
     extras_require={

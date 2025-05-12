@@ -11,4 +11,3 @@ dependencies:
   - corner
   - openpyxl
   - jupyter
-  - pybind11
