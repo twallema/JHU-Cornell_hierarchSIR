@@ -2,7 +2,7 @@ import time
 import numpy as np
 import pandas as pd
 from datetime import datetime
-import hierarchSIR.training as optim
+from hierarchSIR.training import log_posterior_probability
 from hierarchSIR.utils import initialise_model, make_data_pySODM_compatible
 
 # Define model settings
@@ -30,7 +30,7 @@ par_bounds = [(1e-5,0.15), (0.5, 15), (1e-5,0.02), (0.01,0.99), (1e-9,1e-3), (0.
 par_hyperdistributions = ['beta', 'gamma', 'lognorm', 'norm', 'lognorm', 'norm', 'norm']
 
 # set up lpp function
-lpp = optim.log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)
+lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)
 
 # get initial guess parameters
 pars_model_0 = pd.read_csv('../../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2])
@@ -43,9 +43,9 @@ hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, use_ED_visits, slic
 # combine 
 theta_0 = np.array(hyperpars_0 + pars_0)
 
-# run lpp function
-lpp(theta_0)
-
-print(lpp(theta_0))
-
-# TODO: run some more assertions and tests
+# define test function with some dummy assertions (think about more in depth tests later)
+def test_lpp():
+    result = lpp(theta_0)
+    assert isinstance(result, float)  # or the expected type
+    assert not np.isnan(result), "Result should not be NaN"
+    assert not np.isinf(result), "Result should not be infinite"
