@@ -49,7 +49,6 @@ end_calibration_month = 5                                                       
 run_date = datetime.today().strftime("%Y-%m-%d")
 ## define number of chains
 max_n = 100000
-n_chains = 600
 pert = 0.05
 processes = int(os.environ.get('NUM_CORES', '16'))
 ## printing and postprocessing
@@ -126,6 +125,9 @@ if __name__ == '__main__':
 
         # combine
         theta_0 = hyperpars_0 + pars_0
+
+        # run with chain multiplier of two (minimal configuration)
+        n_chains = 2*len(theta_0)
 
         ###################
         ## Setup sampler ##
