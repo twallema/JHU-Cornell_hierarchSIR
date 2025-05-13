@@ -1,9 +1,16 @@
-import pybind11
 from setuptools import find_packages, setup, Extension
+import pybind11
 
 # boost installation paths
-boost_include_dir = '/opt/homebrew/Cellar/boost/1.87.0_1/include' # brew info boost
-boost_lib_dir = '/opt/homebrew/Cellar/boost/1.87.0_1/lib'
+import platform
+if platform.system() == 'Darwin':  # macOS
+    boost_include_dir = '/opt/homebrew/Cellar/boost/1.87.0_1/include'
+    boost_lib_dir = '/opt/homebrew/Cellar/boost/1.87.0_1/lib'
+elif platform.system() == 'Linux':  # Ubuntu in GitHub Actions
+    boost_include_dir = '/usr/include'  # Default path for Boost headers
+    boost_lib_dir = '/usr/lib/x86_64-linux-gnu'  # Default path for Boost libraries
+else:
+    raise RuntimeError("Unsupported OS")
 
 # point toward C++ model
 ext_modules = [
@@ -30,10 +37,15 @@ setup(
     description='A multi-strain SIR seasonal influenza model',
     author='Dr. Tijs W. Alleman, Johns Hopkins University, Cornell University',
     license='CC-BY-NC-SA',
-    install_requires=['emcee','pySODM>=0.2.8'],
+    install_requires=['emcee','pySODM>=0.2.8', 'pytest'],
     ext_modules=ext_modules,
     python_requires='>3.12.0',
     extras_require={
         "develop":  ["pytest"]
     }
 )
+
+
+
+
+
