@@ -25,12 +25,12 @@ jobs:
     - name: Install hierarchSIR 
       shell: bash -l {0}
       run: |
-        conda activate hierarchSIR || (echo "Environment not found, creating..." && conda env create -f hierarchSIR_env.yml && conda activate hierarchSIR)
+        conda activate HIERARCHSIR
         python -m pip install --upgrade pip
         pip install -e . --force-reinstall
 
     - name: Run unit test
       shell: bash -l {0}
       run: |
-        conda activate hierarchSIR
+        conda activate HIERARCHSIR
         pytest src/tests/test_lpp.py
