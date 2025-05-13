@@ -24,11 +24,15 @@ jobs:
 
     - name: Install hierarchSIR 
       run: |
+        conda init bash
+        source ~/.bashrc
         conda activate hierarchSIR
         python -m pip install --upgrade pip
         pip install -e . --force-reinstall
 
     - name: Run unit test
       run: |
+        conda init bash
+        source ~/.bashrc
         conda activate hierarchSIR
         pytest src/tests/test_lpp.py
