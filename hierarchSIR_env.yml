@@ -8,6 +8,5 @@ dependencies:
   - numpy
   - xarray
   - matplotlib
-  - corner
   - openpyxl
   - jupyter
