@@ -61,7 +61,7 @@ thin = 100
 ## format model name
 model_name = f'SIR-{strains}S'
 ## define samples path
-samples_path=fig_path=f'../data/interim/calibration/hierarchical-training/{model_name}/immunity_linking-{immunity_linking}/ED_visits-{use_ED_visits}/' # Path to backend
+samples_path=fig_path=f'../../data/interim/calibration/hierarchical-training/{model_name}/immunity_linking-{immunity_linking}/ED_visits-{use_ED_visits}/' # Path to backend
 ## check if samples folder exists, if not, make it
 if not os.path.exists(samples_path):
     os.makedirs(samples_path)
@@ -116,11 +116,11 @@ if __name__ == '__main__':
         ####################################
 
         # parameters: get optimal independent fit with weakly informative prior on R0 and immunity
-        pars_model_0 = pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2])
+        pars_model_0 = pd.read_csv('../../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2])
         pars_0 = list(pars_model_0.loc[(model_name, immunity_linking, slice(None)), seasons].transpose().values.flatten().tolist())
 
         # hyperparameters: use all seasons included as the default starting point
-        hyperpars_0 = pd.read_csv('../data/interim/calibration/hyperparameters.csv', index_col=[0,1,2,3])
+        hyperpars_0 = pd.read_csv('../../data/interim/calibration/hyperparameters.csv', index_col=[0,1,2,3])
         hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, use_ED_visits, slice(None)), 'exclude_None'].values.tolist()
 
         # combine
