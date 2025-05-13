@@ -1,4 +1,4 @@
-import time
+import os
 import numpy as np
 import pandas as pd
 from datetime import datetime
@@ -33,11 +33,11 @@ par_hyperdistributions = ['beta', 'gamma', 'lognorm', 'norm', 'lognorm', 'norm',
 lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)
 
 # get initial guess parameters
-pars_model_0 = pd.read_csv('../../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2])
+pars_model_0 = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/calibration/single-season-optimal-parameters.csv'), index_col=[0,1,2])
 pars_0 = list(pars_model_0.loc[(model_name, immunity_linking, slice(None)), seasons].transpose().values.flatten().tolist())
 
 # get starting point hyperparameters
-hyperpars_0 = pd.read_csv('../../data/interim/calibration/hyperparameters.csv', index_col=[0,1,2,3])
+hyperpars_0 = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/calibration/hyperparameters.csv'), index_col=[0,1,2,3])
 hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, use_ED_visits, slice(None)), 'exclude_None'].values.tolist()
 
 # combine 
