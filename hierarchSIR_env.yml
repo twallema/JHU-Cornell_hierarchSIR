@@ -4,9 +4,11 @@ channels:
   - defaults
 dependencies:
   - python=3.12
-  - pandas
-  - numpy
-  - xarray
-  - matplotlib
-  - openpyxl
   - jupyter
+  - matplotlib
+  - xarray
+  - numpy
+  - pandas
+  - scipy
+  - openpyxl
+  - emcee
