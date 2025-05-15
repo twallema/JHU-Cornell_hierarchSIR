@@ -1,3 +1,29 @@
 [build-system]
-requires = ["setuptools", "wheel", "pybind11"]
+requires = ["setuptools>=61.0", "wheel", "pybind11"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "hierarchSIR"
+version = "0.0"
+description = "A multi-strain SIR seasonal influenza model"
+authors = [{name = "Dr. Tijs W. Alleman", email = "your-email@example.com"}]
+license = {text = "CC-BY-NC-SA"}
+readme = "README.md"
+requires-python = ">=3.12.0"
+dependencies = [
+    "matplotlib",
+    "xarray",
+    "numpy",
+    "pandas",
+    "scipy",
+    "openpyxl",
+    "pytest",
+    "pySODM>=0.2.8"
+]
+
+[project.optional-dependencies]
+develop = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["*.tests"]
