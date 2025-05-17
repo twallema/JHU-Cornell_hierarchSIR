@@ -1,9 +1,9 @@
 """
-This script...
+This script contains the log posterior probability function of the Bayesian hierarchical model
 """
 
 __author__      = "Tijs Alleman"
-__copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group, Johns Hopkins Bloomberg School of Public Health. All Rights Reserved."
+__copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group, Johns Hopkins Bloomberg School of Public Health and Cornell University; Tim Vanwezemael, Ghent University. All Rights Reserved."
 
 import os
 import math
@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 from scipy.stats import expon, beta, norm, gamma, lognorm
-from pySODM.optimization.utils import list_to_dict, add_poisson_noise
+from pySODM.optimization.utils import add_poisson_noise
 from pySODM.optimization.objective_functions import ll_poisson, validate_calibrated_parameters, expand_bounds, validate_dataset, create_fake_xarray_output, compare_data_model_coordinates
 
 ###########################################

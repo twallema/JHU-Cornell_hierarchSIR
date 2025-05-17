@@ -89,7 +89,7 @@ if __name__ == '__main__':
         pars, bounds, labels, log_prior_prob_fcn, log_prior_prob_fcn_args = get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparameters)
 
         # retrieve guestimate NM
-        theta = list(pd.read_csv('../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2]).loc[(model_name, immunity_linking, slice(None))].mean(axis=1))
+        theta = list(pd.read_csv('../../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2]).loc[(model_name, immunity_linking, slice(None))].mean(axis=1))
 
         # format data
         data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(strains, use_ED_visits, start_simulation, end_calibration, season)
@@ -114,7 +114,7 @@ if __name__ == '__main__':
 
             # Make folder structure
             identifier = f'reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}' # identifier
-            samples_path=fig_path=f'../data/interim/calibration/incremental-calibration/{model_name}/immunity_linking-{immunity_linking}/hyperpars-{hyperparameters}/ED_visits-{use_ED_visits}/{season}/{identifier}/' # Path to backend
+            samples_path=fig_path=f'../../data/interim/calibration/incremental-calibration/{model_name}/immunity_linking-{immunity_linking}/hyperpars-{hyperparameters}/ED_visits-{use_ED_visits}/{season}/{identifier}/' # Path to backend
             run_date = datetime.today().strftime("%Y-%m-%d") # get current date
             # check if samples folder exists, if not, make it
             if not os.path.exists(samples_path):
