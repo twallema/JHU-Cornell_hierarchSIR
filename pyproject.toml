@@ -26,4 +26,4 @@ develop = ["pytest"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-exclude = ["*.tests"]
+exclude = ["tests", "tests.*"]
