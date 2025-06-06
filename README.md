@@ -115,9 +115,9 @@ The environment variable `$BOOST_ROOT` is used to distinghuish between a local L
 
 3d. Install the `hierarchSIR` Python package inside the conda environment using,
 
-    ```bash
-    pip install -e . --force-reinstall
-    ```
+```bash
+pip install -e . --force-reinstall
+```
 
 ### Submitting jobs
 
