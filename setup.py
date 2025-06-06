@@ -1,6 +1,7 @@
-from setuptools import setup, Extension
+import os
 import platform
 import pybind11
+from setuptools import setup, Extension
 
 # This setup file contains the dynamic parts of `hierarchSIR` installer, while `pyproject.toml` contains the static parts
 
