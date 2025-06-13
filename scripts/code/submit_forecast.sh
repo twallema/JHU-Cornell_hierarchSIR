@@ -2,7 +2,7 @@
 #SBATCH --job-name=incremental-calibration
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=24
 #SBATCH --time=72:00:00
 
 # Submit as follows:
