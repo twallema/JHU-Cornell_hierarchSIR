@@ -1,10 +1,12 @@
 # JHU-Cornell_hierarchSIR
 
-A hybrid multi-strain SIR - Bayesian hierarchical discrepancy model
+A hybrid multi-strain SIR - Bayesian hierarchical discrepancy model for infectious disease forecasting.
 
-## Installation
+## Installation (local)
 
-Made and tested for macOS, and should work on Linux too. Will not work on Windows because the OS-dependent path to the Boost libraries is not included in `setup.py`.
+Available platforms: macOS and Linux.
+
+Note: Will not work on Windows because the OS-dependent path to the C++ Boost libraries is not included in `setup.py`.
 
 ### Setup and activate a conda environment
 
@@ -36,7 +38,7 @@ Install the C++ Boost libraries needed to integrate the multi-strain SIR model,
     sudo apt-get update && sudo apt-get install -y libboost-all-dev
     ```
 
-Note: Boost is a C++ library and is not installed "inside" the conda environment.
+Note: Boost is a C++ library and is not installed "inside" the conda environment but rather on your local machine. In `setup.py` the software is pointed to the location of the Boost library.
 
 ### Install the `hierarchSIR` package
 
@@ -48,3 +50,11 @@ Install the `hierarchSIR` Python package inside the conda environment using,
 
 Note: The installation script requires the use of `pybind11` to "bind" the multi-strain SIR model in C++ to a Python function. This is the purpose of `pyproject.toml`.
 Note: If you make any changes to the C++ files you need to reinstall `hierarchSIR`.
+
+### Model training and forecasting
+
+See `scripts/code/hierarchical_training.py` and `scripts/code/incremental_calibration.py`.
+
+## Running on the JHU Rockfish cluster
+
+See `JHU-ROCKFISH_README.md`.
