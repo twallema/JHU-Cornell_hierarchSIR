@@ -89,7 +89,6 @@ cd scr4_struelo1/flepimop-code/twallema
     3a. Checkout to the right branch
 
     ```bash
-    cd JHU-Cornell_hierarchSIR
     git branch 
     git checkout <my_branch>
     ```
