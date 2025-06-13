@@ -125,6 +125,12 @@ cd scr4_struelo1/flepimop-code/twallema
     scancel --name=your_job_name
     ```
 
+    4e. Cancel your job if needed
+
+    ```bash
+    scancel <job_ID>
+    ```
+
 ### Cluster Tips and Tricks
 
 1. Reset all changes made on cluster in git:
