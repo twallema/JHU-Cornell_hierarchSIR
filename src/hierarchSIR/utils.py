@@ -649,7 +649,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
                                         {'s': priors['T_h_s'], 'scale': priors['T_h_scale']},                                           # T_h
                                         # >>>>>>>>>
                                         {'s': priors['rho_h_s'], 'scale': priors['rho_h_scale']},                                       # rho_h
-                                        {'a': priors['iota_1_s'], 'scale': priors['iota_1_scale']},                                     # iota_1
+                                        {'s': priors['iota_1_s'], 'scale': priors['iota_1_scale']},                                     # iota_1
                                         {'s': priors['iota_2_s'], 'scale': priors['iota_2_scale']},                                     # iota_2
                                         {'s': priors['iota_3_s'], 'scale': priors['iota_3_scale']},                                     # iota_3
                                         {'s': priors['f_I_s'], 'scale': priors['f_I_scale']},                                           # f_I
