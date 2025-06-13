@@ -54,13 +54,13 @@ fips_state = 37
 n_pso = 1000                                                # Number of PSO iterations
 multiplier_pso = 10                                         # PSO swarm size
 ## bayesian inference
-n_mcmc = 12000                                              # Number of MCMC iterations
+n_mcmc = 10000                                              # Number of MCMC iterations
 multiplier_mcmc = 3                                         # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 12000                                             # Print diagnostics every `print_n`` iterations
-discard = 10000                                             # Discard first `discard` iterations as burn-in
+print_n = 10000                                             # Print diagnostics every `print_n`` iterations
+discard = 8000                                             # Discard first `discard` iterations as burn-in
 thin = 100                                                  # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', '16'))          # Number of CPUs to use
-n = 200                                                     # Number of simulations performed in MCMC goodness-of-fit figure
+n = 500                                                     # Number of simulations performed in MCMC goodness-of-fit figure
 ## format model name
 model_name = f'SIR-{strains}S'
 
@@ -114,7 +114,7 @@ if __name__ == '__main__':
 
             # Make folder structure
             identifier = f'reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}' # identifier
-            samples_path=fig_path=f'../../data/interim/calibration/incremental-calibration/{model_name}/immunity_linking-{immunity_linking}/hyperpars-{hyperparameters}/ED_visits-{use_ED_visits}/{season}/{identifier}/' # Path to backend
+            samples_path=fig_path=f'../../data/interim/calibration/incremental-calibration/{model_name}/immunity_linking-{immunity_linking}/ED_visits-{use_ED_visits}/hyperpars-{hyperparameters}/{season}/{identifier}/' # Path to backend
             run_date = datetime.today().strftime("%Y-%m-%d") # get current date
             # check if samples folder exists, if not, make it
             if not os.path.exists(samples_path):
