@@ -6,7 +6,7 @@
 #SBATCH --time=72:00:00
 
 # Submit as follows:
-# sbatch --export=ALL,STRAINS=1,IMMUNITY_LINKING=False,USE_ED_VISITS=False submit_job.sh
+# sbatch --export=ALL,STRAINS=1,IMMUNITY_LINKING=False,USE_ED_VISITS=False submit_training.sh
 
 # Pin the number of cores for use in python calibration script
 export NUM_CORES=$SLURM_CPUS_PER_TASK
