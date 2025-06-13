@@ -25,6 +25,7 @@ cd scr4_struelo1/flepimop-code/twallema
     3b. Install the conda environment (do once)
 
     ```bash
+    cd JHU-Cornell_hierarchSIR
     module load anaconda3
     conda env create -f hierarchSIR_env.yml
     ```
@@ -62,7 +63,7 @@ cd scr4_struelo1/flepimop-code/twallema
 
     The environment variable `$BOOST_ROOT` is used to distinghuish between a local Linux machine and a cluster running Linux.
 
-    3d. Install the `hierarchSIR` Python package inside the conda environment using,
+    3d. Install the `hierarchSIR` Python package **inside the conda environment** using,
 
     ```bash
     pip install -e . --force-reinstall
