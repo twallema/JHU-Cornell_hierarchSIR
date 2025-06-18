@@ -57,7 +57,7 @@ def objective_func(sigma, start_baseline_month, start_baseline_day, end_baseline
 ## compute WIS in function of sigma
 ### compute WIS
 WIS=[]
-sigma = np.arange(0.15,0.60,0.05)
+sigma = np.arange(0.15,0.60,0.025)
 for s in sigma:
     print(s)
     WIS.append(objective_func(s, start_baseline_month, start_baseline_day, end_baseline_month, end_baseline_day))
@@ -112,8 +112,6 @@ for focal_season in seasons:
     collect_seasons.append(collect_weeks)
 # CONCATENATE SEASONS
 collect_seasons = pd.concat(collect_seasons, axis=0)
-print(np.mean(collect_seasons.groupby(by=['season'])['WIS'].mean()))
-print(np.sum(collect_seasons.groupby(by=['season'])['WIS'].mean()))
 
 ## add model name
 collect_seasons['model'] = 'GRW_drift'
@@ -123,4 +121,5 @@ baselineModels_accuracy = pd.concat([WIS_optim, collect_seasons], axis=0)
 baselineModels_accuracy = baselineModels_accuracy.set_index(['model', 'season', 'reference_date', 'horizon'])
 baselineModels_accuracy.to_csv('../../data/interim/calibration/baselineModels-accuracy.csv')
 
-print(collect_seasons.groupby(by=['model', 'season'])['WIS'].mean())
+print(baselineModels_accuracy.groupby(by=['model'])['WIS'].mean())
+print(baselineModels_accuracy.groupby(by=['model', 'season'])['WIS'].mean())
