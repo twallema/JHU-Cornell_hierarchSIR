@@ -1,6 +1,7 @@
 """
-A script optimizing the flatBaselineModel to achieve the best (lowest) WIS to all historical NC data.
-Saves the optimal flatBaselineModel WIS scores in `~/data/interim/calibration/flatBaselineModel-accuracy.csv`, which is used to compute relative WIS scores for the NC models.
+A script optimizing the variance parameter of the GRW baseline model without drift to achieve the best (lowest) WIS to all historical NC data.
+Then uses the optimal variance to compute the WIS scores for the GRW baseline model with drift based on the historical data.
+Saves the baseline model's WIS scores in `~/data/interim/calibration/flatBaselineModel-accuracy.csv`.
 """
 
 # packages needed
@@ -9,19 +10,23 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 from hierarchSIR.utils import get_NC_influenza_data
-from hierarchSIR.accuracy import simulate_geometric_random_walk, compute_WIS
+from hierarchSIR.accuracy import simulate_geometric_random_walk, compute_WIS, get_historic_drift
 
 # settings
 location = '37'
-start_optimisation_month = 12 # expressed as Hubverse reference date
-start_optimisation_day = 1
-end_optimisation_month = 4
-end_optimisation_day = 7
-seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024']
+start_baseline_month = 11 # expressed as Hubverse reference date
+start_baseline_day = 15
+end_baseline_month = 4
+end_baseline_day = 7
+seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']
+
+###############################
+## Part 1: GRW without drift ##
+###############################
 
 # optimise noise on the baseline model
 ## define objective function
-def objective_func(sigma, start_optimisation_month, start_optimisation_day, end_optimisation_month, end_optimisation_day):
+def objective_func(sigma, start_baseline_month, start_baseline_day, end_baseline_month, end_baseline_day):
     """
     Compute the WIS score of a flat baseline model with noise `sigma` across all available seasons
     """
@@ -30,8 +35,8 @@ def objective_func(sigma, start_optimisation_month, start_optimisation_day, end_
     collect_seasons=[]
     for season in seasons:
         ## get the data
-        data = 7*get_NC_influenza_data(datetime(int(season[0:4]), start_optimisation_month, start_optimisation_day) - timedelta(weeks=1),
-                                       datetime(int(season[0:4])+1, end_optimisation_month, end_optimisation_day)+timedelta(weeks=4),
+        data = 7*get_NC_influenza_data(datetime(int(season[0:4]), start_baseline_month, start_baseline_day) - timedelta(weeks=1),
+                                       datetime(int(season[0:4])+1, end_baseline_month, end_baseline_day)+timedelta(weeks=4),
                                        season)['H_inc']
         ## LOOP weeks
         collect_weeks=[]
@@ -52,10 +57,10 @@ def objective_func(sigma, start_optimisation_month, start_optimisation_day, end_
 ## compute WIS in function of sigma
 ### compute WIS
 WIS=[]
-sigma = np.arange(0.15,0.60,0.025)
+sigma = np.arange(0.15,0.60,0.05)
 for s in sigma:
     print(s)
-    WIS.append(objective_func(s, start_optimisation_month, start_optimisation_day, end_optimisation_month, end_optimisation_day))
+    WIS.append(objective_func(s, start_baseline_month, start_baseline_day, end_baseline_month, end_baseline_day))
 WIS_sum = [sum(df['WIS']) for df in WIS]
 ### get maximum
 sigma_optim = sigma[np.argmin(WIS_sum)]
@@ -69,11 +74,53 @@ ax.plot(sigma, WIS_sum, color='black', marker='s')
 ax.set_xlabel('Baseline model parameter $\\sigma$')
 ax.set_ylabel('Sum of WIS')
 plt.tight_layout()
-plt.savefig('optimization-baseline-model.pdf')
+#plt.savefig('optimization-baseline-model.pdf')
 plt.show()
 plt.close()
 
-## save result
-WIS_optim['model'] = 'flatBaselineModel'
-WIS_optim = WIS_optim.set_index(['model', 'season', 'reference_date', 'horizon'])
-WIS_optim.to_csv('../../data/interim/calibration/baselineModels-accuracy.csv')
+## add model name
+WIS_optim['model'] = 'GRW_nodrift'
+
+############################
+## Part 2: GRW with drift ##
+############################
+
+# LOOP seasons
+collect_seasons=[]
+for focal_season in seasons:
+    ## get the current season's data
+    data = 7*get_NC_influenza_data(datetime(int(focal_season[0:4]), start_baseline_month, start_baseline_day) - timedelta(weeks=1),
+                                    datetime(int(focal_season[0:4])+1, end_baseline_month, end_baseline_day)+timedelta(weeks=4),
+                                    focal_season)['H_inc']
+    ## LOOP weeks
+    collect_weeks=[]
+    for date in data.index[:-4]:
+        ### COMPUTE historical drift 
+        mu_horizon = []
+        for i in range(4):
+            ### GET historical drift 
+            mu, _ = get_historic_drift(focal_season, seasons, date+timedelta(weeks=i), 2)
+            mu_horizon.append(mu)
+        ### SIMULATE baseline model
+        simout = simulate_geometric_random_walk(mu_horizon, sigma_optim, date, data[date], n_sim=1000)
+        ### COMPUTE WIS score
+        collect_weeks.append(compute_WIS(simout, data))
+    ## CONCATENATE WEEKS
+    collect_weeks = pd.concat(collect_weeks, axis=0)
+    collect_weeks = collect_weeks.reset_index()
+    collect_weeks['season'] = focal_season
+    collect_seasons.append(collect_weeks)
+# CONCATENATE SEASONS
+collect_seasons = pd.concat(collect_seasons, axis=0)
+print(np.mean(collect_seasons.groupby(by=['season'])['WIS'].mean()))
+print(np.sum(collect_seasons.groupby(by=['season'])['WIS'].mean()))
+
+## add model name
+collect_seasons['model'] = 'GRW_drift'
+
+# Save results
+baselineModels_accuracy = pd.concat([WIS_optim, collect_seasons], axis=0)
+baselineModels_accuracy = baselineModels_accuracy.set_index(['model', 'season', 'reference_date', 'horizon'])
+baselineModels_accuracy.to_csv('../../data/interim/calibration/baselineModels-accuracy.csv')
+
+print(collect_seasons.groupby(by=['model', 'season'])['WIS'].mean())

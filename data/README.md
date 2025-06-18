@@ -42,6 +42,8 @@ Contains an overview of the raw data sources, and the conversion scripts used to
 
 ### Calibration
 
++ `baselineModels-accuracy.csv`: Contains the WIS of the GRW baseline model with or without drift, used to normalise our model's WIS scores. Columns: 'model', 'season', 'reference_date', 'horizon', 'WIS'. Generated using `~/scripts/manuscript/optimize_run-baselineModels.py`.
+
 ## Conversion
 
 ### Demography
