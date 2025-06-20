@@ -435,7 +435,8 @@ def simout_to_hubverse(simout: xr.Dataset,
                         target: str,
                         model_state: str,
                         path: str=None,
-                        quantiles: bool=False) -> pd.DataFrame:
+                        quantiles: bool=False,
+                        save_strains: bool=False) -> pd.DataFrame:
     """
     Convert simulation result to Hubverse format
 
@@ -459,6 +460,9 @@ def simout_to_hubverse(simout: xr.Dataset,
     - quantiles: str
         - save quantiles instead of individual trajectories.
 
+    - save_strains: bool
+        - save strains
+
     Returns
     -------
 
@@ -474,6 +478,10 @@ def simout_to_hubverse(simout: xr.Dataset,
     # deduce information from simout
     location = [location,]
     output_type_id = simout.coords['draws'].values if not quantiles else [0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.975, 0.99]
+    if save_strains:
+        column_names = [f'strain_{name}' for name in simout[model_state].coords['strain'].values]
+    else:
+        column_names = ['value'] # default Hubverse format
     # fixed metadata
     horizon = range(-1,4)
     output_type = 'samples' if not quantiles else 'quantile'
@@ -483,7 +491,7 @@ def simout_to_hubverse(simout: xr.Dataset,
     # pre-allocate dataframe
     idx = pd.MultiIndex.from_product([[reference_date,], [target,], horizon, location, [output_type,], output_type_id],
                                         names=['reference_date', 'target', 'horizon', 'location', 'output_type', 'output_type_id'])
-    df = pd.DataFrame(index=idx, columns=['value'])
+    df = pd.DataFrame(index=idx, columns=column_names)
     # attach target end date
     df = df.reset_index()
     df['target_end_date'] = df.apply(lambda row: row['reference_date'] + timedelta(weeks=row['horizon']), axis=1)
@@ -492,13 +500,21 @@ def simout_to_hubverse(simout: xr.Dataset,
     for loc in location:
         if not quantiles:
             for draw in output_type_id:
-                df.loc[((df['output_type_id'] == draw) & (df['location'] == loc)), 'value'] = \
-                    7*simout[model_state].sum(dim='strain').sel({'draws': draw}).interp(date=target_end_date).values
+                if save_strains:
+                    df.loc[((df['output_type_id'] == draw) & (df['location'] == loc)), column_names] = \
+                        7*simout[model_state].sel({'draws': draw}).interp(date=target_end_date).values
+                else:
+                    df.loc[((df['output_type_id'] == draw) & (df['location'] == loc)), column_names] = \
+                        7*simout[model_state].sum(dim='strain').sel({'draws': draw}).interp(date=target_end_date).values
         else:
             for q in output_type_id:
-                df.loc[((df['output_type_id'] == q) & (df['location'] == loc)), 'value'] = \
-                    7*simout[model_state].sum(dim='strain').quantile(q=q, dim='draws').interp(date=target_end_date).values
-    
+                if save_strains:
+                    df.loc[((df['output_type_id'] == q) & (df['location'] == loc)), column_names] = \
+                        7*simout[model_state].quantile(q=q, dim='draws').interp(date=target_end_date).values
+                else:
+                    df.loc[((df['output_type_id'] == q) & (df['location'] == loc)), column_names] = \
+                        7*simout[model_state].sum(dim='strain').quantile(q=q, dim='draws').interp(date=target_end_date).values
+        
     # save result
     if path:
         df.to_csv(path+reference_date.strftime('%Y-%m-%d')+'-JHU_IDD'+'-hierarchSIM.csv', index=False)
