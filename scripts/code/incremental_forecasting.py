@@ -31,20 +31,21 @@ season_lst = ['2024-2025', '2023-2024', '2019-2020', '2018-2019', '2017-2018', '
 hyperparameters_lst = ['exclude_2024-2025', 'exclude_2023-2024','exclude_2019-2020', 'exclude_2018-2019', 'exclude_2017-2018', 'exclude_2016-2017', 'exclude_2015-2016', 'exclude_2014-2015']
 
 # model settings/ save settings
-fips_state = 37
-quantiles = False
+fips_state = 37             # NC
+quantiles = False           # save quantiles vs. individual trajectories 
+save_strains = True        # save individual trajectories of strains for copula modeling
 
 # optimization parameters
 ## frequentist optimization
-n_nm = 2000                                                 # Number of NM search iterations
+n_nm = 2000                                                     # Number of NM search iterations
 ## bayesian inference
-n_mcmc = 10000                                              # Number of MCMC iterations
-multiplier_mcmc = 3                                         # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 10000                                             # Print diagnostics every `print_n`` iterations
-discard = 8000                                              # Discard first `discard` iterations as burn-in
-thin = 100                                                  # Thinning factor emcee chains
-processes = int(os.environ.get('NUM_CORES', '16'))          # Number of CPUs to use
-n = 200                                                     # Number of simulations performed in MCMC goodness-of-fit figure
+n_mcmc = 10000                                                  # Number of MCMC iterations
+multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
+print_n = 10000                                                 # Print diagnostics every `print_n`` iterations
+discard = 8000                                                  # Discard first `discard` iterations as burn-in
+thin = 100                                                      # Thinning factor emcee chains
+processes = int(os.environ.get('NUM_CORES', '16'))              # Number of CPUs to use
+n = 500                                                         # Number of simulations performed in MCMC goodness-of-fit figure
 
 #####################
 ## Parse arguments ##
@@ -214,7 +215,7 @@ if __name__ == '__main__':
                 pass
 
             # Save as a .csv in hubverse format / raw netcdf
-            df = simout_to_hubverse(simout, fips_state, end_date+timedelta(weeks=1), 'wk inc flu hosp', 'H_inc', samples_path, quantiles=quantiles)
+            df = simout_to_hubverse(simout, fips_state, end_date+timedelta(weeks=1), 'wk inc flu hosp', 'H_inc', samples_path, quantiles=quantiles, save_strains=save_strains)
             simout.to_netcdf(samples_path+f'{identifier}_simulation-output.nc')
 
             # Visualise goodnes-of-fit
