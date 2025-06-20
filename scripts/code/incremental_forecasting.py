@@ -114,7 +114,7 @@ if __name__ == '__main__':
 
             # Make folder structure
             identifier = f'reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}' # identifier
-            samples_path=fig_path=f'../../data/interim/calibration/incremental-calibration/{model_name}/immunity_linking-{immunity_linking}/ED_visits-{use_ED_visits}/hyperpars-{hyperparameters}/{season}/{identifier}/' # Path to backend
+            samples_path=fig_path=f'../../data/interim/calibration/incremental-calibration/{model_name}/immunity_linking-{immunity_linking}/ED_visits-{use_ED_visits}/{season}/hyperpars-{hyperparameters}/{identifier}/' # Path to backend
             run_date = datetime.today().strftime("%Y-%m-%d") # get current date
             # check if samples folder exists, if not, make it
             if not os.path.exists(samples_path):
