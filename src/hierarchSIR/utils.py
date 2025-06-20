@@ -506,15 +506,15 @@ def simout_to_hubverse(simout: xr.Dataset,
     return df
 
 
-from pySODM.optimization.objective_functions import log_posterior_probability, log_prior_normal, log_prior_lognormal, log_prior_uniform, log_prior_gamma, log_prior_normal, log_prior_beta
+from pySODM.optimization.objective_functions import log_prior_normal, log_prior_lognormal, log_prior_uniform, log_prior_gamma, log_prior_normal
 def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparameters):
     """
     A function to help prepare the pySODM-compatible priors
     """
     if not immunity_linking:
-        pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                                       # parameters to calibrate
-        bounds = [(1e-3,0.075), (0.5, 14), (0.0001,0.0075), (0.10,0.90), (1e-6,0.001), (0.30,0.60), (-0.40,0.40)]          # parameter bounds
-        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']       # labels in output figures
+        pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                                      # parameters to calibrate
+        bounds = [(1e-3,0.075), (0.5, 14), (0.0001,0.01), (0.10,0.50), (1e-6,0.001), (0.30,0.60), (-0.40,0.40)]          # parameter bounds
+        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']      # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
             # assign priors (R0 ~ N(1.6, 0.2); modifiers nudged to zero; all others uninformative)
@@ -529,7 +529,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
         # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         else:
             # load and select priors
-            priors = pd.read_csv('../data/interim/calibration/hyperparameters.csv')
+            priors = pd.read_csv('../../data/interim/calibration/hyperparameters.csv')
             priors = priors.loc[((priors['model'] == model_name) & (priors['immunity_linking'] == immunity_linking) & (priors['use_ED_visits'] == use_ED_visits)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
             # assign values
             if strains == 1:
@@ -620,7 +620,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
 
     else:
         pars = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']                                            # parameters to calibrate
-        bounds = [(1e-3,0.075), (0.5, 14), (1e-4,0.01), (0,0.001), (0,0.001), (0,0.001), (1e-6,0.001), (0.30,0.60), (-0.40,0.40)]                      # parameter bounds
+        bounds = [(1e-3,0.075), (0.5, 14), (0.0001,0.01), (0,0.001), (0,0.001), (0,0.001), (1e-6,0.001), (0.30,0.60), (-0.40,0.40)]                      # parameter bounds
         labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']     # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
@@ -638,7 +638,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
         # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         else:
             # load and select priors
-            priors = pd.read_csv('../data/interim/calibration/hyperparameters.csv')
+            priors = pd.read_csv('../../data/interim/calibration/hyperparameters.csv')
             priors = priors.loc[((priors['model'] == model_name) & (priors['immunity_linking'] == immunity_linking) & (priors['use_ED_visits'] == use_ED_visits)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
             # assign values
             if strains == 1:
@@ -649,7 +649,7 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
                                         {'s': priors['T_h_s'], 'scale': priors['T_h_scale']},                                           # T_h
                                         # >>>>>>>>>
                                         {'s': priors['rho_h_s'], 'scale': priors['rho_h_scale']},                                       # rho_h
-                                        {'a': priors['iota_1_s'], 'scale': priors['iota_1_scale']},                                     # iota_1
+                                        {'s': priors['iota_1_s'], 'scale': priors['iota_1_scale']},                                     # iota_1
                                         {'s': priors['iota_2_s'], 'scale': priors['iota_2_scale']},                                     # iota_2
                                         {'s': priors['iota_3_s'], 'scale': priors['iota_3_scale']},                                     # iota_3
                                         {'s': priors['f_I_s'], 'scale': priors['f_I_scale']},                                           # f_I
