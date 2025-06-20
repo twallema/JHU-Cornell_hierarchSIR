@@ -22,11 +22,35 @@ from pySODM.optimization.mcmc import perturbate_theta, run_EnsembleSampler
 # hierarchSIR functions
 from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, make_data_pySODM_compatible, get_priors, str_to_bool
 
+##############
+## Settings ##
+##############
+
+# define seasons and hyperparameter combo's to loop over
+season_lst = ['2024-2025', '2023-2024', '2019-2020', '2018-2019', '2017-2018', '2016-2017', '2015-2016', '2014-2015']
+hyperparameters_lst = ['exclude_2024-2025', 'exclude_2023-2024','exclude_2019-2020', 'exclude_2018-2019', 'exclude_2017-2018', 'exclude_2016-2017', 'exclude_2015-2016', 'exclude_2014-2015']
+
+# model settings/ save settings
+fips_state = 37
+quantiles = False
+
+# optimization parameters
+## frequentist optimization
+n_nm = 2000                                                 # Number of NM search iterations
+## bayesian inference
+n_mcmc = 10000                                              # Number of MCMC iterations
+multiplier_mcmc = 3                                         # Total number of Markov chains = number of parameters * multiplier_mcmc
+print_n = 10000                                             # Print diagnostics every `print_n`` iterations
+discard = 8000                                              # Discard first `discard` iterations as burn-in
+thin = 100                                                  # Thinning factor emcee chains
+processes = int(os.environ.get('NUM_CORES', '16'))          # Number of CPUs to use
+n = 200                                                     # Number of simulations performed in MCMC goodness-of-fit figure
+
 #####################
 ## Parse arguments ##
 #####################
 
-# parse arguments
+# arguments determine the model + data combo used to forecast
 parser = argparse.ArgumentParser()
 parser.add_argument("--strains", type=int, help="Number of strains. Valid options are: 1, 2 (flu A, B) or 3 (flu AH1, AH3, B).")
 parser.add_argument("--immunity_linking", type=str_to_bool, help="Use an immunity linking function.")
@@ -38,31 +62,12 @@ strains = args.strains
 immunity_linking = args.immunity_linking
 use_ED_visits = args.use_ED_visits
 
-# define seasons and hyperparameter combo's to loop over
-season_lst = ['2024-2025', '2023-2024', '2019-2020', '2018-2019', '2017-2018', '2016-2017', '2015-2016', '2014-2015']
-hyperparameters_lst = ['exclude_2024-2025', 'exclude_2023-2024','exclude_2019-2020', 'exclude_2018-2019', 'exclude_2017-2018', 'exclude_2016-2017', 'exclude_2015-2016', 'exclude_2014-2015']
-
-##############
-## Settings ##
-##############
-
-# model settings
-fips_state = 37
-
-# optimization parameters
-## frequentist optimization
-n_pso = 1000                                                # Number of PSO iterations
-multiplier_pso = 10                                         # PSO swarm size
-## bayesian inference
-n_mcmc = 10000                                              # Number of MCMC iterations
-multiplier_mcmc = 3                                         # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 10000                                             # Print diagnostics every `print_n`` iterations
-discard = 8000                                              # Discard first `discard` iterations as burn-in
-thin = 100                                                  # Thinning factor emcee chains
-processes = int(os.environ.get('NUM_CORES', '16'))       # Number of CPUs to use
-n = 1000                                                    # Number of simulations performed in MCMC goodness-of-fit figure
 ## format model name
 model_name = f'SIR-{strains}S'
+
+##############
+## Let's go ##
+##############
 
 # Needed for multiprocessing to work properly
 if __name__ == '__main__':
@@ -143,7 +148,7 @@ if __name__ == '__main__':
 
             # perform optimization 
             theta, _ = nelder_mead.optimize(lpp, np.array(theta), len(lpp.expanded_bounds)*[0.2,],
-                                            processes=processes, max_iter=n_pso, no_improv_break=1000)
+                                            processes=processes, max_iter=n_nm, no_improv_break=1000)
 
             ######################
             ## Visualize result ##
@@ -209,7 +214,7 @@ if __name__ == '__main__':
                 pass
 
             # Save as a .csv in hubverse format / raw netcdf
-            df = simout_to_hubverse(simout, fips_state, end_date+timedelta(weeks=1), 'wk inc flu hosp', 'H_inc', samples_path, quantiles=True)
+            df = simout_to_hubverse(simout, fips_state, end_date+timedelta(weeks=1), 'wk inc flu hosp', 'H_inc', samples_path, quantiles=quantiles)
             simout.to_netcdf(samples_path+f'{identifier}_simulation-output.nc')
 
             # Visualise goodnes-of-fit
