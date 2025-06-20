@@ -168,7 +168,7 @@ if __name__ == '__main__':
             ##########
 
             # Perturbate previously obtained estimate
-            ndim, nwalkers, pos = perturbate_theta(theta, pert=0.1*np.ones(len(theta)), multiplier=multiplier_mcmc, bounds=lpp.expanded_bounds)
+            ndim, nwalkers, pos = perturbate_theta(theta, pert=0.2*np.ones(len(theta)), multiplier=multiplier_mcmc, bounds=lpp.expanded_bounds)
             # Append some usefull settings to the samples dictionary
             settings={'start_simulation': start_simulation.strftime('%Y-%m-%d'), 'start_calibration': start_calibration.strftime('%Y-%m-%d'), 'end_calibration': end_date.strftime('%Y-%m-%d'),
                     'season': season, 'starting_estimate': theta}
