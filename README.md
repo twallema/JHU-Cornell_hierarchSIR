@@ -32,10 +32,16 @@ or alternatively, to update the environment (needed after adding a dependency),
 
 ### Install the Boost libraries 
 
-Install the C++ Boost libraries needed to integrate the multi-strain SIR model,
+Install the C++ Boost libraries needed to integrate the multi-strain SIR model, for Linux users,
 
     ```bash
     sudo apt-get update && sudo apt-get install -y libboost-all-dev
+    ```
+
+Mac users **must** install Boost through Homebrew,
+
+    ```bash
+    brew install boost
     ```
 
 Note: Boost is a C++ library and is not installed "inside" the conda environment but rather on your local machine. In `setup.py` the software is pointed to the location of the Boost library.
@@ -45,6 +51,7 @@ Note: Boost is a C++ library and is not installed "inside" the conda environment
 Install the `hierarchSIR` Python package inside the conda environment using,
 
     ```bash
+    conda activate HIERARCHSIR
     pip install -e . --force-reinstall
     ```
 

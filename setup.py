@@ -1,4 +1,5 @@
 import os
+import glob
 import platform
 import pybind11
 from setuptools import setup, Extension
@@ -16,7 +17,10 @@ def find_boost_include():
         return '/usr/include'
     # Or macOS
     elif platform.system() == 'Darwin':
-        return '/opt/homebrew/Cellar/boost/1.87.0_1/include'
+        candidates = glob.glob('/opt/homebrew/Cellar/boost/*/include')
+        if candidates:
+            return candidates[-1]  # Choose the latest version
+        raise FileNotFoundError("Boost include path not found via Homebrew")
     else:
         raise RuntimeError("Unsupported OS")
 
@@ -30,7 +34,10 @@ def find_boost_lib():
         return '/usr/lib/x86_64-linux-gnu'
     # Or macOS
     elif platform.system() == 'Darwin':
-        return '/opt/homebrew/Cellar/boost/1.87.0_1/lib'
+        candidates = glob.glob('/opt/homebrew/Cellar/boost/*/lib')
+        if candidates:
+            return candidates[-1]
+        raise FileNotFoundError("Boost lib path not found via Homebrew")
     else:
         raise RuntimeError("Unsupported OS")
 
