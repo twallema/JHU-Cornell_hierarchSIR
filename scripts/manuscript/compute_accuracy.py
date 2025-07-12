@@ -52,19 +52,21 @@ ED_visits = [False, True]
 WIS_collection = []
 print('Starting loop...')
 for mn in model_names:
+    n_strains = int(mn[4])
     print(f'\tWorking on model: {mn}')
     for il in immunity_linking:
         print(f'\t\tImmunity linking: {il}')
         for ev in ED_visits:
             print(f'\t\t\tED Visits: {ev}')
-            hyperparameters = get_subfolders(os.path.join(os.path.dirname(__file__), f'{mn}/immunity_linking-{il}/ED_visits-{ev}/'))
-            for hp in hyperparameters:
-                seasons = get_subfolders(os.path.join(os.path.dirname(__file__), f'{mn}/immunity_linking-{il}/ED_visits-{ev}/{hp}'))
-                for season in seasons:
-                    # derive start of season year
-                    season_start = int(season[:4])
+            seasons = get_subfolders(os.path.join(os.path.dirname(__file__), f'{mn}/immunity_linking-{il}/ED_visits-{ev}'))
+            for season in seasons:
+                # derive start of season year
+                season_start = int(season[:4])
+                # fetch hyperparameters
+                hyperparameters = get_subfolders(os.path.join(os.path.dirname(__file__), f'{mn}/immunity_linking-{il}/ED_visits-{ev}/{season}'))
+                for hp in hyperparameters:
                     # get all enddates of forecasts in a given season from the folder names
-                    subdirectories = get_subfolders(os.path.join(os.path.dirname(__file__), f'{mn}/immunity_linking-{il}/ED_visits-{ev}/{hp}/{season}'))
+                    subdirectories = get_subfolders(os.path.join(os.path.dirname(__file__), f'{mn}/immunity_linking-{il}/ED_visits-{ev}/{season}/{hp}'))
                     reference_dates = [datetime.strptime(subdir[15:], '%Y-%m-%d') for subdir in subdirectories]
                     data_ends = [datetime.strptime(subdir[15:], '%Y-%m-%d')-timedelta(weeks=1) for subdir in subdirectories] 
                     # only evaluate between user-supplied start and enddate
@@ -82,9 +84,30 @@ for mn in model_names:
                     baselines = []
                     for subdir, reference_date in zip(subdirectories, reference_dates):
                         ## get forecast
-                        tmp = pd.read_csv(os.path.join(os.path.dirname(__file__), f'{mn}/immunity_linking-{il}/ED_visits-{ev}/{hp}/{season}/{subdir}/{reference_date.date()}-{model_name_overall}.csv'), parse_dates=True, date_format='%Y-%m-%d')
-                        ## slice location, quantiles and right target
-                        tmp = tmp[((tmp['location'] == int(location)) & (tmp['output_type'] == 'quantile') & (tmp['target'] == 'wk inc flu hosp'))]
+                        tmp = pd.read_csv(os.path.join(os.path.dirname(__file__), f'{mn}/immunity_linking-{il}/ED_visits-{ev}/{season}/{hp}/{subdir}/{reference_date.date()}-{model_name_overall}.csv'), parse_dates=True, date_format='%Y-%m-%d')
+                        ## slice right location and target
+                        tmp = tmp[((tmp['location'] == int(location)) & (tmp['target'] == 'wk inc flu hosp'))]
+                        ## sum over strains and assign to Hubverse 'value' column --> insert copula here
+                        column_names_sum = [f'strain_{i}' for i in range(n_strains)]
+                        tmp['value'] = tmp[column_names_sum].sum(axis=1)
+                        ## convert to quantiles if this was not available yet
+                        if 'quantiles' not in tmp['output_type'].unique():
+                            ## define desired quantiles
+                            q_desired = [0.01, 0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.975, 0.99]
+                            ## compute them 
+                            group_cols = ['reference_date', 'target', 'horizon', 'location', 'target_end_date']
+                            tmp = (
+                                tmp.groupby(group_cols)['value']
+                                .quantile(q_desired)
+                                .reset_index()
+                            )
+                            ## The 'level_5' column contains the quantile levels from the groupby-quantile
+                            tmp = tmp.rename(columns={'level_5': 'output_type_id', 'value': 'value'})
+                            tmp['output_type'] = 'quantile'
+                            ## Optional: reorder columns like original
+                            desired_col_order = ['reference_date', 'target', 'horizon', 'location',
+                                                'output_type', 'output_type_id', 'target_end_date', 'value']
+                            tmp = tmp[desired_col_order]
                         ## make sure ref date is datetime
                         tmp['reference_date'] = pd.to_datetime(tmp['reference_date'])
                         tmp['target_end_date'] = pd.to_datetime(tmp['target_end_date'])
@@ -100,15 +123,15 @@ for mn in model_names:
                         baselines.append(baseline[['model', 'reference_date', 'horizon', 'WIS']])
 
                     # make a dataframe for the output of the season
-                    idx = pd.MultiIndex.from_product([[mn,], [il], [ev], [hp], [season,], reference_dates, range(-1,prediction_horizon_weeks)], names=['model', 'immunity_linking', 'ED_visits', 'hyperparameters', 'season', 'reference_date', 'horizon'])
+                    idx = pd.MultiIndex.from_product([[mn,], [il], [ev], [season], [hp,], reference_dates, range(-1,prediction_horizon_weeks)], names=['model', 'immunity_linking', 'ED_visits', 'season', 'hyperparameters', 'reference_date', 'horizon'])
                     season_accuracy = pd.DataFrame(index=idx, columns=['WIS', 'relative_WIS_nodrift', 'relative_WIS_drift'])
 
                     # loop over weeks
                     for reference_date, simout, data, baseline in zip(reference_dates, simouts, datas, baselines):
                         # compute WIS and relative WIS
-                        season_accuracy.loc[(mn, il, ev, hp, season, reference_date, slice(None)), 'WIS'] = compute_WIS(simout, data).values
-                        season_accuracy.loc[(mn, il, ev, hp, season, reference_date, slice(None)), 'relative_WIS_nodrift'] = compute_WIS(simout, data).values / baseline[baseline['model']=='GRW_nodrift']['WIS'].values
-                        season_accuracy.loc[(mn, il, ev, hp, season, reference_date, slice(None)), 'relative_WIS_drift'] = compute_WIS(simout, data).values / baseline[baseline['model']=='GRW_drift']['WIS'].values
+                        season_accuracy.loc[(mn, il, ev, season, hp, reference_date, slice(None)), 'WIS'] = compute_WIS(simout, data).values
+                        season_accuracy.loc[(mn, il, ev, season, hp, reference_date, slice(None)), 'relative_WIS_nodrift'] = compute_WIS(simout, data).values / baseline[baseline['model']=='GRW_nodrift']['WIS'].values
+                        season_accuracy.loc[(mn, il, ev, season, hp, reference_date, slice(None)), 'relative_WIS_drift'] = compute_WIS(simout, data).values / baseline[baseline['model']=='GRW_drift']['WIS'].values
                     # collect season results
                     WIS_collection.append(season_accuracy)
 
@@ -117,8 +140,7 @@ output = pd.concat(WIS_collection, axis=0)
 # omit horizon -1
 output = output.reset_index()
 output = output[output['horizon'] != -1]
-output = output.set_index(['model', 'immunity_linking', 'ED_visits', 'hyperparameters', 'season', 'reference_date', 'horizon'])
-
+output = output.set_index(['model', 'immunity_linking', 'ED_visits',  'season', 'hyperparameters', 'reference_date', 'horizon'])
 
 # output to csv
 output.to_csv('accuracy.csv')
