@@ -135,7 +135,7 @@ if __name__ == '__main__':
 
             # normalisation weights for lpp
             ratio_target = 2
-            weights = [1/max(df) for df in data_calib[:-1]] # 1/historical_mean #
+            weights = [1/max(df) for df in data_calib[:-1]]
             weights = np.array(weights) / np.mean(weights)
             weights = np.append(weights, ratio_target * max(weights))
 
