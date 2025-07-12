@@ -215,7 +215,7 @@ if __name__ == '__main__':
                 pass
 
             # Save as a .csv in hubverse format / raw netcdf
-            df = simout_to_hubverse(simout, fips_state, end_date+timedelta(weeks=1), 'wk inc flu hosp', 'H_inc', samples_path, quantiles=quantiles, save_strains=save_strains)
+            df = simout_to_hubverse(simout, fips_state, end_date+timedelta(weeks=1), 'wk inc flu hosp', 'H_inc', samples_path, quantiles=quantiles)
             simout.to_netcdf(samples_path+f'{identifier}_simulation-output.nc')
 
             # Visualise goodnes-of-fit
