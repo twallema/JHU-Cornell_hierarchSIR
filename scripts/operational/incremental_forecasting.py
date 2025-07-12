@@ -39,13 +39,14 @@ quantiles = False           # save quantiles vs. individual trajectories
 ## frequentist optimization
 n_nm = 2000                                                     # Number of NM search iterations
 ## bayesian inference
-n_mcmc = 10000                                                  # Number of MCMC iterations
+n_mcmc = 8000                                                  # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 10000                                                 # Print diagnostics every `print_n`` iterations
-discard = 8000                                                  # Discard first `discard` iterations as burn-in
+print_n = 8000                                                 # Print diagnostics every `print_n`` iterations
+discard = 7000                                                  # Discard first `discard` iterations as burn-in
 thin = 100                                                      # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
-n = 500                                                         # Number of simulations performed in MCMC goodness-of-fit figure
+n = 1000                                                         # Number of simulations performed in MCMC goodness-of-fit figure
+ratio_target = 2
 
 #####################
 ## Parse arguments ##
@@ -134,7 +135,6 @@ if __name__ == '__main__':
             data_valid = [df.loc[slice(end_date+timedelta(days=1), end_validation)] for df in data]
 
             # normalisation weights for lpp
-            ratio_target = 2
             weights = [1/max(df) for df in data_calib[:-1]]
             weights = np.array(weights) / np.mean(weights)
             weights = np.append(weights, ratio_target * max(weights))
