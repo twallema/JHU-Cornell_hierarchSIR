@@ -34,7 +34,6 @@ hyperparameters_lst = ['exclude_2024-2025', 'exclude_2023-2024','exclude_2019-20
 # model settings/ save settings
 fips_state = 37             # NC
 quantiles = False           # save quantiles vs. individual trajectories 
-save_strains = True        # save individual trajectories of strains for copula modeling
 
 # optimization parameters
 ## frequentist optimization
