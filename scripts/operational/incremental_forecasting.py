@@ -12,6 +12,7 @@ import random
 import emcee
 import numpy as np
 import pandas as pd
+import multiprocessing as mp
 from datetime import timedelta
 from datetime import datetime as datetime
 # pySODM functions
@@ -44,7 +45,7 @@ multiplier_mcmc = 3                                             # Total number o
 print_n = 10000                                                 # Print diagnostics every `print_n`` iterations
 discard = 8000                                                  # Discard first `discard` iterations as burn-in
 thin = 100                                                      # Thinning factor emcee chains
-processes = int(os.environ.get('NUM_CORES', '16'))              # Number of CPUs to use
+processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
 n = 500                                                         # Number of simulations performed in MCMC goodness-of-fit figure
 
 #####################
@@ -110,7 +111,6 @@ if __name__ == '__main__':
         ## Loop over weeks ##
         #####################
 
-
         # compute the list of incremental calibration enddates between start_calibration and end_calibration
         incremental_enddates = data[0].loc[slice(start_calibration, end_calibration)].index.get_level_values('date').unique()
 
@@ -135,8 +135,10 @@ if __name__ == '__main__':
             data_valid = [df.loc[slice(end_date+timedelta(days=1), end_validation)] for df in data]
 
             # normalisation weights for lpp
-            weights = [1/max(df) for df in data_calib]
+            ratio_target = 2
+            weights = [1/max(df) for df in data_calib[:-1]] # 1/historical_mean #
             weights = np.array(weights) / np.mean(weights)
+            weights = np.append(weights, ratio_target * max(weights))
 
             # Setup objective function (no priors defined = uniform priors based on bounds)
             lpp = log_posterior_probability(model, pars, bounds, data_calib, states, log_likelihood_fnc, log_likelihood_fnc_args,
