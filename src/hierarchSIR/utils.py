@@ -370,9 +370,9 @@ def make_data_pySODM_compatible(strains: int,
     """
     if strains == 3:
         # pySODM llp data arguments
-        states = ['I_inc', 'H_inc', 'H_inc', 'H_inc']
-        log_likelihood_fnc = [ll_poisson, ll_poisson, ll_poisson, ll_poisson]
-        log_likelihood_fnc_args = [[],[],[], []]
+        states = ['I_inc', 'H_inc', 'H_inc', 'H_inc', 'H_inc']
+        log_likelihood_fnc = len(states) * [ll_poisson,]
+        log_likelihood_fnc_args = len(states) * [[],]
         # pySODM formatting for flu A H1
         flu_AH1 = get_NC_influenza_data(start_date, end_date, season)['H_inc_AH1']
         flu_AH1 = flu_AH1.rename('H_inc') # pd.Series needs to have matching model state's name
@@ -392,12 +392,12 @@ def make_data_pySODM_compatible(strains: int,
         flu_B['strain'] = 2
         flu_B = flu_B.set_index(['date', 'strain']).squeeze()
         # attach all datasets
-        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_AH1, flu_AH3, flu_B]
+        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_AH1, flu_AH3, flu_B, get_NC_influenza_data(start_date, end_date, season)['H_inc']]
     elif strains == 2:
         # pySODM llp data arguments
-        states = ['I_inc', 'H_inc', 'H_inc']
-        log_likelihood_fnc = [ll_poisson, ll_poisson, ll_poisson]
-        log_likelihood_fnc_args = [[],[],[]]
+        states = ['I_inc', 'H_inc', 'H_inc', 'H_inc']
+        log_likelihood_fnc = len(states) * [ll_poisson,]
+        log_likelihood_fnc_args = len(states) * [[],]
         # pySODM formatting for flu A
         flu_A = get_NC_influenza_data(start_date, end_date, season)['H_inc_A']
         flu_A = flu_A.rename('H_inc') # pd.Series needs to have matching model state's name
@@ -411,14 +411,14 @@ def make_data_pySODM_compatible(strains: int,
         flu_B['strain'] = 1
         flu_B = flu_B.set_index(['date', 'strain']).squeeze()
         # attach all datasets
-        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_A, flu_B]
+        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_A, flu_B, get_NC_influenza_data(start_date, end_date, season)['H_inc']]
     elif strains == 1:
         # pySODM llp data arguments
-        states = ['I_inc', 'H_inc']
-        log_likelihood_fnc = [ll_poisson, ll_poisson]
-        log_likelihood_fnc_args = [[],[]]
+        states = ['I_inc', 'H_inc', 'H_inc']
+        log_likelihood_fnc = len(states) * [ll_poisson,]
+        log_likelihood_fnc_args = len(states) * [[],]
         # pySODM data
-        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], get_NC_influenza_data(start_date, end_date, season)['H_inc']]
+        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], get_NC_influenza_data(start_date, end_date, season)['H_inc'], get_NC_influenza_data(start_date, end_date, season)['H_inc']]
     # omit I_inc
     if not use_ED_visits:
         data = data[1:]
