@@ -46,7 +46,7 @@ discard = 7000                                                  # Discard first 
 thin = 100                                                      # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
 n = 1000                                                         # Number of simulations performed in MCMC goodness-of-fit figure
-ratio_target = 2
+ratio_target = 1
 
 #####################
 ## Parse arguments ##
