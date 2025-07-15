@@ -46,7 +46,7 @@ discard = 7000                                                  # Discard first 
 thin = 100                                                      # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
 n = 1000                                                         # Number of simulations performed in MCMC goodness-of-fit figure
-ratio_target = 1
+ratio_weight_target = 1
 
 #####################
 ## Parse arguments ##
@@ -137,7 +137,7 @@ if __name__ == '__main__':
             # normalisation weights for lpp
             weights = [1/max(df) for df in data_calib[:-1]]
             weights = np.array(weights) / np.mean(weights)
-            weights = np.append(weights, ratio_target * max(weights))
+            weights = np.append(weights, ratio_weight_target * max(weights))
 
             # Setup objective function (no priors defined = uniform priors based on bounds)
             lpp = log_posterior_probability(model, pars, bounds, data_calib, states, log_likelihood_fnc, log_likelihood_fnc_args,
