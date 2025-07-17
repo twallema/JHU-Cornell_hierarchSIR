@@ -4,7 +4,7 @@ import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
-from hierarchSIR.model import SIR
+from hierarchSIR.model import imsSIR
 
 ##########################
 ## Model initialisation ##
@@ -70,7 +70,7 @@ def initialise_model(strains=False, immunity_linking=False, season=None, fips_st
         del parameters['f_R']
         parameters['iota_1'] = parameters['iota_2'] = parameters['iota_3'] = np.ones(strains) * 1e-5
 
-    return SIR(parameters, ICF, strains)
+    return imsSIR(parameters, ICF, strains)
 
 
 class initial_condition_function():

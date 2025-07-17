@@ -20,9 +20,9 @@ from pySODM.models.validation import build_state_sizes_dimensions
 from pySODM.optimization.utils import validate_calibrated_parameters
 
 # define integration function
-class SIR():
+class imsSIR():
     """
-    SIR Influenza model
+    Independent Multi-strain SIR model
     """
     
     def __init__(self, parameters, initial_condition_function, n_strains):
@@ -50,12 +50,43 @@ class SIR():
 
     def sim(self, simtime, atol=1e-2, rtol=1e-5, N=1, draw_function=None, draw_function_kwargs={}):
         """
-        # TODO: docstring
+        Simulate the model
+
+        Parameters:
+        -----------
+
+        - simtime: list containing datetime
+            - start and enddate of the simulation
+        
+        - atol: float
+            - absolute tolerance of the runge_kutta_dopri5 stepper 
+        
+        - rtol: float
+            - relative tolerance of the runge_kutta_dopri5 stepper 
+        
+        - N: int
+            - number of repeated simulations
+        
+        - draw_function: callable
+            - function describing a sampling of model parameters
+        
+        - draw_function_kwargs: dict
+            - arguments of `draw_function`
+
+        Returns:
+        --------
+
+        - simout: xarray.Dataset
+            - simulation output
         """
 
-        # translate start and stop relative to mid Oct
+        # translate start and stop relative to reference date + check chronology
         start_date, stop_date = simtime
-        time = self.convert_dates_to_timesteps(start_date, stop_date)
+        assert start_date < stop_date, 'start date of simulations must fall before end date'
+        # define reference date (date at which t=0 in C++ model --> = date at which modifiers start)
+        reference_date = datetime(start_date.year, 10, 15)
+        # translate input to C++ model time indices
+        time = self.dates_to_simtime(start_date, stop_date, reference_date)
 
         # save a copy before altering to reset after simulation
         cp_pars = copy.deepcopy(self.parameters)
@@ -76,7 +107,7 @@ class SIR():
             # simulate model
             simout = sir_model.integrate(*time, atol, rtol, **self.initial_condition, **self.parameters)
             # format and append output
-            output.append(self.format_output(np.array(simout), start_date, self.states_names, self.n_strains))
+            output.append(self.format_output(np.array(simout), reference_date, self.states_names, self.n_strains))
             # Reset parameter dictionary
             self.parameters = cp_pars
 
@@ -88,7 +119,7 @@ class SIR():
         return out
 
     @staticmethod
-    def format_output(simout: np.ndarray, start_date: datetime, states: list, n_strains: int) -> xr.Dataset:
+    def format_output(simout: np.ndarray, reference_date: datetime, states: list, n_strains: int) -> xr.Dataset:
         """
         Convert the C++ SIR model output to an xarray.Dataset.
 
@@ -96,7 +127,7 @@ class SIR():
         -----------
 
         - simout (np.ndarray): The output of `sir_model.integrate()`, shape (n_timesteps, 1 + n_states * n_strains).
-        - start_time (datetime): The start date of the simulation.
+        - reference_date (datetime): The date at which the C++ model's internal timekeeping is equal to t=0.
         - states (list): The names of the model's states.
         - n_strains (int): Number of influenza strains.
 
@@ -107,7 +138,7 @@ class SIR():
         """
 
         # Extract simulation time and state variables
-        date = pd.to_datetime([datetime(start_date.year, 10, 15) + timedelta(days=t) for t in simout[:, 0]])
+        date = pd.to_datetime([reference_date + timedelta(days=t) for t in simout[:, 0]])
         n_timesteps = simout.shape[0]
         n_states = len(states)
 
@@ -130,23 +161,21 @@ class SIR():
     
 
     @staticmethod
-    def convert_dates_to_timesteps(start_date: datetime, end_date: datetime) -> list:
+    def dates_to_simtime(start_date: datetime, end_date: datetime, reference_date: datetime) -> list:
         """
-        Convert absolute start and end datetimes into integer indices relative to October 15 of the same year.
+        Convert start and end datetimes of the simulation to a list of integer timesteps, expressed relative to a reference_date.
 
         Parameters:
+        -----------
+
         - start_date (datetime): The start date of the simulation.
         - end_date (datetime): The end date of the simulation.
+        - reference_date (datetime): The date at which the C++ model's internal timekeeping is equal to t=0.
 
         Returns:
-        - (int, int): The start and end dates as integer indices relative to the C++ model's t=0 of October 15.
+        --------
+
+        - (int, int): The start and end dates of the simulation translated to integer indices representing the number of days difference with the reference date
         """
 
-        # Define reference date (Oct 15 of the start_date's year)
-        reference_date = datetime(start_date.year, 10, 15)
-
-        # Compute integer days relative to reference date
-        start_index = (start_date - reference_date).days
-        end_index = (end_date - reference_date).days
-
-        return [start_index, end_index]
+        return [(start_date - reference_date).days, (end_date - reference_date).days]
