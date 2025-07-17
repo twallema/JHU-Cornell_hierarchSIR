@@ -120,28 +120,30 @@ module load boost
 
 ### Cluster Tips and Tricks
 
-1. Monitor your job's progress
+1. Monitor your job's progress:
 
 ```bash
 squeue -u your_username
 scancel --name=your_job_name
 ```
 
-2. Cancel your job
+2. Cancel your job:
 
 ```bash
 scancel <job_ID>
 ```
 
-3. Reset all changes made on cluster in git:
+3. Reset git repository on cluster to latest version:
 
 ```bash
 git reset --hard && git clean -f -d
+git pull origin
 ```
 
-4. Copy files from the HPC to local computer.
+4. Copy files from the HPC to local computer:
 
     - Open a terminal where you want to place the files on your computer.
     - Run ```scp -r <username>@rfdtn1.rockfish.jhu.edu:/home/<username>/.ssh/<key_name.pub> .```
+    - If connections time out during a secure copy you can try adding the options: ```-o ServerAliveInterval=30 -o ServerAliveCountMax=10```
 
     
