@@ -237,14 +237,27 @@ class log_posterior_probability():
             self.simtimes.append([start_sim, end_sim])
 
         # compute the lpp weights matrix
-        ## pre-allocate
-        w = np.ones([len(datasets), len(states_data)])
-        ## weigh by inverse maximum in timeseries
-        for i, data in enumerate(datasets):
-            for j, _ in enumerate(states_data):
-                w[i,j] = 1/max(data[j].values)
-        ## normalise back to one
-        self.w = w/np.mean(w)
+        strains = len(out.coords['strain'])
+        if strains > 1:
+            ## pre-allocate
+            w = np.ones([len(datasets), len(states_data)-1])
+            ## weigh by inverse maximum in timeseries
+            for i, data in enumerate(datasets):
+                for j, _ in enumerate(states_data[:-1]):
+                    w[i,j] = 1/max(data[j].values)
+            ## normalise back to one
+            self.w = w/np.mean(w)
+            ## append the target
+            self.w = np.append(self.w, np.max(self.w, axis=1)[:,None], axis=1)
+        else:
+            ## pre-allocate
+            w = np.ones([len(datasets), len(states_data)])
+            ## weigh by inverse maximum in timeseries
+            for i, data in enumerate(datasets):
+                for j, _ in enumerate(states_data):
+                    w[i,j] = 1/max(data[j].values)
+            ## normalise back to one
+            self.w = w/np.mean(w)
 
         # assign remaining variables
         self.model = model

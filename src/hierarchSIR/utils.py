@@ -414,11 +414,11 @@ def make_data_pySODM_compatible(strains: int,
         data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_A, flu_B, get_NC_influenza_data(start_date, end_date, season)['H_inc']]
     elif strains == 1:
         # pySODM llp data arguments
-        states = ['I_inc', 'H_inc', 'H_inc']
+        states = ['I_inc', 'H_inc']
         log_likelihood_fnc = len(states) * [ll_poisson,]
         log_likelihood_fnc_args = len(states) * [[],]
         # pySODM data
-        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], get_NC_influenza_data(start_date, end_date, season)['H_inc'], get_NC_influenza_data(start_date, end_date, season)['H_inc']]
+        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], get_NC_influenza_data(start_date, end_date, season)['H_inc']]
     # omit I_inc
     if not use_ED_visits:
         data = data[1:]

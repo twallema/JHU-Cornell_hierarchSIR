@@ -135,10 +135,14 @@ if __name__ == '__main__':
             data_valid = [df.loc[slice(end_date+timedelta(days=1), end_validation)] for df in data]
 
             # normalisation weights for lpp
-            weights = [1/max(df) for df in data_calib[:-1]]
-            weights = np.array(weights) / np.mean(weights)
-            weights = np.append(weights, ratio_weight_target * max(weights))
-
+            if strains > 1:
+                weights = [1/max(df) for df in data_calib[:-1]]
+                weights = np.array(weights) / np.mean(weights)
+                weights = np.append(weights, ratio_weight_target * max(weights))
+            else:
+                weights = [1/max(df) for df in data_calib]
+                weights = np.array(weights) / np.mean(weights)
+                
             # Setup objective function (no priors defined = uniform priors based on bounds)
             lpp = log_posterior_probability(model, pars, bounds, data_calib, states, log_likelihood_fnc, log_likelihood_fnc_args,
                                                             log_prior_prob_fnc=log_prior_prob_fcn, log_prior_prob_fnc_args=log_prior_prob_fcn_args,
