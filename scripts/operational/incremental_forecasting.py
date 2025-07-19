@@ -21,7 +21,7 @@ from pySODM.optimization.utils import assign_theta, add_poisson_noise
 from pySODM.optimization.objective_functions import log_posterior_probability
 from pySODM.optimization.mcmc import perturbate_theta, run_EnsembleSampler
 # hierarchSIR functions
-from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, make_data_pySODM_compatible, get_priors, str_to_bool
+from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, make_data_pySODM_compatible, get_priors, str_to_bool, samples_to_csv
 
 ##############
 ## Settings ##
@@ -138,7 +138,7 @@ if __name__ == '__main__':
             if strains > 1:
                 weights = [1/max(df) for df in data_calib[:-1]]
                 weights = np.array(weights) / np.mean(weights)
-                weights = np.append(weights, ratio_weight_target * max(weights))
+                weights = np.append(weights, max(weights))
             else:
                 weights = [1/max(df) for df in data_calib]
                 weights = np.array(weights) / np.mean(weights)
@@ -182,6 +182,9 @@ if __name__ == '__main__':
                                                         moves=[(emcee.moves.DEMove(), 0.5*0.9),(emcee.moves.DEMove(gamma0=1.0), 0.5*0.1), (emcee.moves.StretchMove(live_dangerously=True), 0.50)],
                                                         settings_dict=settings, discard=discard, thin=thin,
                                                 )                                                                               
+            # Save median parameter values across chains and iterations in a .csv
+            df = samples_to_csv(samples_xr.median(dim=['chain', 'iteration']))
+            df.to_csv(samples_path+f'{identifier}_parameters.csv')
 
             #######################
             ## Visualize results ##

@@ -517,6 +517,40 @@ def simout_to_hubverse(simout: xr.Dataset,
 
     return df
 
+def samples_to_csv(ds: xr.Dataset) -> pd.DataFrame:
+    """
+    A function used convert the median value of parameter across MCMC chains and iterations into a flattened csv format
+
+    Parameters
+    ----------
+    - ds: xarray.Dataset
+        - Average or median parameter samples
+        - Typically obtained after MCMC sampling in `incremental_forecasting.py` as: `ds = samples_xr.median(dim=['chain', 'iteration'])`
+
+    Returns
+    -------
+
+    - df: pd.DataFrame
+        - Index: Expanded parameter name
+        - Values: Average or median parameter values
+        - 1D parameter names are expanded: 'rho_h' --> 'rho_h_0' , 'rho_h_1', ...
+    """
+    param_dict = {}
+
+    for var_name, da in ds.data_vars.items():
+        if da.ndim == 0:
+            # Scalar variable
+            param_dict[var_name] = da.item()
+        elif da.ndim == 1:
+            # 1D variable
+            for i, val in enumerate(da.values):
+                param_dict[f"{var_name}_{i}"] = val
+        else:
+            raise ValueError(f"Variable '{var_name}' has more than 1 dimension ({da.dims}); this script handles only scalars and 1D variables.")
+
+    df = pd.DataFrame.from_dict(param_dict, orient='index', columns=['value'])
+    df.index.name = 'parameter'
+    return df
 
 from pySODM.optimization.objective_functions import log_prior_normal, log_prior_lognormal, log_prior_uniform, log_prior_gamma, log_prior_normal
 def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparameters):
@@ -524,9 +558,9 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
     A function to help prepare the pySODM-compatible priors
     """
     if not immunity_linking:
-        pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                                      # parameters to calibrate
-        bounds = [(1e-3,0.075), (0.5, 14), (0.0001,0.01), (0.10,0.50), (1e-6,0.001), (0.30,0.60), (-0.40,0.40)]          # parameter bounds
-        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']      # labels in output figures
+        pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                                       # parameters to calibrate
+        bounds = [(1e-3,0.075), (0.5, 14), (0.0001,0.01), (0.10,0.50), (1e-6,0.001), (0.30,0.60), (-0.40,0.40)]             # parameter bounds
+        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']       # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
             # assign priors (R0 ~ N(1.6, 0.2); modifiers nudged to zero; all others uninformative)
@@ -631,9 +665,9 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     else:
-        pars = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']                                            # parameters to calibrate
-        bounds = [(1e-3,0.075), (0.5, 14), (0.0001,0.01), (0,0.001), (0,0.001), (0,0.001), (1e-6,0.001), (0.30,0.60), (-0.40,0.40)]                      # parameter bounds
-        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']     # labels in output figures
+        pars = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']                                                # parameters to calibrate
+        bounds = [(1e-3,0.075), (0.5, 14), (0.0001,0.01), (0,0.001), (0,0.001), (0,0.001), (1e-6,0.001), (0.30,0.60), (-0.40,0.40)]                         # parameter bounds
+        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']         # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
             # assign priors (R0 ~ N(1.6, 0.2); modifiers and immunity parameters nudged to zero; all others uninformative)
