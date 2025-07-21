@@ -80,7 +80,7 @@ class log_posterior_probability():
             a=theta[a_idxs], b=theta[b_idxs]
         ))
 
-    # Log-Normal distribution prior
+    # Log-Normal distribution prior + exponential hyperprior on 's' of lognormal distributions --> squeeze lognormal distributions' tail
     @staticmethod
     def lognorm_logpdf(theta, season, idxs_per_season, s_idx, scale_idx):
         return np.sum(lognorm.logpdf(
@@ -140,7 +140,7 @@ class log_posterior_probability():
             else:
                 raise ValueError(f"'{pars_model_hyperdistribution}' is not a valid hyperdistribution.")
 
-        # Hyperdistribution prior: R0 ~ N(0.455, 0.055)
+        # Hyperdistribution prior: beta_mu ~ N(0.455, 0.055)
         beta_mu_idxs = self.hyper_par_name_to_idx['beta_mu']
         hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (beta_mu_idxs, 0.455, 0.055)))
 
@@ -152,6 +152,13 @@ class log_posterior_probability():
         delta_beta_mu_idxs = self.hyper_par_name_to_idx['delta_beta_temporal_mu']
         delta_beta_scale = np.ones(delta_beta_mu_idxs.stop - delta_beta_mu_idxs.start)
         hyper_prior_lpp_fs.append((self.delta_beta_temporal_logpdf, (delta_beta_mu_idxs, delta_beta_scale)))
+
+        # Hyperdistribution prior: f_R_mu ~ N(0.4, 0.1), f_R_sigma ~ Exponential(0.1)
+        if 'f_R_mu' in self.hyper_par_name_to_idx.keys():
+            f_R_mu_idxs = self.hyper_par_name_to_idx['f_R_mu']
+            f_R_sigma_idxs = self.hyper_par_name_to_idx['f_R_sigma']
+            hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (f_R_mu_idxs, 0.4, 0.1)))
+            hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (f_R_sigma_idxs, 0.1)))
 
         return season_prior_lpp_fs, hyper_prior_lpp_fs
 
