@@ -108,7 +108,7 @@ if __name__ == '__main__':
             par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'norm', 'lognorm', 'norm', 'norm']
         else:
             par_names = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']
-            par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1E-3), (0,1E-3), (0,1E-3), (0,1e-3), (0.30,60), (-0.5,0.5)]
+            par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1E-3), (0,1E-3), (0,1E-3), (0,1e-3), (0.30,0.60), (-0.5,0.5)]
             par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'norm', 'norm']
         # setup lpp function
         lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)
