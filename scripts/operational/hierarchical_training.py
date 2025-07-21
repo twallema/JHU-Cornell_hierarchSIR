@@ -54,10 +54,10 @@ max_n = 60000
 pert = 0.05
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))
 ## printing and postprocessing
-print_n = 300
+print_n = 60000
 backend = None
-discard = 200
-thin = 1
+discard = 50000
+thin = 100
 
 # Needed for multiprocessing to work properly
 if __name__ == '__main__':
