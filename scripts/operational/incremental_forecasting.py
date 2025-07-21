@@ -39,14 +39,13 @@ quantiles = False           # save quantiles vs. individual trajectories
 ## frequentist optimization
 n_nm = 2000                                                     # Number of NM search iterations
 ## bayesian inference
-n_mcmc = 8000                                                  # Number of MCMC iterations
+n_mcmc = 8000                                                   # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 8000                                                 # Print diagnostics every `print_n`` iterations
-discard = 7000                                                  # Discard first `discard` iterations as burn-in
+print_n = 8000                                                  # Print diagnostics every `print_n`` iterations
+discard = 6000                                                  # Discard first `discard` iterations as burn-in
 thin = 100                                                      # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
-n = 1000                                                         # Number of simulations performed in MCMC goodness-of-fit figure
-ratio_weight_target = 1
+n = 1000                                                        # Number of simulations performed in MCMC goodness-of-fit figure
 
 #####################
 ## Parse arguments ##
