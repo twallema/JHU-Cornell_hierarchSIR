@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=incremental-calibration
+#SBATCH --job-name=incremental-training
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --time=72:00:00
+#SBATCH --cpus-per-task=48
+#SBATCH --time=48:00:00
 
 # Submit as follows:
 # sbatch --export=ALL,STRAINS=1,IMMUNITY_LINKING=False,USE_ED_VISITS=False submit_training.sh
