@@ -90,8 +90,8 @@ class log_posterior_probability():
         
     # Hyper priors for global parameters
     @staticmethod
-    def norm_hyper_logpdf(theta, mu_idxs, sigma_idxs, mu):
-        return np.sum(norm.logpdf(theta[mu_idxs], loc=mu * np.ones(len(theta[mu_idxs])), scale=theta[sigma_idxs]))
+    def norm_hyper_logpdf(theta, mu_idxs, loc, scale):
+        return np.sum(norm.logpdf(theta[mu_idxs], loc=loc, scale=scale))
 
     @staticmethod
     def expon_hyper_logpdf(theta, idxs, scale):
@@ -147,7 +147,7 @@ class log_posterior_probability():
         # Hyperdistribution prior: beta_mu ~ N(0.455, beta_sigma**2), beta_sigma**2 ~ Exponential(0.055/3)
         beta_mu_idxs = self.hyper_par_name_to_idx['beta_mu']
         beta_sigma_idxs = self.hyper_par_name_to_idx['beta_sigma']
-        hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (beta_mu_idxs, beta_sigma_idxs, 0.455)))
+        hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (beta_mu_idxs, 0.455, 0.055)))
         hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (beta_sigma_idxs, 0.055/3)))
 
         # Hyperdistribution prior: |delta_beta_temporal_mu_i| ~ Exponential(1)
@@ -159,7 +159,7 @@ class log_posterior_probability():
         if 'f_R_mu' in self.hyper_par_name_to_idx.keys():
             f_R_mu_idxs = self.hyper_par_name_to_idx['f_R_mu']
             f_R_sigma_idxs = self.hyper_par_name_to_idx['f_R_sigma']
-            hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (f_R_mu_idxs, f_R_sigma_idxs, 0.4)))
+            hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (f_R_mu_idxs, 0.4, 0.1)))
             hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (f_R_sigma_idxs, 0.1/3)))
 
         return season_prior_lpp_fs, hyper_prior_lpp_fs
