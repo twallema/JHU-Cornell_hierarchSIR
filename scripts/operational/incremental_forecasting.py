@@ -182,8 +182,8 @@ if __name__ == '__main__':
                                                         settings_dict=settings, discard=discard, thin=thin,
                                                 )                                                                               
             # Save median parameter values across chains and iterations in a .csv
-            df = samples_to_csv(samples_xr.median(dim=['chain', 'iteration']))
-            df.to_csv(samples_path+f'{identifier}_parameters.csv')
+            #df = samples_to_csv(samples_xr.median(dim=['chain', 'iteration']))
+            #df.to_csv(samples_path+f'{identifier}_parameters.csv')
 
             #######################
             ## Visualize results ##
