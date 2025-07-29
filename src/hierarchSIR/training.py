@@ -157,7 +157,7 @@ class log_posterior_probability():
 
         # Hyperdistribution prior: delta_beta_temporal_sigma ~ Exponential(1/3)
         delta_beta_sigma_idxs = self.hyper_par_name_to_idx['delta_beta_temporal_sigma']
-        hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (delta_beta_sigma_idxs, 1/3)))
+        hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (delta_beta_sigma_idxs, 0.1)))
 
         # Hyperdistribution prior: f_R_mu ~ N(0.4, f_R_sigma**2), f_R_sigma**2 ~ Exponential(0.1/3)
         if 'f_R_mu' in self.hyper_par_name_to_idx.keys():
