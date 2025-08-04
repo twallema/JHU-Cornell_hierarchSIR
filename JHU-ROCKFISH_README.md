@@ -73,16 +73,16 @@ cd scr4_struelo1/flepimop-code/twallema
 
 1. Activate the anaconda environment
 
-    ```bash
-    module load anaconda3
-    conda activate HIERARCHSIR
-    ```
+```bash
+module load anaconda3
+conda activate HIERARCHSIR
+```
 
 2. Activate the boost module
 
-    ```bash
-    module load boost
-    ```
+```bash
+module load boost
+```
 
 3. Set up Git
 
@@ -118,32 +118,32 @@ cd scr4_struelo1/flepimop-code/twallema
     sbatch my_script.sh
     ```
 
-    4d. Monitor your job
-
-    ```bash
-    squeue -u your_username
-    scancel --name=your_job_name
-    ```
-
-    4e. Cancel your job if needed
-
-    ```bash
-    scancel <job_ID>
-    ```
-
 ### Cluster Tips and Tricks
 
-1. Reset all changes made on cluster in git:
+1. Monitor your job's progress:
+
+```bash
+squeue -u your_username
+scancel --name=your_job_name
+```
+
+2. Cancel your job:
+
+```bash
+scancel <job_ID>
+```
+
+3. Reset git repository on cluster to latest version:
 
 ```bash
 git reset --hard && git clean -f -d
+git pull origin
 ```
 
-2. Copy files from the HPC to local computer.
+4. Copy files from the HPC to local computer:
 
     - Open a terminal where you want to place the files on your computer.
-    - Run
+    - Run ```scp -r <username>@rfdtn1.rockfish.jhu.edu:/home/<username>/.ssh/<key_name.pub> .```
+    - If connections time out during a secure copy you can try adding the options: ```-o ServerAliveInterval=30 -o ServerAliveCountMax=10```
 
-    ```bash
-    scp -r <username>@rfdtn1.rockfish.jhu.edu:/home/<username>/.ssh/<key_name.pub> .
-    ```
+    

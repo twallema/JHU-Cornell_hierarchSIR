@@ -4,7 +4,7 @@ import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
-from hierarchSIR.model import SIR
+from hierarchSIR.model import imsSIR
 
 ##########################
 ## Model initialisation ##
@@ -70,7 +70,7 @@ def initialise_model(strains=False, immunity_linking=False, season=None, fips_st
         del parameters['f_R']
         parameters['iota_1'] = parameters['iota_2'] = parameters['iota_3'] = np.ones(strains) * 1e-5
 
-    return SIR(parameters, ICF, strains)
+    return imsSIR(parameters, ICF, strains)
 
 
 class initial_condition_function():
@@ -370,9 +370,9 @@ def make_data_pySODM_compatible(strains: int,
     """
     if strains == 3:
         # pySODM llp data arguments
-        states = ['I_inc', 'H_inc', 'H_inc', 'H_inc']
-        log_likelihood_fnc = [ll_poisson, ll_poisson, ll_poisson, ll_poisson]
-        log_likelihood_fnc_args = [[],[],[], []]
+        states = ['I_inc', 'H_inc', 'H_inc', 'H_inc', 'H_inc']
+        log_likelihood_fnc = len(states) * [ll_poisson,]
+        log_likelihood_fnc_args = len(states) * [[],]
         # pySODM formatting for flu A H1
         flu_AH1 = get_NC_influenza_data(start_date, end_date, season)['H_inc_AH1']
         flu_AH1 = flu_AH1.rename('H_inc') # pd.Series needs to have matching model state's name
@@ -392,12 +392,12 @@ def make_data_pySODM_compatible(strains: int,
         flu_B['strain'] = 2
         flu_B = flu_B.set_index(['date', 'strain']).squeeze()
         # attach all datasets
-        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_AH1, flu_AH3, flu_B]
+        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_AH1, flu_AH3, flu_B, get_NC_influenza_data(start_date, end_date, season)['H_inc']]
     elif strains == 2:
         # pySODM llp data arguments
-        states = ['I_inc', 'H_inc', 'H_inc']
-        log_likelihood_fnc = [ll_poisson, ll_poisson, ll_poisson]
-        log_likelihood_fnc_args = [[],[],[]]
+        states = ['I_inc', 'H_inc', 'H_inc', 'H_inc']
+        log_likelihood_fnc = len(states) * [ll_poisson,]
+        log_likelihood_fnc_args = len(states) * [[],]
         # pySODM formatting for flu A
         flu_A = get_NC_influenza_data(start_date, end_date, season)['H_inc_A']
         flu_A = flu_A.rename('H_inc') # pd.Series needs to have matching model state's name
@@ -411,12 +411,12 @@ def make_data_pySODM_compatible(strains: int,
         flu_B['strain'] = 1
         flu_B = flu_B.set_index(['date', 'strain']).squeeze()
         # attach all datasets
-        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_A, flu_B]
+        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_A, flu_B, get_NC_influenza_data(start_date, end_date, season)['H_inc']]
     elif strains == 1:
         # pySODM llp data arguments
         states = ['I_inc', 'H_inc']
-        log_likelihood_fnc = [ll_poisson, ll_poisson]
-        log_likelihood_fnc_args = [[],[]]
+        log_likelihood_fnc = len(states) * [ll_poisson,]
+        log_likelihood_fnc_args = len(states) * [[],]
         # pySODM data
         data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], get_NC_influenza_data(start_date, end_date, season)['H_inc']]
     # omit I_inc
@@ -517,6 +517,40 @@ def simout_to_hubverse(simout: xr.Dataset,
 
     return df
 
+def samples_to_csv(ds: xr.Dataset) -> pd.DataFrame:
+    """
+    A function used convert the median value of parameter across MCMC chains and iterations into a flattened csv format
+
+    Parameters
+    ----------
+    - ds: xarray.Dataset
+        - Average or median parameter samples
+        - Typically obtained after MCMC sampling in `incremental_forecasting.py` as: `ds = samples_xr.median(dim=['chain', 'iteration'])`
+
+    Returns
+    -------
+
+    - df: pd.DataFrame
+        - Index: Expanded parameter name
+        - Values: Average or median parameter values
+        - 1D parameter names are expanded: 'rho_h' --> 'rho_h_0' , 'rho_h_1', ...
+    """
+    param_dict = {}
+
+    for var_name, da in ds.data_vars.items():
+        if da.ndim == 0:
+            # Scalar variable
+            param_dict[var_name] = da.item()
+        elif da.ndim == 1:
+            # 1D variable
+            for i, val in enumerate(da.values):
+                param_dict[f"{var_name}_{i}"] = val
+        else:
+            raise ValueError(f"Variable '{var_name}' has more than 1 dimension ({da.dims}); this script handles only scalars and 1D variables.")
+
+    df = pd.DataFrame.from_dict(param_dict, orient='index', columns=['value'])
+    df.index.name = 'parameter'
+    return df
 
 from pySODM.optimization.objective_functions import log_prior_normal, log_prior_lognormal, log_prior_uniform, log_prior_gamma, log_prior_normal
 def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparameters):
@@ -524,19 +558,19 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
     A function to help prepare the pySODM-compatible priors
     """
     if not immunity_linking:
-        pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                                      # parameters to calibrate
-        bounds = [(1e-3,0.075), (0.5, 14), (0.0001,0.01), (0.10,0.50), (1e-6,0.001), (0.30,0.60), (-0.40,0.40)]          # parameter bounds
-        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']      # labels in output figures
+        pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                                       # parameters to calibrate
+        bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,0.60), (1e-9,1e-3), (0.30,0.60), (-0.50,0.50)]                          # parameter bounds
+        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']       # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
             # assign priors (R0 ~ N(1.6, 0.2); modifiers nudged to zero; all others uninformative)
-            log_prior_prob_fcn = 5*[log_prior_uniform,] + 2*[log_prior_normal,]
-            log_prior_prob_fcn_args = [{'bounds':  bounds[0]},
-                                       {'bounds':  bounds[1]},
-                                       {'bounds':  bounds[2]},
-                                       {'bounds':  bounds[3]},
-                                       {'bounds':  bounds[4]},
-                                       {'avg':  0.455, 'stdev': 0.057},
+            log_prior_prob_fcn = 3*[log_prior_gamma,] + [log_prior_normal,] + [log_prior_gamma,] + 2*[log_prior_normal,]
+            log_prior_prob_fcn_args = [{'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[0])},
+                                       {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[1])},
+                                       {'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[2])},
+                                       {'avg':  0.4, 'stdev': 0.10},
+                                       {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[4])},
+                                       {'avg':  0.455, 'stdev': 0.055},
                                        {'avg':  0, 'stdev': 0.10}]
         # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         else:
@@ -631,20 +665,20 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
     else:
-        pars = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']                                            # parameters to calibrate
-        bounds = [(1e-3,0.075), (0.5, 14), (0.0001,0.01), (0,0.001), (0,0.001), (0,0.001), (1e-6,0.001), (0.30,0.60), (-0.40,0.40)]                      # parameter bounds
-        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']     # labels in output figures
+        pars = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']                                                # parameters to calibrate
+        bounds = [(0,0.1), (0.1, 14), (0,0.01), (0,0.001), (0,0.001), (0,0.001), (1e-9,1e-3), (0.30,0.60), (-0.50,0.50)]                                    # parameter bounds
+        labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']         # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
             # assign priors (R0 ~ N(1.6, 0.2); modifiers and immunity parameters nudged to zero; all others uninformative)
-            log_prior_prob_fcn = 3*[log_prior_uniform,] + 3*[log_prior_gamma] + 1*[log_prior_uniform,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
-            log_prior_prob_fcn_args = [{'bounds':  bounds[0]},
-                                       {'bounds':  bounds[1]},
-                                       {'bounds':  bounds[2]},
+            log_prior_prob_fcn = 7*[log_prior_gamma,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
+            log_prior_prob_fcn_args = [{'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[0])},
+                                       {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[1])},
+                                       {'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[2])},
                                        {'a': 1, 'loc': 0, 'scale': 2E-04},
                                        {'a': 1, 'loc': 0, 'scale': 2E-04},
                                        {'a': 1, 'loc': 0, 'scale': 2E-04},
-                                       {'bounds':  bounds[6]},
+                                       {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[6])},
                                        {'avg':  0.455, 'stdev': 0.055},
                                        {'avg':  0, 'stdev': 0.10}]
         # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>

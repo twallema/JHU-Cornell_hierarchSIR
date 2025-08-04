@@ -10,6 +10,7 @@ import emcee
 import argparse
 import numpy as np
 import pandas as pd
+import multiprocessing as mp
 from datetime import datetime
 from multiprocessing import get_context
 from hierarchSIR.training import log_posterior_probability, dump_sampler_to_xarray, traceplot, plot_fit, hyperdistributions
@@ -49,23 +50,14 @@ start_calibration_month = 10                                                    
 end_calibration_month = 5                                                                                           # end calibration on month 5, day 1
 run_date = datetime.today().strftime("%Y-%m-%d")
 ## define number of chains
-max_n = 60000
+max_n = 120000
 pert = 0.05
-processes = int(os.environ.get('NUM_CORES', '12'))
+processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))
 ## printing and postprocessing
-print_n = 5000
+print_n = 120000
 backend = None
-discard = 55000
-thin = 100
-
-# Make folder structure
-## format model name
-model_name = f'SIR-{strains}S'
-## define samples path
-samples_path=fig_path=f'../../data/interim/calibration/hierarchical-training/{model_name}/immunity_linking-{immunity_linking}/ED_visits-{use_ED_visits}/' # Path to backend
-## check if samples folder exists, if not, make it
-if not os.path.exists(samples_path):
-    os.makedirs(samples_path)
+discard = 100000
+thin = 500
 
 # Needed for multiprocessing to work properly
 if __name__ == '__main__':
@@ -74,7 +66,16 @@ if __name__ == '__main__':
     for seasons, identifier in zip(seasons_list, identifiers_list):
         print(f"\nWorking on calibration with ID: {identifier}")
         sys.stdout.flush()
-                
+        
+        # Make the folder structure to save results
+        ## format model name
+        model_name = f'SIR-{strains}S'
+        ## define samples path
+        samples_path=fig_path=f'../../data/interim/calibration/hierarchical-training/{model_name}/immunity_linking-{immunity_linking}/ED_visits-{use_ED_visits}/{identifier}/' # Path to backend
+        ## check if samples folder exists, if not, make it
+        if not os.path.exists(samples_path):
+            os.makedirs(samples_path)
+
         ################
         ## Setup data ##
         ################
@@ -103,11 +104,11 @@ if __name__ == '__main__':
         # not how we're not cutting out the parameters associated with the ED visit data
         if not immunity_linking:
             par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
-            par_bounds = [(1e-5,0.15), (0.5, 15), (1e-5,0.02), (0.01,0.99), (1e-9,1e-3), (0.01,1), (-1,1)]
+            par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1), (0,1e-3), (0.20,0.60), (-0.5,0.5)]
             par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'norm', 'lognorm', 'norm', 'norm']
         else:
             par_names = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']
-            par_bounds = [(1e-5,0.15), (0.5, 15), (1e-5,0.02), (0,1E-3), (0,1E-3), (0,1E-3), (1e-9,1e-3), (0.01,1), (-1,1)]
+            par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1E-3), (0,1E-3), (0,1E-3), (0,1e-3), (0.20,0.60), (-0.5,0.5)]
             par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'norm', 'norm']
         # setup lpp function
         lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)
@@ -122,7 +123,7 @@ if __name__ == '__main__':
 
         # hyperparameters: use all seasons included as the default starting point
         hyperpars_0 = pd.read_csv('../../data/interim/calibration/hyperparameters.csv', index_col=[0,1,2,3])
-        hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, use_ED_visits, slice(None)), 'exclude_None'].values.tolist()
+        hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, use_ED_visits, slice(None)), 'initial_guess'].values.tolist()
 
         # combine
         theta_0 = hyperpars_0 + pars_0
@@ -169,7 +170,13 @@ if __name__ == '__main__':
                     continue
                 else:
                     # every print_n steps do..
-                    # ..dump samples
+                    # >>>>>>>>>>>>>>>>>>>>>>>>>
+
+                    # ..dump samples without discarding and generate traceplots
+                    samples = dump_sampler_to_xarray(sampler.get_chain(discard=0, thin=thin), samples_path+str(identifier)+'_SAMPLES_'+run_date+'.nc', lpp.hyperpar_shapes, lpp.par_shapes, seasons)
+                    traceplot(samples, lpp.par_shapes, lpp.hyperpar_shapes, samples_path, identifier, run_date)
+
+                    # ..dump samples with discarding and generate other results
                     samples = dump_sampler_to_xarray(sampler.get_chain(discard=discard, thin=thin), samples_path+str(identifier)+'_SAMPLES_'+run_date+'.nc', lpp.hyperpar_shapes, lpp.par_shapes, seasons)
                     # write median hyperpars to .csv
                     hyperpars_names = []
@@ -184,8 +191,6 @@ if __name__ == '__main__':
                     pd.Series(index=hyperpars_names, data=hyperpars_values, name=identifier).to_csv(samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.csv')
                     # .. visualise hyperdistributions
                     hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', lpp.par_shapes, lpp.hyperpar_shapes, par_hyperdistributions, par_bounds, 100)
-                    # ..generate traceplots
-                    traceplot(samples, lpp.par_shapes, lpp.hyperpar_shapes, samples_path, identifier, run_date)
                     # ..generate goodness-of-fit
                     plot_fit(model, datasets, lpp.simtimes, samples, model.parameter_shapes, samples_path, identifier, run_date,
                                 lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data, lpp.corresponding_model_states)

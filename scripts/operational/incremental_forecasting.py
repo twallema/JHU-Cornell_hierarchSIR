@@ -12,6 +12,7 @@ import random
 import emcee
 import numpy as np
 import pandas as pd
+import multiprocessing as mp
 from datetime import timedelta
 from datetime import datetime as datetime
 # pySODM functions
@@ -20,7 +21,7 @@ from pySODM.optimization.utils import assign_theta, add_poisson_noise
 from pySODM.optimization.objective_functions import log_posterior_probability
 from pySODM.optimization.mcmc import perturbate_theta, run_EnsembleSampler
 # hierarchSIR functions
-from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, make_data_pySODM_compatible, get_priors, str_to_bool
+from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, make_data_pySODM_compatible, get_priors, str_to_bool, samples_to_csv
 
 ##############
 ## Settings ##
@@ -33,19 +34,18 @@ hyperparameters_lst = ['exclude_2024-2025', 'exclude_2023-2024','exclude_2019-20
 # model settings/ save settings
 fips_state = 37             # NC
 quantiles = False           # save quantiles vs. individual trajectories 
-save_strains = True        # save individual trajectories of strains for copula modeling
 
 # optimization parameters
 ## frequentist optimization
 n_nm = 2000                                                     # Number of NM search iterations
 ## bayesian inference
-n_mcmc = 10000                                                  # Number of MCMC iterations
+n_mcmc = 8000                                                   # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 10000                                                 # Print diagnostics every `print_n`` iterations
-discard = 8000                                                  # Discard first `discard` iterations as burn-in
+print_n = 8000                                                  # Print diagnostics every `print_n`` iterations
+discard = 6000                                                  # Discard first `discard` iterations as burn-in
 thin = 100                                                      # Thinning factor emcee chains
-processes = int(os.environ.get('NUM_CORES', '16'))              # Number of CPUs to use
-n = 500                                                         # Number of simulations performed in MCMC goodness-of-fit figure
+processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
+n = 1000                                                        # Number of simulations performed in MCMC goodness-of-fit figure
 
 #####################
 ## Parse arguments ##
@@ -110,7 +110,6 @@ if __name__ == '__main__':
         ## Loop over weeks ##
         #####################
 
-
         # compute the list of incremental calibration enddates between start_calibration and end_calibration
         incremental_enddates = data[0].loc[slice(start_calibration, end_calibration)].index.get_level_values('date').unique()
 
@@ -135,9 +134,14 @@ if __name__ == '__main__':
             data_valid = [df.loc[slice(end_date+timedelta(days=1), end_validation)] for df in data]
 
             # normalisation weights for lpp
-            weights = [1/max(df) for df in data_calib]
-            weights = np.array(weights) / np.mean(weights)
-
+            if strains > 1:
+                weights = [1/max(df) for df in data_calib[:-1]]
+                weights = np.array(weights) / np.mean(weights)
+                weights = np.append(weights, max(weights))
+            else:
+                weights = [1/max(df) for df in data_calib]
+                weights = np.array(weights) / np.mean(weights)
+                
             # Setup objective function (no priors defined = uniform priors based on bounds)
             lpp = log_posterior_probability(model, pars, bounds, data_calib, states, log_likelihood_fnc, log_likelihood_fnc_args,
                                                             log_prior_prob_fnc=log_prior_prob_fcn, log_prior_prob_fnc_args=log_prior_prob_fcn_args,
@@ -177,6 +181,9 @@ if __name__ == '__main__':
                                                         moves=[(emcee.moves.DEMove(), 0.5*0.9),(emcee.moves.DEMove(gamma0=1.0), 0.5*0.1), (emcee.moves.StretchMove(live_dangerously=True), 0.50)],
                                                         settings_dict=settings, discard=discard, thin=thin,
                                                 )                                                                               
+            # Save median parameter values across chains and iterations in a .csv
+            #df = samples_to_csv(samples_xr.median(dim=['chain', 'iteration']))
+            #df.to_csv(samples_path+f'{identifier}_parameters.csv')
 
             #######################
             ## Visualize results ##

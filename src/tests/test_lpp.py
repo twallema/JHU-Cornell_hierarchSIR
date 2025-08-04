@@ -25,9 +25,9 @@ for start_calibration, end_calibration, season in zip(start_calibrations, end_ca
     datasets.append(data)
 
 # define parameters, their bounds and their hyperdistributions
-par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I',  'beta', 'delta_beta_temporal']
-par_bounds = [(1e-5,0.15), (0.5, 15), (1e-5,0.02), (0.01,0.99), (1e-9,1e-3), (0.01,1), (-1,1)]
-par_hyperdistributions = ['beta', 'gamma', 'lognorm', 'norm', 'lognorm', 'norm', 'norm']
+par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
+par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1), (0,1e-3), (0.20,0.60), (-0.5,0.5)]
+par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'norm', 'lognorm', 'norm', 'norm']
 
 # set up lpp function
 lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)

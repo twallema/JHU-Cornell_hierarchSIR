@@ -80,23 +80,27 @@ class log_posterior_probability():
             a=theta[a_idxs], b=theta[b_idxs]
         ))
 
-    # Log-Normal distribution prior
+    # Log-Normal distribution prior + exponential hyperprior on 's' of lognormal distributions --> squeeze lognormal distributions' tail
     @staticmethod
     def lognorm_logpdf(theta, season, idxs_per_season, s_idx, scale_idx):
         return np.sum(lognorm.logpdf(
             theta[idxs_per_season[season]],
             s=theta[s_idx], scale=theta[scale_idx]
-        ) + expon.logpdf(theta[s_idx], scale=1))
+        ) + expon.logpdf(theta[s_idx], scale=1/3))
         
     # Hyper priors for global parameters
     @staticmethod
-    def norm_hyper_logpdf(theta, idxs, loc, scale):
-        return np.sum(norm.logpdf(theta[idxs], loc=loc, scale=scale))
+    def norm_hyper_logpdf(theta, mu_idxs, loc, scale):
+        return np.sum(norm.logpdf(theta[mu_idxs], loc=loc, scale=scale))
 
     @staticmethod
     def expon_hyper_logpdf(theta, idxs, scale):
         return np.sum(expon.logpdf(theta[idxs], scale=scale))
     
+    @staticmethod
+    def inv_expon_hyper_logpdf(theta, idxs, scale):
+        return np.sum(expon.logpdf(1/theta[idxs], scale=scale))
+
     @staticmethod
     def delta_beta_temporal_logpdf(theta, idxs, scale):
         return np.sum(expon.logpdf(np.abs(theta[idxs]), scale=scale))
@@ -140,18 +144,27 @@ class log_posterior_probability():
             else:
                 raise ValueError(f"'{pars_model_hyperdistribution}' is not a valid hyperdistribution.")
 
-        # Hyperdistribution prior: R0 ~ N(0.455, 0.055)
+        # Hyperdistribution prior: beta_mu ~ N(0.455, beta_sigma**2), beta_sigma**2 ~ Exponential(0.055/3)
         beta_mu_idxs = self.hyper_par_name_to_idx['beta_mu']
-        hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (beta_mu_idxs, 0.455, 0.055)))
-
-        # Hyperdistribution prior: beta_sigma ~ Exponential(0.055)
         beta_sigma_idxs = self.hyper_par_name_to_idx['beta_sigma']
+        hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (beta_mu_idxs, 0.455, 0.055)))
         hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (beta_sigma_idxs, 0.055)))
 
-        # Hyperdistribution prior: delta_beta_temporal_mu ~ Exponential(1)
+        # Hyperdistribution prior: |delta_beta_temporal_mu_i| ~ Exponential(1/3)
         delta_beta_mu_idxs = self.hyper_par_name_to_idx['delta_beta_temporal_mu']
-        delta_beta_scale = np.ones(delta_beta_mu_idxs.stop - delta_beta_mu_idxs.start)
+        delta_beta_scale = (1/3) * np.ones(delta_beta_mu_idxs.stop - delta_beta_mu_idxs.start)
         hyper_prior_lpp_fs.append((self.delta_beta_temporal_logpdf, (delta_beta_mu_idxs, delta_beta_scale)))
+
+        # Hyperdistribution prior: delta_beta_temporal_sigma ~ Exponential(1/3)
+        delta_beta_sigma_idxs = self.hyper_par_name_to_idx['delta_beta_temporal_sigma']
+        hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (delta_beta_sigma_idxs, 1/3)))
+
+        # Hyperdistribution prior: f_R_mu ~ N(0.4, f_R_sigma**2), f_R_sigma**2 ~ Exponential(0.1/3)
+        if 'f_R_mu' in self.hyper_par_name_to_idx.keys():
+            f_R_mu_idxs = self.hyper_par_name_to_idx['f_R_mu']
+            f_R_sigma_idxs = self.hyper_par_name_to_idx['f_R_sigma']
+            hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (f_R_mu_idxs, 0.4, 0.1)))
+            hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (f_R_sigma_idxs, 0.1)))
 
         return season_prior_lpp_fs, hyper_prior_lpp_fs
 
@@ -237,14 +250,27 @@ class log_posterior_probability():
             self.simtimes.append([start_sim, end_sim])
 
         # compute the lpp weights matrix
-        ## pre-allocate
-        w = np.ones([len(datasets), len(states_data)])
-        ## weigh by inverse maximum in timeseries
-        for i, data in enumerate(datasets):
-            for j, _ in enumerate(states_data):
-                w[i,j] = 1/max(data[j].values)
-        ## normalise back to one
-        self.w = w/np.mean(w)
+        strains = len(out.coords['strain'])
+        if strains > 1:
+            ## pre-allocate
+            w = np.ones([len(datasets), len(states_data)-1])
+            ## weigh by inverse maximum in timeseries
+            for i, data in enumerate(datasets):
+                for j, _ in enumerate(states_data[:-1]):
+                    w[i,j] = 1/max(data[j].values)
+            ## normalise back to one
+            self.w = w/np.mean(w)
+            ## append the target
+            self.w = np.append(self.w, np.max(self.w, axis=1)[:,None], axis=1)
+        else:
+            ## pre-allocate
+            w = np.ones([len(datasets), len(states_data)])
+            ## weigh by inverse maximum in timeseries
+            for i, data in enumerate(datasets):
+                for j, _ in enumerate(states_data):
+                    w[i,j] = 1/max(data[j].values)
+            ## normalise back to one
+            self.w = w/np.mean(w)
 
         # assign remaining variables
         self.model = model
