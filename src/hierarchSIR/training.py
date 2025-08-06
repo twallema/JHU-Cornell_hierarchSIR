@@ -144,7 +144,7 @@ class log_posterior_probability():
             else:
                 raise ValueError(f"'{pars_model_hyperdistribution}' is not a valid hyperdistribution.")
 
-        # Hyperdistribution prior: beta_mu ~ N(0.455, beta_sigma**2), beta_sigma**2 ~ Exponential(0.055/3)
+        # Hyperdistribution prior: beta_mu ~ N(0.455, beta_sigma**2), beta_sigma**2 ~ Exponential(0.055)
         beta_mu_idxs = self.hyper_par_name_to_idx['beta_mu']
         beta_sigma_idxs = self.hyper_par_name_to_idx['beta_sigma']
         hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (beta_mu_idxs, 0.455, 0.055)))
@@ -155,11 +155,11 @@ class log_posterior_probability():
         delta_beta_scale = (1/3) * np.ones(delta_beta_mu_idxs.stop - delta_beta_mu_idxs.start)
         hyper_prior_lpp_fs.append((self.delta_beta_temporal_logpdf, (delta_beta_mu_idxs, delta_beta_scale)))
 
-        # Hyperdistribution prior: delta_beta_temporal_sigma ~ Exponential(1/3)
+        # Hyperdistribution prior: delta_beta_temporal_sigma ~ Exponential(0.15)
         delta_beta_sigma_idxs = self.hyper_par_name_to_idx['delta_beta_temporal_sigma']
-        hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (delta_beta_sigma_idxs, 1/3)))
+        hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (delta_beta_sigma_idxs, 0.15)))
 
-        # Hyperdistribution prior: f_R_mu ~ N(0.4, f_R_sigma**2), f_R_sigma**2 ~ Exponential(0.1/3)
+        # Hyperdistribution prior: f_R_mu ~ N(0.4, f_R_sigma**2), f_R_sigma**2 ~ Exponential(0.1)
         if 'f_R_mu' in self.hyper_par_name_to_idx.keys():
             f_R_mu_idxs = self.hyper_par_name_to_idx['f_R_mu']
             f_R_sigma_idxs = self.hyper_par_name_to_idx['f_R_sigma']
