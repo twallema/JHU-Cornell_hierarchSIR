@@ -513,7 +513,7 @@ def simout_to_hubverse(simout: xr.Dataset,
     
     # save result
     if path:
-        df.to_csv(path+reference_date.strftime('%Y-%m-%d')+'-JHU_IDD'+'-hierarchSIM.csv', index=False)
+        df.to_csv(path+reference_date.strftime('%Y-%m-%d')+'-JHU_Cornell'+'-hierarchSIR.csv', index=False)
 
     return df
 
