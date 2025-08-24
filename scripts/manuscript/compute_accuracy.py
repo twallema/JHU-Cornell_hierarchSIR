@@ -22,7 +22,7 @@ MY_FOLDER
 import os
 import numpy as np
 import pandas as pd
-from scipy.stats import norm, rankdata, gmean
+from scipy.stats import gmean
 from datetime import datetime, timedelta
 from hierarchSIR.utils import get_NC_influenza_data
 from hierarchSIR.accuracy import compute_WIS
@@ -44,7 +44,7 @@ end_day = 7
 seasons_exclude = []
 
 # finding the right simulations
-model_name_overall = 'JHU_IDD-hierarchSIM'
+model_name_overall = 'JHU_Cornell-hierarchSIR'
 location = '37'                                             # NC FIPS code
 model_names = get_subfolders(os.path.dirname(__file__))
 immunity_linking = [False, ]

@@ -1,6 +1,5 @@
 """
-This script calibrates the influenza model to North Carolina ED admission and ED visits data
-It automatically calibrates to incrementally larger datasets between `start_calibration` and `end_calibration`
+This script calibrates the influenza model `n` times using a datasets that initially stops on `start_calibration` and then grows with one week until `end_calibration` is reached
 """
 
 __author__      = "Tijs Alleman"
@@ -181,9 +180,6 @@ if __name__ == '__main__':
                                                         moves=[(emcee.moves.DEMove(), 0.5*0.9),(emcee.moves.DEMove(gamma0=1.0), 0.5*0.1), (emcee.moves.StretchMove(live_dangerously=True), 0.50)],
                                                         settings_dict=settings, discard=discard, thin=thin,
                                                 )                                                                               
-            # Save median parameter values across chains and iterations in a .csv
-            #df = samples_to_csv(samples_xr.median(dim=['chain', 'iteration']))
-            #df.to_csv(samples_path+f'{identifier}_parameters.csv')
 
             #######################
             ## Visualize results ##
