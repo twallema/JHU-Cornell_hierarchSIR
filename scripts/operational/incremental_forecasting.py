@@ -1,6 +1,5 @@
 """
-This script calibrates the influenza model to North Carolina ED admission and ED visits data
-It automatically calibrates to incrementally larger datasets between `start_calibration` and `end_calibration`
+This script calibrates the influenza model `n` times using a datasets that initially stops on `start_calibration` and then grows with one week until `end_calibration` is reached
 """
 
 __author__      = "Tijs Alleman"
@@ -29,7 +28,7 @@ from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, ma
 
 # define seasons and hyperparameter combo's to loop over
 season_lst = ['2024-2025', '2023-2024', '2019-2020', '2018-2019', '2017-2018', '2016-2017', '2015-2016', '2014-2015']
-hyperparameters_lst = ['exclude_None', 'exclude_None', 'exclude_None', 'exclude_None', 'exclude_None', 'exclude_None', 'exclude_None', 'exclude_None']
+hyperparameters_lst = ['exclude_2024-2025', 'exclude_2023-2024', 'exclude_2019-2020', 'exclude_2018-2019', 'exclude_2017-2018', 'exclude_2016-2017', 'exclude_2015-2016', 'exclude_2014-2015']
 
 # model settings/ save settings
 fips_state = 37             # NC
@@ -181,9 +180,6 @@ if __name__ == '__main__':
                                                         moves=[(emcee.moves.DEMove(), 0.5*0.9),(emcee.moves.DEMove(gamma0=1.0), 0.5*0.1), (emcee.moves.StretchMove(live_dangerously=True), 0.50)],
                                                         settings_dict=settings, discard=discard, thin=thin,
                                                 )                                                                               
-            # Save median parameter values across chains and iterations in a .csv
-            #df = samples_to_csv(samples_xr.median(dim=['chain', 'iteration']))
-            #df.to_csv(samples_path+f'{identifier}_parameters.csv')
 
             #######################
             ## Visualize results ##
