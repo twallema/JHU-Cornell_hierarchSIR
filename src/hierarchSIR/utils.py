@@ -10,15 +10,15 @@ from hierarchSIR.model import imsSIR
 ## Model initialisation ##
 ##########################
 
-def initialise_model(strains=False, immunity_linking=False, season=None, fips_state=37):
+def initialise_model(strains=1, immunity_linking=False, season=None, fips_state=37):
     """
     A function to intialise the hierarchSIR model
 
     input
     -----
 
-    - strains: bool
-        - do we want a strain-stratified model?
+    - strains: int
+        - how many influenza subtypes do we want to model? 1: No subtypes, 2: Influenza A + B, 3: Influenza AH1, AH3 and Influenza B.
 
     - immunity_linking: bool
         - do we want to use a structure relationship to model the population's immunity?
@@ -30,7 +30,13 @@ def initialise_model(strains=False, immunity_linking=False, season=None, fips_st
         - '37': North Carolina
     """
 
-    # Parameters
+    # input checks
+    assert ((strains==1) | (strains==2) | (strains==3)), f"input 'strains' must be 1, 2 or 3; found: '{strains}'"
+    assert isinstance(immunity_linking, bool), f"input 'immunity_linking' must be of type bool; found: '{type(immunity_linking)}'"
+    assert isinstance(season, str), f"input 'season' must be of type str; found: '{type(season)}'"
+    assert isinstance(fips_state, int), f"input 'fips_state' must be of type int; found: '{type(fips_state)}'"
+
+    # parameters
     parameters = {
         # initial condition function
         'f_I': np.array(strains * [1e-4,]),
