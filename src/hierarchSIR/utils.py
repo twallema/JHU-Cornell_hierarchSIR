@@ -38,6 +38,7 @@ def initialise_model(strains=1, immunity_linking=False, thermal_comfort=False, s
     # input checks
     assert ((strains==1) | (strains==2) | (strains==3)), f"input 'strains' must be 1, 2 or 3; found: '{strains}'"
     assert isinstance(immunity_linking, bool), f"input 'immunity_linking' must be of type bool; found: '{type(immunity_linking)}'"
+    assert isinstance(thermal_comfort, bool), f"input 'thermal_comfort' must be of type bool; found: '{type(thermal_comfort)}'"
     assert isinstance(season, str), f"input 'season' must be of type str; found: '{type(season)}'"
     assert isinstance(fips_state, int), f"input 'fips_state' must be of type int; found: '{type(fips_state)}'"
 
@@ -142,7 +143,7 @@ class get_thermal_comfort_modifier():
             modifier_t = pd.Series(data=y_shifted, name='utci', index=modifier_t.index)
 
             # slice out only the relevant date range
-            modifier_t = modifier_t.loc[slice(start,stop)].values
+            modifier_t = modifier_t.loc[slice(start,stop)].values        
 
         else:
             modifier_t = np.ones(len(pd.date_range(start, stop, freq='D')))

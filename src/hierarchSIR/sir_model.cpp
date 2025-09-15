@@ -11,14 +11,20 @@ int num_states = 10;
 
 // SIR model
 struct SIR {
+    double t_start;
     double T_h;
     std::vector<double> beta, gamma, rho_i, rho_h;
     std::vector<double> beta_modifiers;
+    std::vector<double> thermal_modifier;
 
-    SIR(const std::vector<double>& beta, const std::vector<double>& gamma,
-        const std::vector<double>& rho_i, const std::vector<double>& rho_h, double T_h,
-        const std::vector<double>& beta_modifiers)
-        : beta(beta), gamma(gamma), rho_i(rho_i), rho_h(rho_h), T_h(T_h), beta_modifiers(beta_modifiers) {}
+    SIR(double t_start,
+        double T_h, 
+        const std::vector<double>& beta, const std::vector<double>& gamma,
+        const std::vector<double>& rho_i, const std::vector<double>& rho_h, 
+        const std::vector<double>& beta_modifiers,
+        const std::vector<double>& thermal_modifier
+    )
+        : t_start(t_start), T_h(T_h), beta(beta), gamma(gamma), rho_i(rho_i), rho_h(rho_h), beta_modifiers(beta_modifiers), thermal_modifier(thermal_modifier) {}
 
     void operator()(const std::vector<double>& y, std::vector<double>& dydt, double t) {
         int num_strains = beta.size();
@@ -31,22 +37,26 @@ struct SIR {
             T[strain] = y[idx] + y[idx + 1] + y[idx + 2];
         }
 
-        // Get right modifier values
+        // Get right residual modifier values
         int t_int = static_cast<int>(t);
         int index = t_int + 30;
-        double modifier = (index >= 0 && index < beta_modifiers.size()) ? beta_modifiers[index] : 0.0;
+        double residual_modifier_t = (index >= 0 && index < beta_modifiers.size()) ? beta_modifiers[index] : 0.0;
+
+        // Get right thermal modifiers values
+        int index_2 = t_int + static_cast<int>(t_start);
+        double thermal_modifier_t = (index_2 >= 0 && index_2 < thermal_modifier.size()) ? thermal_modifier[index_2] : 1.0;
 
         // Compute SIR model for every strain
         for (int strain = 0; strain < num_strains; ++strain) {
             int idx = strain * num_states;
-            double beta_t = beta[strain] * (modifier+1);
+            double beta_t = beta[strain] * (residual_modifier_t+1) * thermal_modifier_t;
             double S = y[idx], I = y[idx + 1], R = y[idx + 2], I_inc = y[idx + 3], H_inc_LCT0 = y[idx+4],  H_inc_LCT1 = y[idx+5], H_inc_LCT2 = y[idx+6], H_inc_LCT3 = y[idx+7], H_inc_LCT4 = y[idx+8], H_inc = y[idx+9];
             double lambda = beta_t * S * I / T[strain];
 
             dydt[idx] = -lambda;                                                    // dS/dt
-            dydt[idx + 1] = lambda - gamma[0] * I;                             // dI/dt
-            dydt[idx + 2] = gamma[0] * I;                                      // dR/dt
-            dydt[idx + 3] = rho_i[0] * lambda - I_inc;                         // dI_inc/dt
+            dydt[idx + 1] = lambda - gamma[0] * I;                                  // dI/dt
+            dydt[idx + 2] = gamma[0] * I;                                           // dR/dt
+            dydt[idx + 3] = rho_i[0] * lambda - I_inc;                              // dI_inc/dt
             dydt[idx + 4] = rho_h[strain] * lambda - (5/T_h) * H_inc_LCT0;          // dH_inc_LCT0/dt
             dydt[idx + 5] = (5/T_h) * H_inc_LCT0 - (5/T_h) * H_inc_LCT1;            // dH_inc_LCT1/dt
             dydt[idx + 6] = (5/T_h) * H_inc_LCT1 - (5/T_h) * H_inc_LCT2;            // dH_inc_LCT2/dt
@@ -146,7 +156,8 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
                                         std::vector<double> S0, std::vector<double> I0, std::vector<double> R0,
                                         std::vector<double> beta, std::vector<double> gamma, std::vector<double> rho_i, std::vector<double> rho_h, double T_h,
                                         const std::vector<double>& delta_beta_temporal, 
-                                        int modifier_length, double sigma
+                                        int modifier_length, double sigma,
+                                        std::vector<double> thermal_modifier
                                         ) {
     double dt = 1;                  // initial guess for step size
     int num_strains = S0.size();    // determines number of strains
@@ -184,7 +195,7 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
         results.push_back(row);
     };
     
-    SIR sir_system(beta, gamma, rho_i, rho_h, T_h,  beta_modifiers);
+    SIR sir_system(t_start, T_h, beta, gamma, rho_i, rho_h, beta_modifiers, thermal_modifier);
     runge_kutta_dopri5<std::vector<double>> stepper;
     integrate_adaptive(make_controlled(atol, rtol, stepper), sir_system, y, t_start, t_end, dt, observer);
     return interpolate_results(results, t_start, t_end);
@@ -197,6 +208,7 @@ PYBIND11_MODULE(sir_model, m) {
           py::arg("atol"), py::arg("rtol"),                                                             // solver accuracy        
           py::arg("S0"), py::arg("I0"), py::arg("R0"),                                                  // initial condition
           py::arg("beta"), py::arg("gamma"), py::arg("rho_i"), py::arg("rho_h"), py::arg("T_h"),        // SIR parameters
-          py::arg("delta_beta_temporal"), py::arg("modifier_length"), py::arg("sigma")                  // modifier parameters
+          py::arg("delta_beta_temporal"), py::arg("modifier_length"), py::arg("sigma"),                 // modifier parameters
+          py::arg("thermal_modifier")                                                                   // thermal modifier parameters
           );
 }

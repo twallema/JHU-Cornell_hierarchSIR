@@ -99,7 +99,7 @@ class imsSIR():
             # get parameters
             if draw_function:
                 self.parameters.update(draw_function(copy.deepcopy(self.parameters), **draw_function_kwargs))
-            # retrieve the thermal modifier value
+            # retrieve the thermal modifier trajectory
             self.parameters.update({'thermal_modifier': self.thermal_comfort_modifier(start_date, stop_date, self.parameters['thermal_delay'], self.parameters['slope'])})
             # make sure parameters are vectors #TODO: do better!
             for par, shape in self.parameter_shapes.items():
@@ -107,7 +107,7 @@ class imsSIR():
                     self.parameters[par] = np.array([self.parameters[par],])
             # build initial condition
             self.initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
-            # remove ICF arguments from the parameters
+            # remove ICF arguments and thermal modifier function arguments from the parameters
             self.parameters = {key: value for key, value in self.parameters.items() if ((key not in self.ICF_args_names) & (key not in self.thermal_comfort_modifier_args_names))}
             # simulate model
             simout = sir_model.integrate(*time, atol, rtol, **self.initial_condition, **self.parameters)
