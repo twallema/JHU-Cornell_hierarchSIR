@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
+from functools import lru_cache
+from scipy.interpolate import interp1d
 from datetime import datetime, timedelta
 from hierarchSIR.model import imsSIR
 
@@ -10,7 +12,7 @@ from hierarchSIR.model import imsSIR
 ## Model initialisation ##
 ##########################
 
-def initialise_model(strains=1, immunity_linking=False, season=None, fips_state=37):
+def initialise_model(strains=1, immunity_linking=False, thermal_comfort=False, season=None, fips_state=37):
     """
     A function to intialise the hierarchSIR model
 
@@ -23,6 +25,9 @@ def initialise_model(strains=1, immunity_linking=False, season=None, fips_state=
     - immunity_linking: bool
         - do we want to use a structure relationship to model the population's immunity?
     
+    - thermal_comfort: bool
+        - do we want to include a behavioral modifier for the thermal comfort?
+
     - season: str
         - what season do we want to model (only used in combination with `immunity_linking`).
     
@@ -70,13 +75,79 @@ def initialise_model(strains=1, immunity_linking=False, season=None, fips_state=
         historic_cumulative_incidence = get_NC_cumulatives_per_season()['H_inc']
         ICF = initial_condition_function(population, historic_cumulative_incidence).wo_immunity_linking
 
+    # initialise thermal comfort modifier function
+    thermal_comfort_modifier = get_thermal_comfort_modifier(thermal_comfort)
+    # attach its parameters to model
+    parameters.update({'thermal_delay': 14, 'slope': 0.10})
+
     # adjust parameters dictionary
     parameters['season'] = season
     if immunity_linking:
         del parameters['f_R']
         parameters['iota_1'] = parameters['iota_2'] = parameters['iota_3'] = np.ones(strains) * 1e-5
 
-    return imsSIR(parameters, ICF, strains)
+    return imsSIR(parameters, ICF, thermal_comfort_modifier, strains)
+
+
+class get_thermal_comfort_modifier():
+    def __init__(self, thermal_comfort):
+        """
+        Set up an object containing the UTCI data (current + seasonal mean) with a lookup function
+
+        Input
+        -----
+
+        - thermal_comfort: bool
+            - Inlcude thermal comfort modifier; if False function will return ones
+        """
+
+        # get the utci data & assign to object
+        if thermal_comfort:
+            self.df = pd.read_csv('../../data/interim/thermal_comfort_indices/utci_mean_NC.csv', index_col=0, parse_dates=True)
+        self.thermal_comfort = thermal_comfort
+
+        pass
+
+    @staticmethod
+    def double_sigmoid(T, T_low, T_high, k1, k2):
+        """
+        Double sigmoid behavioral response function to comfortable weather
+        """
+        cold_term = 1 / (1 + np.exp(-k1 * (T - T_low)))
+        hot_term  = 1 / (1 + np.exp(k2 * (T - T_high)))
+        return np.exp(- cold_term * hot_term)
+
+    @lru_cache()
+    def __call__(self, start, stop, thermal_delay, slope):
+        """
+        A function returning the UTCI data between the dates 'start' and 'stop'
+        """
+
+        if self.thermal_comfort:
+            # compute modifiers
+            modifier_t = self.double_sigmoid(self.df['utci'], 14, 28, slope, slope)
+
+            # normalize modifiers
+            modifier_t /= modifier_t.mean()
+
+            # delay modifiers
+            ## Convert dates to numeric (days since start)
+            t = (modifier_t.index - modifier_t.index[0]).days.values.astype(float)
+            y = modifier_t.values
+            ## Interpolator: choose linear or cubic depending on smoothness you want
+            f = interp1d(t, y, kind="linear", fill_value="extrapolate")
+            ## Compute shifted values (evaluate at t - delay)
+            y_shifted = f(t - thermal_delay)
+            ## Put back into a dataframe with original dates
+            modifier_t = pd.Series(data=y_shifted, name='utci', index=modifier_t.index)
+
+            # slice out only the relevant date range
+            modifier_t = modifier_t.loc[slice(start,stop)].values
+
+        else:
+            modifier_t = np.ones(len(pd.date_range(start, stop, freq='D')))
+
+        return modifier_t
 
 
 class initial_condition_function():

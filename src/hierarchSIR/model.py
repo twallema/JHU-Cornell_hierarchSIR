@@ -25,7 +25,7 @@ class imsSIR():
     Independent Multi-strain SIR model
     """
     
-    def __init__(self, parameters, initial_condition_function, n_strains):
+    def __init__(self, parameters, initial_condition_function, thermal_comfort_modifier, n_strains):
         """
         # TODO: docstring
         """
@@ -33,6 +33,10 @@ class imsSIR():
         # assign variables to object
         self.parameters = parameters
         self.n_strains = n_strains
+
+        # take in the initial condition function and retrieve its arguments
+        self.thermal_comfort_modifier = thermal_comfort_modifier
+        self.thermal_comfort_modifier_args_names = [x for x in list(inspect.signature(thermal_comfort_modifier).parameters.keys()) if ((x != 'start') & (x != 'stop'))]
 
         # take in the initial condition function and retrieve its arguments
         self.ICF = initial_condition_function
@@ -87,7 +91,6 @@ class imsSIR():
         reference_date = datetime(start_date.year, 10, 15)
         # translate input to C++ model time indices
         time = self.dates_to_simtime(start_date, stop_date, reference_date)
-
         # save a copy before altering to reset after simulation
         cp_pars = copy.deepcopy(self.parameters)
         # loop over number of repeated samples
@@ -96,6 +99,8 @@ class imsSIR():
             # get parameters
             if draw_function:
                 self.parameters.update(draw_function(copy.deepcopy(self.parameters), **draw_function_kwargs))
+            # retrieve the thermal modifier value
+            self.parameters.update({'thermal_modifier': self.thermal_comfort_modifier(start_date, stop_date, self.parameters['thermal_delay'], self.parameters['slope'])})
             # make sure parameters are vectors #TODO: do better!
             for par, shape in self.parameter_shapes.items():
                 if ((shape == (1,)) & (par not in ['T_h', 'gamma', 'sigma', 'modifier_length']) & (par != 'delta_beta_temporal')):
@@ -103,7 +108,7 @@ class imsSIR():
             # build initial condition
             self.initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
             # remove ICF arguments from the parameters
-            self.parameters = {key: value for key, value in self.parameters.items() if key not in self.ICF_args_names}
+            self.parameters = {key: value for key, value in self.parameters.items() if ((key not in self.ICF_args_names) & (key not in self.thermal_comfort_modifier_args_names))}
             # simulate model
             simout = sir_model.integrate(*time, atol, rtol, **self.initial_condition, **self.parameters)
             # format and append output
