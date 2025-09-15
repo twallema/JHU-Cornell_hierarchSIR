@@ -100,7 +100,7 @@ class imsSIR():
             if draw_function:
                 self.parameters.update(draw_function(copy.deepcopy(self.parameters), **draw_function_kwargs))
             # retrieve the thermal modifier trajectory
-            self.parameters.update({'thermal_modifier': self.thermal_comfort_modifier(start_date, stop_date, self.parameters['thermal_delay'], self.parameters['slope'])})
+            self.parameters.update({'thermal_modifier': self.thermal_comfort_modifier(start_date, stop_date, float(self.parameters['thermal_delay']), float(self.parameters['slope']))})
             # make sure parameters are vectors #TODO: do better!
             for par, shape in self.parameter_shapes.items():
                 if ((shape == (1,)) & (par not in ['T_h', 'gamma', 'sigma', 'modifier_length']) & (par != 'delta_beta_temporal')):
