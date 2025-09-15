@@ -14,7 +14,7 @@ import pandas as pd
 #######################
 
 # load FIPS codes & slice relevant columns
-state_FIPS = pd.read_csv(os.path.join(os.getcwd(), '../../raw/demography/national_state2020.txt'), delimiter='|')[['STATE', 'STATEFP', 'STATE_NAME']]
+state_FIPS = pd.read_csv(os.path.join(os.getcwd(), '../raw/demography/national_state2020.txt'), delimiter='|')[['STATE', 'STATEFP', 'STATE_NAME']]
 # the following states/territories are not present in the demographic data (notably: Puerto Rico)
 remove_state_FIPS = [60, 66, 69, 72, 74, 78]
 # remove undesired states and territories
@@ -29,7 +29,7 @@ state_FIPS['name_state'] = state_FIPS['name_state'].apply(lambda x: x.lower())
 ################################
 
 # load demographic data
-state_demo = pd.read_csv(os.path.join(os.getcwd(), '../../raw/demography/sc-est2023-agesex-civ.csv'))
+state_demo = pd.read_csv(os.path.join(os.getcwd(), '../raw/demography/sc-est2023-agesex-civ.csv'))
 # select right sex and year
 state_demo = state_demo[((state_demo['SEX'] == 0) & (state_demo['AGE'] != 999))][['DIVISION','STATE', 'AGE', 'POPEST2020_CIV']]
 # aggregate data to total population
@@ -51,4 +51,4 @@ out = merged_df.drop(columns=["STATE", "DIVISION"])
 out = out.rename(columns={"POPEST2020_CIV": "population"})
 
 # save
-out.to_csv(os.path.join(os.getcwd(),'../../interim/demography/demography.csv'), index=False)
+out.to_csv(os.path.join(os.getcwd(),'../interim/demography/demography.csv'), index=False)
