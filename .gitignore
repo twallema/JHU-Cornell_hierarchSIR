@@ -164,3 +164,6 @@ dmypy.json
 *.exe
 *.out
 *.app
+
+## Large datasets
+data/raw/thermal_comfort_indices/*.nc
