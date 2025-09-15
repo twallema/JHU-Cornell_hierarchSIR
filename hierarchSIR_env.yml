@@ -12,3 +12,6 @@ dependencies:
   - scipy
   - openpyxl
   - emcee
+  - netcdf4   # thermal_comfort_indices
+  - h5netcdf  # thermal_comfort_indices
+  - dask      # thermal_comfort_indices
