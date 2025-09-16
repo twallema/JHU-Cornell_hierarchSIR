@@ -24,12 +24,14 @@ from hierarchSIR.utils import initialise_model, make_data_pySODM_compatible, str
 parser = argparse.ArgumentParser()
 parser.add_argument("--strains", type=int, help="Number of strains. Valid options are: 1, 2 (flu A, B) or 3 (flu AH1, AH3, B).")
 parser.add_argument("--immunity_linking", type=str_to_bool, help="Use an immunity linking function.")
+parser.add_argument("--thermal_comfort", type=str_to_bool, help="Use thermal comfort modifiers.")
 parser.add_argument("--use_ED_visits", type=str_to_bool, help="Use ED visit data (ILI) in addition to ED admission data (hosp. adm.).")
 args = parser.parse_args()
 
 # assign to desired variables
 strains = args.strains
 immunity_linking = args.immunity_linking
+thermal_comfort = args.thermal_comfort
 use_ED_visits = args.use_ED_visits
 
 ##############
@@ -41,16 +43,9 @@ fips_state = 37
 
 # calibration settings
 ## datasets
-identifiers_list = ['exclude_2024-2025', 'exclude_2023-2024', 'exclude_2019-2020', 'exclude_2018-2019', 'exclude_2017-2018', 'exclude_2016-2017', 'exclude_2015-2016', 'exclude_2014-2015']     # identifiers of training datasets
+identifiers_list = ['exclude_None',]     # identifiers of training datasets
 seasons_list = [                                                                                                    # season to include in training
-        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024'],
-        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2024-2025'],
-        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2023-2024', '2024-2025'],
-        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2019-2020', '2023-2024', '2024-2025'],
-        ['2014-2015', '2015-2016', '2016-2017', '2018-2019', '2019-2020', '2023-2024', '2024-2025'],
-        ['2014-2015', '2015-2016', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025'],
-        ['2014-2015', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025'],
-        ['2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025'],
+        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025'],
         ]                                                                                                             
 start_calibration_month = 10                                                                                        # start calibration on month 10, day 1
 end_calibration_month = 5                                                                                           # end calibration on month 5, day 1
@@ -77,7 +72,7 @@ if __name__ == '__main__':
         ## format model name
         model_name = f'SIR-{strains}S'
         ## define samples path
-        samples_path=fig_path=f'../../data/interim/calibration/hierarchical-training/{model_name}/immunity_linking-{immunity_linking}/ED_visits-{use_ED_visits}/{identifier}/' # Path to backend
+        samples_path=fig_path=f'../../data/interim/calibration/hierarchical-training/{model_name}/immunity_linking-{immunity_linking}/thermal_comfort-{thermal_comfort}/ED_visits-{use_ED_visits}/{identifier}/' # Path to backend
         ## check if samples folder exists, if not, make it
         if not os.path.exists(samples_path):
             os.makedirs(samples_path)
@@ -100,7 +95,7 @@ if __name__ == '__main__':
         ## Setup model ##
         #################
 
-        model = initialise_model(strains=strains, immunity_linking=immunity_linking, season='2014-2015', fips_state=fips_state)
+        model = initialise_model(strains=strains, immunity_linking=immunity_linking, thermal_comfort=thermal_comfort, season='2014-2015', fips_state=fips_state)
 
         ##########################################
         ## Setup posterior probability function ##
@@ -109,13 +104,24 @@ if __name__ == '__main__':
         # define model parameters to calibrate to every season and their bounds
         # not how we're not cutting out the parameters associated with the ED visit data
         if not immunity_linking:
-            par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
-            par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1), (0,1e-3), (0.20,0.60), (-0.5,0.5)]
-            par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'norm', 'lognorm', 'norm', 'norm']
+            if not thermal_comfort:
+                par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
+                par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1), (0,1e-3), (0.20,0.60), (-0.5,0.5)]
+                par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'norm', 'lognorm', 'norm', 'norm']
+            else:
+                par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'thermal_delay', 'slope', 'beta', 'delta_beta_temporal']
+                par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1), (0,1e-3), (0,31), (0,0.3), (0.20,0.60), (-0.5,0.5)]
+                par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'norm', 'lognorm', 'lognorm', 'lognorm', 'norm', 'norm']
         else:
-            par_names = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']
-            par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1E-3), (0,1E-3), (0,1E-3), (0,1e-3), (0.20,0.60), (-0.5,0.5)]
-            par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'norm', 'norm']
+            if not thermal_comfort:
+                par_names = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']
+                par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1E-3), (0,1E-3), (0,1E-3), (0,1e-3), (0.20,0.60), (-0.5,0.5)]
+                par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'norm', 'norm']
+            else:
+                par_names = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'thermal_delay', 'slope', 'beta', 'delta_beta_temporal']
+                par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1E-3), (0,1E-3), (0,1E-3), (0,1e-3), (0,31), (0,0.3), (0.20,0.60), (-0.5,0.5)]
+                par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'lognorm', 'norm', 'norm']
+
         # setup lpp function
         lpp = log_posterior_probability(model, par_names, par_bounds, par_hyperdistributions, datasets, seasons)
 
@@ -124,12 +130,12 @@ if __name__ == '__main__':
         ####################################
 
         # parameters: get optimal independent fit with weakly informative prior on R0 and immunity
-        pars_model_0 = pd.read_csv('../../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2])
-        pars_0 = list(pars_model_0.loc[(model_name, immunity_linking, slice(None)), seasons].transpose().values.flatten().tolist())
+        pars_model_0 = pd.read_csv('../../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2,3])
+        pars_0 = list(pars_model_0.loc[(model_name, immunity_linking, thermal_comfort, slice(None)), seasons].transpose().values.flatten().tolist())
 
         # hyperparameters: use all seasons included as the default starting point
-        hyperpars_0 = pd.read_csv('../../data/interim/calibration/hyperparameters.csv', index_col=[0,1,2,3])
-        hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, use_ED_visits, slice(None)), 'exclude_None'].values.tolist()
+        hyperpars_0 = pd.read_csv('../../data/interim/calibration/hyperparameters.csv', index_col=[0,1,2,3,4])
+        hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, thermal_comfort, use_ED_visits, slice(None)), 'initial_guess'].values.tolist()
 
         # combine
         theta_0 = hyperpars_0 + pars_0

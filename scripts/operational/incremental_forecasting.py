@@ -28,7 +28,7 @@ from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, ma
 
 # define seasons and hyperparameter combo's to loop over
 season_lst = ['2024-2025', '2023-2024', '2019-2020', '2018-2019', '2017-2018', '2016-2017', '2015-2016', '2014-2015']
-hyperparameters_lst = ['exclude_2024-2025', 'exclude_2023-2024', 'exclude_2019-2020', 'exclude_2018-2019', 'exclude_2017-2018', 'exclude_2016-2017', 'exclude_2015-2016', 'exclude_2014-2015']
+hyperparameters_lst = len(season_lst) * [None,]
 
 # model settings/ save settings
 fips_state = 37             # NC
@@ -36,15 +36,15 @@ quantiles = False           # save quantiles vs. individual trajectories
 
 # optimization parameters
 ## frequentist optimization
-n_nm = 2000                                                     # Number of NM search iterations
+n_nm = 1500                                                     # Number of NM search iterations
 ## bayesian inference
 n_mcmc = 8000                                                   # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
 print_n = 8000                                                  # Print diagnostics every `print_n`` iterations
-discard = 6000                                                  # Discard first `discard` iterations as burn-in
-thin = 100                                                      # Thinning factor emcee chains
+discard = 7000                                                  # Discard first `discard` iterations as burn-in
+thin = 100                                                     # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
-n = 1000                                                        # Number of simulations performed in MCMC goodness-of-fit figure
+n = 100                                                        # Number of simulations performed in MCMC goodness-of-fit figure
 
 #####################
 ## Parse arguments ##
@@ -54,12 +54,14 @@ n = 1000                                                        # Number of simu
 parser = argparse.ArgumentParser()
 parser.add_argument("--strains", type=int, help="Number of strains. Valid options are: 1, 2 (flu A, B) or 3 (flu AH1, AH3, B).")
 parser.add_argument("--immunity_linking", type=str_to_bool, help="Use an immunity linking function.")
+parser.add_argument("--thermal_comfort", type=str_to_bool, help="Use thermal comfort modifiers.")
 parser.add_argument("--use_ED_visits", type=str_to_bool, help="Use ED visit data (ILI) in addition to ED admission data (hosp. adm.).")
 args = parser.parse_args()
 
 # assign to desired variables
 strains = args.strains
 immunity_linking = args.immunity_linking
+thermal_comfort = args.thermal_comfort
 use_ED_visits = args.use_ED_visits
 
 ## format model name
@@ -82,19 +84,19 @@ if __name__ == '__main__':
         ## dates
         season_start = int(season[0:4])                             # start year of season
         start_simulation = datetime(season_start, 10, 1)            # date forward simulation is started
-        start_calibration = datetime(season_start, 11, 15)          # incremental calibration will start from here
-        end_calibration = datetime(season_start+1, 4, 7)            # and incrementally (weekly) calibrate until this date
-        end_validation = datetime(season_start+1, 5, 1)             # enddate of validation data used on plots
+        start_calibration = datetime(season_start+1, 4, 23)          # incremental calibration will start from here
+        end_calibration = datetime(season_start+1, 5, 1)            # and incrementally (weekly) calibrate until this date
+        end_validation = datetime(season_start+1, 6, 1)             # enddate of validation data used on plots
 
         ##########################################
         ## Prepare pySODM llp dataset arguments ##
         ##########################################
 
         # set up priors
-        pars, bounds, labels, log_prior_prob_fcn, log_prior_prob_fcn_args = get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparameters)
+        pars, bounds, labels, log_prior_prob_fcn, log_prior_prob_fcn_args = get_priors(model_name, strains, immunity_linking, thermal_comfort, use_ED_visits, hyperparameters)
 
         # retrieve guestimate NM
-        theta = list(pd.read_csv('../../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2]).loc[(model_name, immunity_linking, slice(None))].mean(axis=1))
+        theta = list(pd.read_csv('../../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2,3]).loc[(model_name, immunity_linking, thermal_comfort, slice(None))].mean(axis=1))
 
         # format data
         data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(strains, use_ED_visits, start_simulation, end_calibration, season)
@@ -103,7 +105,7 @@ if __name__ == '__main__':
         ## Setup model ##
         #################
 
-        model = initialise_model(strains=strains, immunity_linking=immunity_linking, season=season, fips_state=fips_state)
+        model = initialise_model(strains=strains, immunity_linking=immunity_linking, thermal_comfort=thermal_comfort, season=season, fips_state=fips_state)
 
         #####################
         ## Loop over weeks ##
@@ -118,7 +120,7 @@ if __name__ == '__main__':
 
             # Make folder structure
             identifier = f'reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}' # identifier
-            samples_path=fig_path=f'../../data/interim/calibration/incremental-calibration/{model_name}/immunity_linking-{immunity_linking}/ED_visits-{use_ED_visits}/{season}/hyperpars-{hyperparameters}/{identifier}/' # Path to backend
+            samples_path=fig_path=f'../../data/interim/calibration/incremental-calibration/{model_name}/immunity_linking-{immunity_linking}/thermal_comfort-{thermal_comfort}/ED_visits-{use_ED_visits}/{season}/hyperpars-{hyperparameters}/{identifier}/' # Path to backend
             run_date = datetime.today().strftime("%Y-%m-%d") # get current date
             # check if samples folder exists, if not, make it
             if not os.path.exists(samples_path):
