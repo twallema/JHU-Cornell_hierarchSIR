@@ -759,7 +759,38 @@ def get_priors(model_name, strains, immunity_linking, thermal_comfort, use_ED_vi
                                         {'avg': 0.15, 'stdev': 0.05},
                                         {'avg':  0.455, 'stdev': 0.055},
                                         {'avg':  0, 'stdev': 0.033}]
-
+            # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+            else:
+                # load and select priors
+                priors = pd.read_csv('../../data/interim/calibration/hyperparameters.csv')
+                priors = priors.loc[((priors['model'] == model_name) & (priors['immunity_linking'] == immunity_linking) & (priors['thermal_comfort'] == thermal_comfort) &  (priors['use_ED_visits'] == use_ED_visits)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
+                # assign values
+                if strains == 1:
+                    log_prior_prob_fcn = 3*[log_prior_lognormal,] + 1*[log_prior_normal,] + 1*[log_prior_lognormal,] + 2*[log_prior_lognormal,] + 1*[log_prior_normal,] + 12*[log_prior_normal,] 
+                    log_prior_prob_fcn_args = [ 
+                                            # ED visits
+                                            {'s': priors['rho_i_s'], 'scale': priors['rho_i_scale']},                                       # rho_i
+                                            {'s': priors['T_h_s'], 'scale': priors['T_h_scale']},                                           # T_h
+                                            # >>>>>>>>>
+                                            {'s': priors['rho_h_s'], 'scale': priors['rho_h_scale']},                                       # rho_h
+                                            {'avg': priors['f_R_mu'], 'stdev': priors['f_R_sigma']},                                        # f_R
+                                            {'s': priors['f_I_s'], 'scale': priors['f_I_scale']},                                           # f_I
+                                            {'s': priors['thermal_delay_s'], 'scale': priors['thermal_delay_scale']},                       # thermal_delay
+                                            {'s': priors['slope_s'], 'scale': priors['slope_scale']},                                       # slope
+                                            {'avg': priors['beta_mu'], 'stdev': priors['beta_sigma']},                                      # beta
+                                            {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},    # delta_beta_temporal
+                                            {'avg': priors['delta_beta_temporal_mu_1'], 'stdev': priors['delta_beta_temporal_sigma_1']},    # ...
+                                            {'avg': priors['delta_beta_temporal_mu_2'], 'stdev': priors['delta_beta_temporal_sigma_2']},
+                                            {'avg': priors['delta_beta_temporal_mu_3'], 'stdev': priors['delta_beta_temporal_sigma_3']},
+                                            {'avg': priors['delta_beta_temporal_mu_4'], 'stdev': priors['delta_beta_temporal_sigma_4']},
+                                            {'avg': priors['delta_beta_temporal_mu_5'], 'stdev': priors['delta_beta_temporal_sigma_5']},
+                                            {'avg': priors['delta_beta_temporal_mu_6'], 'stdev': priors['delta_beta_temporal_sigma_6']},
+                                            {'avg': priors['delta_beta_temporal_mu_7'], 'stdev': priors['delta_beta_temporal_sigma_7']},
+                                            {'avg': priors['delta_beta_temporal_mu_8'], 'stdev': priors['delta_beta_temporal_sigma_8']},
+                                            {'avg': priors['delta_beta_temporal_mu_9'], 'stdev': priors['delta_beta_temporal_sigma_9']},
+                                            {'avg': priors['delta_beta_temporal_mu_10'], 'stdev': priors['delta_beta_temporal_sigma_10']},
+                                            {'avg': priors['delta_beta_temporal_mu_11'], 'stdev': priors['delta_beta_temporal_sigma_11']},
+                                            ]          
     else:
         pars = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']                                                # parameters to calibrate
         bounds = [(0,0.1), (0.1, 14), (0,0.01), (0,0.001), (0,0.001), (0,0.001), (1e-9,1e-3), (0.30,0.60), (-0.50,0.50)]                                    # parameter bounds
