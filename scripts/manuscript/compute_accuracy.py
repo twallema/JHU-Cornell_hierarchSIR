@@ -47,8 +47,8 @@ seasons_exclude = []
 model_name_overall = 'JHU_Cornell-hierarchSIR'
 location = '37'                                             # NC FIPS code
 model_names = get_subfolders(os.path.dirname(__file__))
-immunity_linking = [False, ]
-ED_visits = [True,]
+immunity_linking = [True, False]
+ED_visits = [True, False]
 
 WIS_collection = []
 print('Starting loop...')
