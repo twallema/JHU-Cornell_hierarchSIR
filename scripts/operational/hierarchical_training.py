@@ -51,13 +51,13 @@ start_calibration_month = 10                                                    
 end_calibration_month = 5                                                                                           # end calibration on month 5, day 1
 run_date = datetime.today().strftime("%Y-%m-%d")
 ## define number of chains
-max_n = 50000
+max_n = 60000
 pert = 0.05
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))
 ## printing and postprocessing
-print_n = 50000
+print_n = 60000
 backend = None
-discard = 40000
+discard = 50000
 thin = 500
 
 # Needed for multiprocessing to work properly

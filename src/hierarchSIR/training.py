@@ -166,6 +166,11 @@ class log_posterior_probability():
             hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (f_R_mu_idxs, 0.4, 0.1)))
             hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (f_R_sigma_idxs, 0.1)))
 
+        # Hyperdistribution prior: slope_scale ~ N(0.15, 0.05)
+        if 'slope_scale' in self.hyper_par_name_to_idx.keys():
+            slope_scale_idxs = self.hyper_par_name_to_idx['slope_scale']
+            hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (slope_scale_idxs, 0.15, 0.05)))
+
         return season_prior_lpp_fs, hyper_prior_lpp_fs
 
 
