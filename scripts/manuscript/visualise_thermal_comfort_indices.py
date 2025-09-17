@@ -7,7 +7,7 @@ from scipy.interpolate import UnivariateSpline
 from hierarchSIR.utils import get_NC_influenza_data
 
 smoothness = 75000
-delay = 14
+delay = 21
 
 # Load & smooth data
 # >>>>>>>>>>>>>>>>>>
@@ -75,8 +75,8 @@ df = df[~df['season'].isin(['2013-2014', '2020-2021', '2021-2022', '2022-2023'])
 # Example parameters (to calibrate)
 T_low = 14   # lower comfort threshold
 T_high = 28  # upper comfort threshold
-k1 = 0.15    # steepness (cold side)
-k2 = 0.15     # steepness (hot side)
+k1 = 0.06    # steepness (cold side)
+k2 = 0.06     # steepness (hot side)
 
 def double_sigmoid(T, T_low, T_high, k1, k2):
     cold_term = 1 / (1 + np.exp(-k1 * (T - T_low)))
