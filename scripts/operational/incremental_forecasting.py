@@ -44,7 +44,7 @@ print_n = 5000                                                  # Print diagnost
 discard = 4000                                                  # Discard first `discard` iterations as burn-in
 thin = 50                                                     # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
-n = 250                                                        # Number of simulations performed in MCMC goodness-of-fit figure
+n = 500                                                        # Number of simulations performed in MCMC goodness-of-fit figure
 
 #####################
 ## Parse arguments ##
