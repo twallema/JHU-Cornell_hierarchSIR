@@ -28,7 +28,7 @@ from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, ma
 
 # define seasons and hyperparameter combo's to loop over
 season_lst = ['2024-2025', '2023-2024', '2019-2020', '2018-2019', '2017-2018', '2016-2017', '2015-2016', '2014-2015']
-hyperparameters_lst = len(season_lst) * ['exclude_None-2',]
+hyperparameters_lst = len(season_lst) * ['exclude_None-1',]
 
 # model settings/ save settings
 fips_state = 37             # NC
@@ -38,13 +38,13 @@ quantiles = False           # save quantiles vs. individual trajectories
 ## frequentist optimization
 n_nm = 1000                                                     # Number of NM search iterations
 ## bayesian inference
-n_mcmc = 5000                                                   # Number of MCMC iterations
+n_mcmc = 8000                                                   # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 5000                                                  # Print diagnostics every `print_n`` iterations
-discard = 4000                                                  # Discard first `discard` iterations as burn-in
+print_n = 8000                                                  # Print diagnostics every `print_n`` iterations
+discard = 6000                                                  # Discard first `discard` iterations as burn-in
 thin = 50                                                     # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
-n = 500                                                        # Number of simulations performed in MCMC goodness-of-fit figure
+n = 1000                                                        # Number of simulations performed in MCMC goodness-of-fit figure
 
 #####################
 ## Parse arguments ##
