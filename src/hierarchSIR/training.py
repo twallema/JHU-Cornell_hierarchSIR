@@ -171,6 +171,11 @@ class log_posterior_probability():
             slope_scale_idxs = self.hyper_par_name_to_idx['slope_scale']
             hyper_prior_lpp_fs.append((self.norm_hyper_logpdf, (slope_scale_idxs, 0.15, 0.05)))
 
+        # Hyperdistribution prior: thermal_delay_scale ~ Exponential(31)
+        if 'thermal_delay_scale' in self.hyper_par_name_to_idx.keys():
+            thermal_delay_scale_idxs = self.hyper_par_name_to_idx['thermal_delay_scale']
+            hyper_prior_lpp_fs.append((self.expon_hyper_logpdf, (thermal_delay_scale_idxs, 31)))        
+
         return season_prior_lpp_fs, hyper_prior_lpp_fs
 
 
