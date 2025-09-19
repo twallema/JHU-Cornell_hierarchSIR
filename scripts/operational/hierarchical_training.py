@@ -110,7 +110,7 @@ if __name__ == '__main__':
                 par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'norm', 'lognorm', 'norm', 'norm']
             else:
                 par_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'thermal_delay', 'slope', 'beta', 'delta_beta_temporal']
-                par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1), (0,1e-3), (0,31), (0,0.3), (0.20,0.60), (-0.5,0.5)]
+                par_bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,1), (0,1e-3), (0,30), (0,0.3), (0.20,0.60), (-0.5,0.5)]
                 par_hyperdistributions = ['lognorm', 'lognorm', 'lognorm', 'norm', 'lognorm', 'lognorm', 'lognorm', 'norm', 'norm']
         else:
             if not thermal_comfort:
