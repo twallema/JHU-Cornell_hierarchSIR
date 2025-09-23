@@ -12,3 +12,5 @@ dependencies:
   - scipy
   - openpyxl
   - emcee
+  - pyarrow
+  - fastparquet
