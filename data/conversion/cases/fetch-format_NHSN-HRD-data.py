@@ -1,8 +1,9 @@
 """
-This script contains the calibration of an influenza model to the 2017-2018 surveillance data
+This script downloads, formats and archives the NHSN HRD dataset
 """
 
-__author__      = "Tijs Alleman, Clif McKee"
+__author__      = "T.W. Alleman & Clif McKee"
+__copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group (JHUBSPH) & Bento Lab (Cornell CVM). All Rights Reserved."
 
 ##################
 ## Dependencies ##

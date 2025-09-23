@@ -1,3 +1,10 @@
+"""
+This script handles the initialisation of the model, the formatting of the data and other miscellaneous functions
+"""
+
+__author__      = "T.W. Alleman"
+__copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group (JHUBSPH) & Bento Lab (Cornell CVM). All Rights Reserved."
+
 import os
 import numpy as np
 import pandas as pd
