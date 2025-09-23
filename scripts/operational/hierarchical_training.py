@@ -41,16 +41,9 @@ fips_state = 37
 
 # calibration settings
 ## datasets
-identifiers_list = ['exclude_2024-2025', 'exclude_2023-2024', 'exclude_2019-2020', 'exclude_2018-2019', 'exclude_2017-2018', 'exclude_2016-2017', 'exclude_2015-2016', 'exclude_2014-2015']     # identifiers of training datasets
+identifiers_list = ['exclude_None']     # identifiers of training datasets
 seasons_list = [                                                                                                    # season to include in training
-        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024'],
-        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2024-2025'],
-        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2023-2024', '2024-2025'],
-        ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2019-2020', '2023-2024', '2024-2025'],
-        ['2014-2015', '2015-2016', '2016-2017', '2018-2019', '2019-2020', '2023-2024', '2024-2025'],
-        ['2014-2015', '2015-2016', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025'],
-        ['2014-2015', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025'],
-        ['2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025'],
+        ['2023-2024', '2024-2025'],
         ]                                                                                                             
 start_calibration_month = 10                                                                                        # start calibration on month 10, day 1
 end_calibration_month = 5                                                                                           # end calibration on month 5, day 1
@@ -93,7 +86,7 @@ if __name__ == '__main__':
         # get data
         datasets = []
         for start_calibration, end_calibration, season in zip(start_calibrations, end_calibrations, seasons):
-            data, _, _, _ = make_data_pySODM_compatible(strains, use_ED_visits, start_calibration, end_calibration, season)
+            data, _, _, _ = make_data_pySODM_compatible(start_calibration, end_calibration, fips_state)
             datasets.append(data)
 
         #################
