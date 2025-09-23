@@ -1,4 +1,4 @@
-name: HIERARCHSIR
+name: HOPKINSIDD-HIERARCHSIR
 channels:
   - conda-forge
   - defaults
