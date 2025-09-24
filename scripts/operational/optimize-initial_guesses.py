@@ -1,12 +1,12 @@
 """
 This script,
 1. takes in an initial parameter guess from `~/data/interim/calibration/initial_guesses.csv`
-2. uses it to optimise the hierarchDENV model's parameters (in every federative unit)
+2. uses it to optimise the hierarchSIR model's parameters (in every US state)
 3. puts it back in the initial parameter guess file
 """
 
-__author__      = "Tijs Alleman"
-__copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group, Johns Hopkins Bloomberg School of Public Health. All Rights Reserved."
+__author__      = "T.W. Alleman"
+__copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group (JHUBSPH) & Bento Lab (Cornell CVM). All Rights Reserved."
 
 import sys,os
 import argparse
