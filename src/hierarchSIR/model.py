@@ -98,7 +98,7 @@ class imsSIR():
                 self.parameters.update(draw_function(copy.deepcopy(self.parameters), **draw_function_kwargs))
             # make sure parameters are vectors #TODO: do better!
             for par, shape in self.parameter_shapes.items():
-                if ((shape == (1,)) & (par not in ['T_h', 'gamma', 'sigma', 'modifier_length']) & (par != 'delta_beta_temporal')):
+                if ((shape == (1,)) & (par not in ['rho_i', 'T_h', 'gamma', 'sigma', 'modifier_length']) & (par != 'delta_beta_temporal')):
                     self.parameters[par] = np.array([self.parameters[par],])
             # build initial condition
             self.initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])

@@ -11,12 +11,12 @@ int num_states = 10;
 
 // SIR model
 struct SIR {
-    double T_h;
-    std::vector<double> beta, gamma, rho_i, rho_h;
+    double rho_i, T_h;
+    std::vector<double> beta, gamma, rho_h;
     std::vector<double> beta_modifiers;
 
     SIR(const std::vector<double>& beta, const std::vector<double>& gamma,
-        const std::vector<double>& rho_i, const std::vector<double>& rho_h, double T_h,
+        double rho_i, const std::vector<double>& rho_h, double T_h,
         const std::vector<double>& beta_modifiers)
         : beta(beta), gamma(gamma), rho_i(rho_i), rho_h(rho_h), T_h(T_h), beta_modifiers(beta_modifiers) {}
 
@@ -44,9 +44,9 @@ struct SIR {
             double lambda = beta_t * S * I / T[strain];
 
             dydt[idx] = -lambda;                                                    // dS/dt
-            dydt[idx + 1] = lambda - gamma[0] * I;                             // dI/dt
-            dydt[idx + 2] = gamma[0] * I;                                      // dR/dt
-            dydt[idx + 3] = rho_i[0] * lambda - I_inc;                         // dI_inc/dt
+            dydt[idx + 1] = lambda - gamma[strain] * I;                                  // dI/dt
+            dydt[idx + 2] = gamma[strain] * I;                                           // dR/dt
+            dydt[idx + 3] = rho_i * lambda - I_inc;                                 // dI_inc/dt
             dydt[idx + 4] = rho_h[strain] * lambda - (5/T_h) * H_inc_LCT0;          // dH_inc_LCT0/dt
             dydt[idx + 5] = (5/T_h) * H_inc_LCT0 - (5/T_h) * H_inc_LCT1;            // dH_inc_LCT1/dt
             dydt[idx + 6] = (5/T_h) * H_inc_LCT1 - (5/T_h) * H_inc_LCT2;            // dH_inc_LCT2/dt
@@ -144,7 +144,7 @@ std::vector<std::vector<double>> interpolate_results(const std::vector<std::vect
 std::vector<std::vector<double>> solve(double t_start, double t_end,
                                         double atol, double rtol,
                                         std::vector<double> S0, std::vector<double> I0, std::vector<double> R0,
-                                        std::vector<double> beta, std::vector<double> gamma, std::vector<double> rho_i, std::vector<double> rho_h, double T_h,
+                                        std::vector<double> beta, std::vector<double> gamma, double rho_i, std::vector<double> rho_h, double T_h,
                                         const std::vector<double>& delta_beta_temporal, 
                                         int modifier_length, double sigma
                                         ) {

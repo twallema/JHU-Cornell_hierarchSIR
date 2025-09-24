@@ -23,46 +23,43 @@ from pySODM.optimization.utils import assign_theta, add_poisson_noise
 from pySODM.optimization.objective_functions import log_posterior_probability
 from pySODM.optimization.mcmc import perturbate_theta, run_EnsembleSampler
 # hierarchDENV functions
-from hierarchDENV.utils import initialise_model, plot_fit, make_data_pySODM_compatible, get_priors, str_to_bool, samples_to_csv
+from hierarchSIR.utils import initialise_model, plot_fit, make_data_pySODM_compatible, get_priors, str_to_bool, samples_to_csv
 
 ##############
 ## Settings ##
 ##############
 
-# skip UFs
-skip_ufs = []
+# skip fips_state
+skip_fips = []
 
 # season length
 season_start_month = 9
-season_end_month = 9
+season_end_month = 6
 
 # optimization parameters
 ## frequentist optimization
-n_nm = 1000                                                     # Number of NM search iterations
+n_nm = 500                                                     # Number of NM search iterations
 ## bayesian inference
-n_mcmc = 5000                                                   # Number of MCMC iterations
+n_mcmc = 1000                                                   # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 5000                                                  # Print diagnostics every `print_n`` iterations
-discard = 4000                                                  # Discard first `discard` iterations as burn-in
-thin = 50                                                       # Thinning factor emcee chains
+print_n = 1000                                                  # Print diagnostics every `print_n`` iterations
+discard = 500                                                  # Discard first `discard` iterations as burn-in
+thin = 10                                                       # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
 n = 100                                                         # Number of simulations performed in MCMC goodness-of-fit figure
-hyperparameters = None
 
 #####################
 ## Parse arguments ##
 #####################
 
-# arguments determine the model + data combo used to forecast
+# 'strain' arugment determines the model used in this script
 parser = argparse.ArgumentParser()
-parser.add_argument("--serotypes", type=str_to_bool, help="Include serotypes. False: 1 strain model, True: 4 strain model.")
+parser.add_argument("--strains", type=int, default=1, help="Number of strains. Valid options are: 1, 2 (flu A, B) or 3 (flu AH1, AH3, B).")
 args = parser.parse_args()
-
-# assign to desired variables
-serotypes = args.serotypes
+assert args.strains==1, "only valid number of strains is 1."
+strains = args.strains
 
 # format number of strains and model name
-strains = 4 if serotypes is True else 1
 model_name = f'SIR-{strains}S'
 
 ##################################
@@ -72,10 +69,12 @@ model_name = f'SIR-{strains}S'
 # save the original guesses csv --> we will update this on-the-fly in this script
 initial_guesses_save = pd.read_csv('../../data/interim/calibration/initial_guesses.csv', index_col=[0,1,2,3])
 
-# get ufs and seasons
-uf_list = initial_guesses_save.index.get_level_values('uf').unique().to_list()
-uf_list = [x for x in uf_list if x not in skip_ufs]
+# get strains and seasons
+fips_state_list = initial_guesses_save.index.get_level_values('fips_state').unique().to_list()
+fips_state_list = [x for x in fips_state_list if x not in skip_fips]
 season_lst = initial_guesses_save.columns.to_list()
+fips_mappings = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/demography/demography.csv'), dtype={'fips_state': int})
+name_state_list = [fips_mappings.loc[fips_mappings['fips_state'] == x]['name_state'].squeeze() for x in fips_state_list]
 
 ##################
 ## Optimization ##
@@ -85,10 +84,10 @@ season_lst = initial_guesses_save.columns.to_list()
 if __name__ == '__main__':
 
     # Start the loop over the federative units and seasons
-    for uf in uf_list:
+    for name_state, fips_state in zip(name_state_list, fips_state_list):
         for season in season_lst:
 
-            print(f'Working on the {season} season in {uf}')
+            print(f'Working on the {season} season in US state {fips_state}')
             sys.stdout.flush()
 
             # dates
@@ -102,19 +101,19 @@ if __name__ == '__main__':
             ##########################################
 
             # set up priors
-            pars, bounds, labels, log_prior_prob_fcn, log_prior_prob_fcn_args = get_priors(strains, uf, hyperparameters)
+            pars, bounds, labels, log_prior_prob_fcn, log_prior_prob_fcn_args = get_priors(model_name, fips_state, None)
 
             # retrieve initial guess from file
-            theta = list(pd.read_csv('../../data/interim/calibration/initial_guesses.csv', index_col=[0,1,2]).loc[(model_name, uf, slice(None)), season])
+            theta = list(pd.read_csv('../../data/interim/calibration/initial_guesses.csv', index_col=[0,1,2]).loc[(model_name, fips_state, slice(None)), season])
 
             # format data
-            data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(uf, serotypes, start_calibration, end_calibration)
+            data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(start_calibration, end_calibration, fips_state)
 
             #################
             ## Setup model ##
             #################
 
-            model = initialise_model(strains=strains, uf=uf)
+            model = initialise_model(strains=strains, fips_state=fips_state)
 
             #####################
             ## Loop over weeks ##
@@ -122,7 +121,7 @@ if __name__ == '__main__':
 
             # Make folder structure
             identifier = f'reference_date-{(end_calibration+timedelta(weeks=1)).strftime('%Y-%m-%d')}' # identifier
-            samples_path=fig_path=f'../../data/interim/calibration/optimize-initial_guesses/{model_name}/{uf}/{season}/hyperpars-{hyperparameters}/{identifier}/' # Path to backend
+            samples_path=fig_path=f'../../data/interim/calibration/optimize-initial_guesses/{model_name}/{fips_state}-{name_state}/{season}/{identifier}/' # Path to backend
             run_date = datetime.today().strftime("%Y-%m-%d") # get current date
             # check if samples folder exists, if not, make it
             if not os.path.exists(samples_path):
@@ -166,7 +165,7 @@ if __name__ == '__main__':
             simout = model.sim([start_simulation, end_calibration])
             # visualise output
             plot_fit(simout, data_calib, data_valid, states, fig_path, identifier,
-                    lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data, rescaling=30)
+                    lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data, name_state)
 
 
             ##########
@@ -192,7 +191,7 @@ if __name__ == '__main__':
             df = samples_to_csv(samples_xr.median(dim=['chain', 'iteration']))
 
             # Save in the initial guesses file
-            initial_guesses_save.loc[(model_name, uf, slice(None), slice(None)), season] = df.values
+            initial_guesses_save.loc[(model_name, fips_state, slice(None), slice(None)), season] = df.values
 
             # Save the initial guesses file
             initial_guesses_save.to_csv('../../data/interim/calibration/initial_guesses.csv')
@@ -227,7 +226,7 @@ if __name__ == '__main__':
             
             # Add sampling noise
             try:
-                simout = add_poisson_noise(simout+0.1)
+                simout = add_poisson_noise(simout+0.01)
             except:
                 print('no poisson resampling performed')
                 sys.stdout.flush()
@@ -235,6 +234,6 @@ if __name__ == '__main__':
 
             # Visualise goodnes-of-fit
             plot_fit(simout, data_calib, data_valid, states, fig_path, identifier,
-                    lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data, rescaling=30)
+                    lpp.coordinates_data_also_in_model, lpp.aggregate_over, lpp.additional_axes_data, name_state)
             
 

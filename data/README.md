@@ -12,7 +12,7 @@ Contains an overview of the raw data sources, and the conversion scripts used to
 
 ### Demography
 
-+ `demography.csv`: Population of US states. Columns: 'abbreviation_state', 'fips_state', 'name_state', 'population', 'region_name'.
++ `demography.csv`: Population of US states. Columns: 'name_state', 'fips_state', 'name_state', 'population', 'region_name'.
 
 ### NHSN-HRD_archive
 

@@ -20,7 +20,7 @@ remove_state_FIPS = [60, 66, 69, 72, 74, 78]
 # remove undesired states and territories
 state_FIPS = state_FIPS[~state_FIPS['STATEFP'].isin(remove_state_FIPS)]
 # rename columns
-state_FIPS = state_FIPS.rename(columns={"STATE": "abbreviation_state","STATEFP": "fips_state", "STATE_NAME": "name_state",})
+state_FIPS = state_FIPS.rename(columns={"STATE": "name_state","STATEFP": "fips_state", "STATE_NAME": "name_state",})
 # use lowercase only 
 state_FIPS['name_state'] = state_FIPS['name_state'].apply(lambda x: x.lower())
 

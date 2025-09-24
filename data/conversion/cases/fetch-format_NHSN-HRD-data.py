@@ -72,11 +72,11 @@ def format_raw_HRD_data(raw_HRD_data: pd.DataFrame) -> pd.DataFrame:
     fips_mappings = pd.read_csv(os.path.join(abs_dir, '../../interim/demography/demography.csv'), dtype={'fips_state': str})
 
     # Add state FIPS code to dataframe
-    state_fips_mapping = fips_mappings[["abbreviation_state", "fips_state"]].drop_duplicates()              # get abbreviation / fips
-    mapping_dict = dict(zip(state_fips_mapping["abbreviation_state"], state_fips_mapping["fips_state"]))    # build map
+    state_fips_mapping = fips_mappings[["name_state", "fips_state"]].drop_duplicates()              # get abbreviation / fips
+    mapping_dict = dict(zip(state_fips_mapping["name_state"], state_fips_mapping["fips_state"]))    # build map
     data["fips_state"] = data["Geographic aggregation"].map(mapping_dict)                                   # append fips codes
     data = data.rename(columns={'Geographic aggregation': 'name_state'})                                    # give better names
-    data = data[data['name_state'].isin(state_fips_mapping['abbreviation_state'])]                          # retain only continental US, Alaska, Hawaii and Puerto Rico
+    data = data[data['name_state'].isin(state_fips_mapping['name_state'])]                          # retain only continental US, Alaska, Hawaii and Puerto Rico
  
     # Add a year, epiweek & season label for easy splitting of the dataset later down the line
     data[['year', 'MMWR']] = data['Week Ending Date'].apply(lambda x: pd.Series(get_epiweek(x)))
