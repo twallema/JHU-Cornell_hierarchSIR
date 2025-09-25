@@ -175,7 +175,7 @@ def get_latest_NHSN_HRD_influenza_data(startdate: datetime, enddate: datetime, f
     latest_file, _ = max(files_with_time, key=lambda x: x[1])                                           # get the latest file
 
     # print diagnostics
-    print("Most recent file:", latest_file)
+    #print("Most recent file:", latest_file)
 
     # get data
     data = pd.read_parquet(latest_file)
@@ -373,7 +373,7 @@ def samples_to_csv(ds: xr.Dataset) -> pd.DataFrame:
 
     df = pd.DataFrame(np.stack([parameters,elements,values], axis=1), columns=['parameter', 'element', 'value'])
     df['value'] = pd.to_numeric(df['value'])
-    
+
     return df
 
 from pySODM.optimization.objective_functions import log_prior_normal, log_prior_lognormal, log_prior_uniform, log_prior_gamma, log_prior_normal
