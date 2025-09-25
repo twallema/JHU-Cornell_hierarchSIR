@@ -48,14 +48,14 @@ end_calibration_month = 6                                                       
 run_date = datetime.today().strftime("%Y-%m-%d")
 ## define number of chains
 chain_multiplier = 3
-max_n = 1000
+max_n = 10000
 pert = 0.05
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))
 ## printing and postprocessing
-print_n = 1000
+print_n = 10000
 backend = None
-discard = 800
-thin = 5
+discard = 9000
+thin = 50
 
 # figure out what states to loop over
 initial_guesses = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/calibration/initial_guesses.csv'), index_col=[0,1,2,3,4])
