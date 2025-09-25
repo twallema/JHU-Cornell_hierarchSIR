@@ -22,7 +22,7 @@ abs_dir = os.path.dirname(__file__)
 ## Model initialisation ##
 ##########################
 
-def initialise_model(strains=False, fips_state=37):
+def initialise_model(strains=False, fips_state=1):
     """
     A function to intialise the hierarchSIR model
 
@@ -33,7 +33,7 @@ def initialise_model(strains=False, fips_state=37):
         - do we want a strain-stratified model?
 
     fips_state: int
-        - '37': North Carolina
+        - '1': Alabama
     """
 
     # restrict input (for now)
@@ -377,7 +377,7 @@ def samples_to_csv(ds: xr.Dataset) -> pd.DataFrame:
     return df
 
 from pySODM.optimization.objective_functions import log_prior_normal, log_prior_lognormal, log_prior_uniform, log_prior_gamma, log_prior_normal
-def get_priors(model_name, state_fips, hyperparameters):
+def get_priors(model_name, fips_state, hyperparameters):
     """
     A function to help prepare the pySODM-compatible priors
     """
@@ -398,17 +398,16 @@ def get_priors(model_name, state_fips, hyperparameters):
     else:
         # load and select priors
         priors = pd.read_csv('../../data/interim/calibration/hyperparameters.csv')
-        priors = priors.loc[((priors['model'] == model_name) & (priors['state_fips'] == state_fips)), (['parameter', f'{hyperparameters}'])].set_index('parameter').squeeze()
+        priors = priors.loc[((priors['model'] == model_name) & (priors['fips_state'] == fips_state)), (['hyperparameter', f'{hyperparameters}'])].set_index('hyperparameter').squeeze()
         # assign values
-        log_prior_prob_fcn = 2*[log_prior_lognormal,] + 1*[log_prior_normal,] + 1*[log_prior_lognormal,] + 1*[log_prior_normal,] + 12*[log_prior_normal,] 
+        log_prior_prob_fcn = 1*[log_prior_lognormal,] + 1*[log_prior_normal,] + 1*[log_prior_lognormal,] + 1*[log_prior_normal,] + 12*[log_prior_normal,] 
         log_prior_prob_fcn_args = [ 
-                                # ED visits
-                                {'s': priors['rho_h_s'], 'scale': priors['rho_h_scale']},                                       # rho_h
-                                {'avg': priors['f_R_mu'], 'stdev': priors['f_R_sigma']},                                        # f_R
-                                {'s': priors['f_I_s'], 'scale': priors['f_I_scale']},                                           # f_I
-                                {'avg': priors['beta_mu'], 'stdev': priors['beta_sigma']},                                      # beta
-                                {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},    # delta_beta_temporal
-                                {'avg': priors['delta_beta_temporal_mu_1'], 'stdev': priors['delta_beta_temporal_sigma_1']},    # ...
+                                {'s': priors['rho_h_s_0'], 'scale': priors['rho_h_scale_0']},                                       # rho_h
+                                {'avg': priors['f_R_mu_0'], 'stdev': priors['f_R_sigma_0']},                                        # f_R
+                                {'s': priors['f_I_s_0'], 'scale': priors['f_I_scale_0']},                                           # f_I
+                                {'avg': priors['beta_mu_0'], 'stdev': priors['beta_sigma_0']},                                      # beta
+                                {'avg': priors['delta_beta_temporal_mu_0'], 'stdev': priors['delta_beta_temporal_sigma_0']},        # delta_beta_temporal
+                                {'avg': priors['delta_beta_temporal_mu_1'], 'stdev': priors['delta_beta_temporal_sigma_1']},        # ...
                                 {'avg': priors['delta_beta_temporal_mu_2'], 'stdev': priors['delta_beta_temporal_sigma_2']},
                                 {'avg': priors['delta_beta_temporal_mu_3'], 'stdev': priors['delta_beta_temporal_sigma_3']},
                                 {'avg': priors['delta_beta_temporal_mu_4'], 'stdev': priors['delta_beta_temporal_sigma_4']},
