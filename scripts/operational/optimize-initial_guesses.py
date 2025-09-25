@@ -40,13 +40,13 @@ season_end_month = 6
 ## frequentist optimization
 n_nm = 1000                                                     # Number of NM search iterations
 ## bayesian inference
-n_mcmc = 3000                                                   # Number of MCMC iterations
+n_mcmc = 2000                                                   # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 3000                                                  # Print diagnostics every `print_n`` iterations
-discard = 2000                                                  # Discard first `discard` iterations as burn-in
+print_n = 2000                                                  # Print diagnostics every `print_n`` iterations
+discard = 1000                                                  # Discard first `discard` iterations as burn-in
 thin = 50                                                       # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
-n = 300                                                         # Number of simulations performed in MCMC goodness-of-fit figure
+n = 200                                                         # Number of simulations performed in MCMC goodness-of-fit figure
 
 #####################
 ## Parse arguments ##
@@ -67,12 +67,12 @@ model_name = f'SIR-{strains}S'
 ##################################
 
 # save the original guesses csv --> we will update this on-the-fly in this script
-initial_guesses_save = pd.read_csv('../../data/interim/calibration/initial_guesses.csv', index_col=[0,1,2,3])
+initial_guesses = pd.read_csv('../../data/interim/calibration/initial_guesses.csv', index_col=[0,1,2,3,4])
 
 # get strains and seasons
-fips_state_list = initial_guesses_save.index.get_level_values('fips_state').unique().to_list()
+fips_state_list = initial_guesses.index.get_level_values('fips_state').unique().to_list()
 fips_state_list = [x for x in fips_state_list if x not in skip_fips]
-season_lst = initial_guesses_save.columns.to_list()
+season_lst = initial_guesses.columns.to_list()
 fips_mappings = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/demography/demography.csv'), dtype={'fips_state': int})
 name_state_list = [fips_mappings.loc[fips_mappings['fips_state'] == x]['name_state'].squeeze() for x in fips_state_list]
 
@@ -187,14 +187,11 @@ if __name__ == '__main__':
             ## Save results ##
             ##################       
                                 
-            # Retrieve median parameter values across chains and iterations
-            df = samples_to_csv(samples_xr.median(dim=['chain', 'iteration']))
-
-            # Save in the initial guesses file
-            initial_guesses_save.loc[(model_name, fips_state, slice(None), slice(None)), season] = df.values
+            # Retrieve median parameter values across chains and iterations & save in the initial guesses file
+            initial_guesses.loc[(model_name, fips_state, slice(None), slice(None), slice(None)), season] = samples_to_csv(samples_xr.median(dim=['chain', 'iteration']))['value'].values
 
             # Save the initial guesses file
-            initial_guesses_save.to_csv('../../data/interim/calibration/initial_guesses.csv')
+            initial_guesses.to_csv('../../data/interim/calibration/initial_guesses.csv')
 
             #######################
             ## Visualize results ##
