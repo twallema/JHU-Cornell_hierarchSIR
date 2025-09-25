@@ -193,7 +193,12 @@ if __name__ == '__main__':
                             hyperpars_names.extend([f'{hyperpar_name}_{i}' if hyperpar_shape[0] > 1 else f'{hyperpar_name}' for i in range(hyperpar_shape[0])])
                         hyperpars_values = np.hstack(hyperpars_values)
                         # save to .csv
-                        pd.Series(index=hyperpars_names, data=hyperpars_values, name=identifier).to_csv(samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.csv')
+                        samples_median = pd.Series(index=hyperpars_names, data=hyperpars_values, name=identifier)
+                        samples_median.to_csv(samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.csv')
+                        # save to the hyperparameters file
+                        hyperpars = pd.read_csv(os.path.join(os.path.dirname(__file__) , '../../data/interim/calibration/hyperparameters.csv'), index_col=[0,1,2]) # re-open hyperpars
+                        hyperpars.loc[(model_name, fips_state, slice(None)), f'{identifier}'] = samples_median.values
+                        hyperpars.to_csv(os.path.join(os.path.dirname(__file__) , '../../data/interim/calibration/hyperparameters.csv'), index=True)
                         # .. visualise hyperdistributions
                         hyperdistributions(samples, samples_path+str(identifier)+'_HYPERDIST_'+run_date+'.pdf', lpp.par_shapes, lpp.hyperpar_shapes, par_hyperdistributions, par_bounds, 100)
                         # ..generate goodness-of-fit
