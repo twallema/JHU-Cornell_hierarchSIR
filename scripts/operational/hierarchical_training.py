@@ -112,7 +112,7 @@ if __name__ == '__main__':
             # not how we're not cutting out the parameters associated with the ED visit data
 
             par_names = ['rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
-            par_bounds = [(0,0.01), (0,1), (0,1e-3), (0.20,0.60), (-0.5,0.5)]
+            par_bounds = [(0,0.02), (0,1), (0,1e-2), (0.20,0.60), (-0.5,0.5)]
             par_hyperdistributions = ['lognorm', 'norm', 'lognorm', 'norm', 'norm']
 
             # setup lpp function
