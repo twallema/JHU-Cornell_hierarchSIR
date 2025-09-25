@@ -241,7 +241,8 @@ def make_data_pySODM_compatible(start_date: datetime, end_date: datetime, fips_s
     log_likelihood_fnc = len(states) * [ll_poisson,]
     log_likelihood_fnc_args = len(states) * [[],]
     # pySODM data
-    data = [get_latest_NHSN_HRD_influenza_data(start_date, end_date, fips_state)/7, ]
+    df = get_latest_NHSN_HRD_influenza_data(start_date, end_date, fips_state)/7
+    data = [df.dropna(), ]
 
     return data, states, log_likelihood_fnc, log_likelihood_fnc_args
 
