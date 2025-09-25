@@ -2,8 +2,8 @@
 This script contains the log posterior probability function of the Bayesian hierarchical model
 """
 
-__author__      = "Tijs Alleman"
-__copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group, Johns Hopkins Bloomberg School of Public Health and Cornell University; Tim Vanwezemael, Ghent University. All Rights Reserved."
+__author__      = "T.W. Alleman & Tim Vanwezemael"
+__copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group (JHUBSPH) & Bento Lab (Cornell CVM). All Rights Reserved."
 
 import os
 import math
