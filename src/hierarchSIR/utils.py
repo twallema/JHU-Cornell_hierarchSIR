@@ -349,25 +349,31 @@ def samples_to_csv(ds: xr.Dataset) -> pd.DataFrame:
     -------
 
     - df: pd.DataFrame
-        - Index: Expanded parameter name
-        - Values: Average or median parameter values
-        - 1D parameter names are expanded: 'rho_h' --> 'rho_h_0' , 'rho_h_1', ...
+        - Index: Original parameter name
+        - Columns: Element index (starts at zero) + value
     """
-    param_dict = {}
+    parameters = []
+    elements = []
+    values = []
 
     for var_name, da in ds.data_vars.items():
         if da.ndim == 0:
             # Scalar variable
-            param_dict[var_name] = da.item()
+            parameters.append(var_name)
+            elements.append(0)
+            values.append(float(da.item()))
         elif da.ndim == 1:
             # 1D variable
             for i, val in enumerate(da.values):
-                param_dict[f"{var_name}_{i}"] = val
+                parameters.append(var_name)
+                elements.append(i)
+                values.append(float(val))
         else:
             raise ValueError(f"Variable '{var_name}' has more than 1 dimension ({da.dims}); this script handles only scalars and 1D variables.")
 
-    df = pd.DataFrame.from_dict(param_dict, orient='index', columns=['value'])
-    df.index.name = 'parameter'
+    df = pd.DataFrame(np.stack([parameters,elements,values], axis=1), columns=['parameter', 'element', 'value'])
+    df['value'] = pd.to_numeric(df['value'])
+    
     return df
 
 from pySODM.optimization.objective_functions import log_prior_normal, log_prior_lognormal, log_prior_uniform, log_prior_gamma, log_prior_normal
