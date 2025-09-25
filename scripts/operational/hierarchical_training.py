@@ -43,8 +43,8 @@ identifiers_list = ['exclude_None']     # identifiers of training datasets
 seasons_list = [                                                                                                    # season to include in training
         ['2023-2024', '2024-2025'],
         ]                                                                                                             
-start_calibration_month = 10                                                                                        # start calibration on month 10, day 1
-end_calibration_month = 5                                                                                           # end calibration on month 5, day 1
+start_calibration_month = 9                                                                                        # start calibration on month 10, day 1
+end_calibration_month = 6                                                                                           # end calibration on month 5, day 1
 run_date = datetime.today().strftime("%Y-%m-%d")
 ## define number of chains
 chain_multiplier = 3
