@@ -62,7 +62,7 @@ initial_guesses = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../dat
 fips_state_list = initial_guesses.index.get_level_values('fips_state').unique().to_list()
 fips_state_list = [x for x in fips_state_list if x not in skip_fips]
 fips_mappings = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/demography/demography.csv'), dtype={'fips_state': int})
-name_state_list = [fips_mappings.loc[fips_mappings['fips_state'] == x]['name_state'].squeeze() for x in fips_state_list]
+name_state_list = [fips_mappings.loc[fips_mappings['fips_state'] == x]['abbreviation_state'].squeeze() for x in fips_state_list]
 
 # Needed for multiprocessing to work properly
 if __name__ == '__main__':

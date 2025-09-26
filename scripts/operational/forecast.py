@@ -53,11 +53,10 @@ n = 2000                                                        # Number of simu
 initial_guesses = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/calibration/initial_guesses.csv'), index_col=[0,1,2,3,4])
 fips_state_list = initial_guesses.index.get_level_values('fips_state').unique().to_list()
 fips_state_list = [x for x in fips_state_list if x not in skip_fips]
-fips_state_list = [1,2]
 fips_mappings = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/demography/demography.csv'), dtype={'fips_state': int})
-name_state_list = [fips_mappings.loc[fips_mappings['fips_state'] == x]['name_state'].squeeze() for x in fips_state_list]
+name_state_list = [fips_mappings.loc[fips_mappings['fips_state'] == x]['abbreviation_state'].squeeze() for x in fips_state_list]
 
-# figure out what the latest datapoint is
+# get the latest data (dummy)
 data, _, _, _ = make_data_pySODM_compatible(datetime(2000,1,1), datetime(2025,2,1), 1)
 end_date = max(data[0].index)
 
@@ -251,4 +250,4 @@ if __name__ == '__main__':
     # spit out final result
     forecasts = pd.concat(forecasts, axis=0)
     forecasts = forecasts.drop(columns=["strain_0"]) # TODO: generalise over strains
-    forecasts.to_csv(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/forecast_reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}.csv'))
+    forecasts.to_csv(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}/forecast_reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}.csv'))
