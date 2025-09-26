@@ -15,12 +15,12 @@ import pandas as pd
 
 # load FIPS codes & slice relevant columns
 state_FIPS = pd.read_csv(os.path.join(os.getcwd(), '../../raw/demography/national_state2020.txt'), delimiter='|')[['STATE', 'STATEFP', 'STATE_NAME']]
-# the following states/territories are not present in the demographic data (notably: Puerto Rico)
-remove_state_FIPS = [60, 66, 69, 72, 74, 78]
+# the following states/territories are removed from the demographic data
+remove_state_FIPS = [60, 66, 69, 74, 78]
 # remove undesired states and territories
 state_FIPS = state_FIPS[~state_FIPS['STATEFP'].isin(remove_state_FIPS)]
 # rename columns
-state_FIPS = state_FIPS.rename(columns={"STATE": "name_state","STATEFP": "fips_state", "STATE_NAME": "name_state",})
+state_FIPS = state_FIPS.rename(columns={"STATE": "abbreviation_state","STATEFP": "fips_state", "STATE_NAME": "name_state",})
 # use lowercase only 
 state_FIPS['name_state'] = state_FIPS['name_state'].apply(lambda x: x.lower())
 
@@ -49,6 +49,10 @@ merged_df = state_FIPS.merge(agg, left_on="fips_state", right_on="STATE", how="l
 out = merged_df.drop(columns=["STATE", "DIVISION"])
 # rename column
 out = out.rename(columns={"POPEST2020_CIV": "population"})
+
+# add puerto rico 2023 demography manually
+out.loc[out['name_state'] == 'puerto rico', 'population'] = 3.204E6
+out.loc[out['name_state'] == 'puerto rico', 'region_name'] = 'NA'
 
 # save
 out.to_csv(os.path.join(os.getcwd(),'../../interim/demography/demography.csv'), index=False)
