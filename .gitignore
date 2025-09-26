@@ -167,6 +167,6 @@ dmypy.json
 
 ## Large datasets
 data/raw/thermal_comfort_indices/*.nc
-data/interim/calibration/incremental-calibration
-data/interim/calibration/hierarchical-training
 data/interim/calibration/optimize-initial_guesses
+data/interim/calibration/hierarchical-training
+data/interim/calibration/forecast
