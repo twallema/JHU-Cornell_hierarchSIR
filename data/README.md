@@ -10,6 +10,10 @@ Contains an overview of the raw data sources, and the conversion scripts used to
 
 ## Interim
 
+### Geography
+
++ `cb_2018_us_state_20m`: US state shape files. Downloaded from: https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html 
+
 ### Demography
 
 + `demography.csv`: Population of US states. Columns: 'name_state', 'fips_state', 'name_state', 'population', 'region_name'.
