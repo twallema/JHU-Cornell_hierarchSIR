@@ -18,8 +18,8 @@ from hierarchSIR.utils import make_data_pySODM_compatible
 
 reference_date = '2025-02-01' #TODO: find latest algorithmically
 model_name = 'SIR-1S'
-hyperparameters = 'exclude_None'
-skip_fips = []
+hyperparameters = 'initial_guess'
+skip_fips = [2, 72, 15, 28, 17, 39, 33, 36, 24, 54, 11, 9,  44, 10, 13]
 start_calibration_month = 9 
 plot_on = 'centroid'
 
@@ -52,6 +52,7 @@ start_date = datetime(int(season[0:4]), start_calibration_month, 1)
 # get the latest forecast (For now, assuming there is only )
 forecast = pd.read_csv(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/reference_date-{reference_date}/forecast_reference_date-{reference_date}.csv'))
 fips_state_list =  forecast['location'].unique().tolist()
+fips_state_list = [x for x in fips_state_list if x not in skip_fips]
 fips_mappings = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/demography/demography.csv'), dtype={'fips_state': int})
 name_state_list = [fips_mappings.loc[fips_mappings['fips_state'] == x]['abbreviation_state'].squeeze() for x in fips_state_list]
 forecast["target_end_date"] = pd.to_datetime(forecast["target_end_date"])
@@ -62,13 +63,16 @@ gdf["representative_point"] = gdf.geometry.representative_point()
 gdf["centroid"] = gdf.geometry.representative_point()
 gdf["STATEFP"] = gdf["STATEFP"].astype(int)
 
+# get the demography to normalize case counts
+demography = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/demography/demography.csv'), dtype={'fips_state': int})
+
 ###################
 ## Build the map ##
 ###################
 
 # base map
-fig, ax = plt.subplots(figsize=(11.7, 8.3))
-gdf.plot(ax=ax, color="whitesmoke", edgecolor="gray")
+fig, ax = plt.subplots(figsize=(24.1*0.75, 13.9*0.75))
+gdf.plot(ax=ax, color="black", alpha=0.15, edgecolor="black")
 
 # plot forecasts per state
 for name_state, fips_state in zip(name_state_list, fips_state_list):
@@ -87,12 +91,19 @@ for name_state, fips_state in zip(name_state_list, fips_state_list):
         .unstack()                                          # pivot out quantile levels into columns
         .reset_index()
     )
+    # normalize quantiles
+    pop = demography.loc[demography['fips_state'] == fips_state, 'population'].values[0]
+    quantiles[[0.025, 0.25, 0.50, 0.75, 0.975]] = quantiles[[0.025, 0.25, 0.50, 0.75, 0.975]] / pop * 10E5
 
     # get data
     data, _, _, _ = make_data_pySODM_compatible(start_date, end_date, fips_state)
 
+    # normalize data
+    pop = demography.loc[demography['fips_state'] == fips_state, 'population'].values[0]
+    data = data[0]*7 / pop * 10E5
+
     # inset axes
-    iax = inset_axes(ax, width=1.3, height=0.7, loc="center",
+    iax = inset_axes(ax, width=1, height=0.7, loc="center",
                      bbox_to_anchor=(cx, cy),
                      bbox_transform=ax.transData,
                      borderpad=0)
@@ -100,7 +111,7 @@ for name_state, fips_state in zip(name_state_list, fips_state_list):
     # plot forecast intervals
     iax.fill_between(quantiles["target_end_date"], quantiles[0.25], quantiles[0.75], color="green", alpha=0.2)
     iax.fill_between(quantiles["target_end_date"], quantiles[0.025], quantiles[0.975], color="green", alpha=0.1)
-    iax.scatter(data[0].index, data[0].values*7, color='black', alpha=1, linestyle='None', facecolors='black', s=10, linewidth=1)
+    iax.scatter(data.index, data.values, color='black', alpha=1, linestyle='None', facecolors='black', s=10, linewidth=1)
 
     # inside your loop, after plotting into iax
     iax.xaxis.set_major_locator(mdates.MonthLocator())
@@ -108,6 +119,7 @@ for name_state, fips_state in zip(name_state_list, fips_state_list):
     iax.tick_params(axis='x', labelsize=5, rotation=0)
     iax.tick_params(axis='y', labelsize=5)
     iax.set_xlim([start_date, end_date+timedelta(weeks=5)])
+    iax.set_ylim([-5,250])
 
     # put state in
     iax.text(
@@ -119,7 +131,11 @@ for name_state, fips_state in zip(name_state_list, fips_state_list):
     bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="black", linewidth=0.5)
     )
 
-ax.set_xlim([-180, -67])
+ax.set_xlim([-130, -65])
+ax.set_ylim([23, 53])
+ax.set_axis_off()
 
-plt.show()
+plt.tight_layout()
+plt.savefig(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/reference_date-{reference_date}/forecast_reference_date-{reference_date}.pdf'))
+#plt.show()
 plt.close()
