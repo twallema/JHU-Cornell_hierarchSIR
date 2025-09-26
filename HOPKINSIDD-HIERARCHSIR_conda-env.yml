@@ -14,3 +14,4 @@ dependencies:
   - emcee
   - pyarrow
   - fastparquet
+  - geopandas
