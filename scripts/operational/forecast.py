@@ -57,7 +57,7 @@ fips_mappings = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/
 name_state_list = [fips_mappings.loc[fips_mappings['fips_state'] == x]['abbreviation_state'].squeeze() for x in fips_state_list]
 
 # get the latest data (dummy)
-data, _, _, _ = make_data_pySODM_compatible(datetime(2000,1,1), datetime(2025,2,1), 1, preliminary=True)
+data, _, _, _ = make_data_pySODM_compatible(datetime(2000,1,1), datetime(3000,1,1), 1, preliminary=True)
 end_date = max(data[0].index)
 
 # helper function
@@ -108,6 +108,7 @@ if __name__ == '__main__':
         ## dates
         season_start = int(season[0:4])                                         # start year of season
         start_simulation = datetime(season_start, start_calibration_month, 1)   # date forward simulation is started
+        end_validation = end_date + timedelta(weeks=horizon)
 
         ##########################################
         ## Prepare pySODM llp dataset arguments ##
@@ -121,10 +122,6 @@ if __name__ == '__main__':
 
         # format data
         data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(start_simulation, datetime(3000, 1, 1), fips_state, preliminary=True)
-
-        # compute relevant dates
-        start_simulation = datetime(season_start, start_calibration_month, 1)   # date forward simulation is started
-        end_validation = end_date + timedelta(weeks=horizon)
 
         #################
         ## Setup model ##
@@ -153,14 +150,7 @@ if __name__ == '__main__':
         data_valid = [df.loc[slice(end_date+timedelta(days=1), end_validation)] for df in data]
 
         # normalisation weights for lpp
-        if strains > 1:
-            weights = [1/max(df) for df in data_calib[:-1]]
-            weights = np.array(weights) / np.mean(weights)
-            weights = np.append(weights, max(weights))
-        else:
-            weights = [1/max(df) for df in data_calib]
-            weights = np.array(weights) / np.mean(weights)
-        
+        weights = np.ones(len(data))
 
         # Setup objective function (no priors defined = uniform priors based on bounds)
         lpp = log_posterior_probability(model, pars, bounds, data_calib, states, log_likelihood_fnc, log_likelihood_fnc_args,

@@ -88,19 +88,15 @@ std::vector<double> gaussian_smooth(const std::vector<double>& input, double sig
 
 // Function to compute daily beta modifiers with padding and smoothing
 std::vector<double> process_beta_modifiers(const std::vector<double>& delta_beta_temporal, 
-                                           int modifier_length, int total_days, double sigma) {
-    std::vector<double> daily_beta(total_days, 0.0);
-    int num_modifiers = delta_beta_temporal.size();
-
-    // Step 1: Expand modifiers to daily values
-    for (int i = 0; i < num_modifiers; ++i) {
-        double modifier = delta_beta_temporal[i];
-        int start_day = i * modifier_length;
+                                           int modifier_length, double sigma) {
+                                     
+    // Step 1: Expand modifier vector to daily values using modifier length
+    int full_length = modifier_length * static_cast<int>(delta_beta_temporal.size());
+    std::vector<double> daily_beta(full_length, 0.0);
+    for (int i = 0; i < delta_beta_temporal.size(); ++i) {
         for (int j = 0; j < modifier_length; ++j) {
-            int day = start_day + j;
-            if (day < total_days) {
-                daily_beta[day] = modifier;
-            }
+            int idx = i * modifier_length + j;
+            daily_beta[idx] = delta_beta_temporal[i];
         }
     }
 
@@ -150,8 +146,7 @@ std::vector<std::vector<double>> solve(double t_start, double t_end,
                                         ) {
     double dt = 1;                  // initial guess for step size
     int num_strains = S0.size();    // determines number of strains
-    int total_days = static_cast<int>(t_end) + 1;
-    std::vector<double> beta_modifiers = process_beta_modifiers(delta_beta_temporal, modifier_length, total_days, sigma);
+    std::vector<double> beta_modifiers = process_beta_modifiers(delta_beta_temporal, modifier_length, sigma);
 
     // Flatten initial conditions for integration
     std::vector<double> y;
