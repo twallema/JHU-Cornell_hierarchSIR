@@ -15,17 +15,20 @@ jobs:
   deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: self-hosted
-    env: 
-      RUNNER_TOOL_CACHE: ${{ github.workspace }}/../toolcache # Only when using Mac self-hosted runner.
 
     steps:
     - uses: actions/checkout@v2
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.12'
-        architecture: 'arm64' # Only when using Mac self-hosted runner.
+    # - name: Set up Python
+    #   uses: actions/setup-python@v4
+    #   with:
+    #     python-version: '3.12'
+    #     architecture: 'arm64' # Only when using Mac self-hosted runner.
+
+    - name: Check Python
+      run: |
+        which python3
+        python3 --version
 
     - name: Set up conda environment
       uses: conda-incubator/setup-miniconda@v3
