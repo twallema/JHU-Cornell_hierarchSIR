@@ -40,7 +40,7 @@ if args.preliminary:
 else:
     url = 'https://data.cdc.gov/api/views/ua7e-t2fy/rows.csv?accessType=DOWNLOAD'
     save_folder = '../../interim/cases/NHSN-HRD_archive/consolidated/'
-chec
+
 ####################
 ## Main Functions ##
 ####################
