@@ -107,7 +107,7 @@ if __name__ == '__main__':
             theta = list(pd.read_csv('../../data/interim/calibration/initial_guesses.csv', index_col=[0,1,2]).loc[(model_name, fips_state, slice(None)), season])
 
             # format data
-            data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(start_calibration, end_calibration, fips_state)
+            data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(start_calibration, end_calibration, fips_state, preliminary=False)
 
             #################
             ## Setup model ##

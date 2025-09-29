@@ -144,7 +144,7 @@ def extract_timestamp(fname, pattern):
         return datetime.strptime(match.group(1), "%Y-%m-%d-%H-%M-%S")
     return None
 
-def get_latest_NHSN_HRD_influenza_data(startdate: datetime, enddate: datetime, fips_state: int) -> pd.Series:
+def get_latest_NHSN_HRD_influenza_data(startdate: datetime, enddate: datetime, fips_state: int, preliminary: bool) -> pd.Series:
     """
     Get the most recent NHSN HRD influenza dataset
 
@@ -168,11 +168,14 @@ def get_latest_NHSN_HRD_influenza_data(startdate: datetime, enddate: datetime, f
     """
 
     # find most recent file
-    data_folder = Path(os.path.join(abs_dir, f'../../data/interim/cases/NHSN-HRD_archive/'))            # folder with data files
-    pattern = re.compile(r"gathered-(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})")                             # regex to capture gathered timestamp
-    files_with_time = [(f, extract_timestamp(f, pattern)) for f in data_folder.glob("*.parquet.gzip")]  # collect files and their timestamps
+    if preliminary:
+        data_folder = Path(os.path.join(abs_dir, f'../../data/interim/cases/NHSN-HRD_archive/preliminary/'))    # folder with data files
+    else:
+        data_folder = Path(os.path.join(abs_dir, f'../../data/interim/cases/NHSN-HRD_archive/consolidated/'))
+    pattern = re.compile(r"gathered-(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})")                                     # regex to capture gathered timestamp
+    files_with_time = [(f, extract_timestamp(f, pattern)) for f in data_folder.glob("*.parquet.gzip")]          # collect files and their timestamps
     files_with_time = [(f, t) for f, t in files_with_time if t is not None]
-    latest_file, _ = max(files_with_time, key=lambda x: x[1])                                           # get the latest file
+    latest_file, _ = max(files_with_time, key=lambda x: x[1])                                                   # get the latest file
 
     # print diagnostics
     #print("Most recent file:", latest_file)
@@ -200,7 +203,7 @@ def get_latest_NHSN_HRD_influenza_data(startdate: datetime, enddate: datetime, f
 
 
 from pySODM.optimization.objective_functions import ll_poisson
-def make_data_pySODM_compatible(start_date: datetime, end_date: datetime, fips_state: int): 
+def make_data_pySODM_compatible(start_date: datetime, end_date: datetime, fips_state: int, preliminary: bool): 
     """
     A function formatting the NHSN HRD Influenza data in pySODM format
     This involves dividing the data (which is weekly incidence) by 7 to approximate a daily incidence
@@ -217,6 +220,9 @@ def make_data_pySODM_compatible(start_date: datetime, end_date: datetime, fips_s
 
     - fips_state: int
         - 2 digit fips code of US state
+
+    - preliminary: bool
+        - use preliminary vs. consolidated NHSN HRD data
 
     output:
     -------
@@ -241,7 +247,7 @@ def make_data_pySODM_compatible(start_date: datetime, end_date: datetime, fips_s
     log_likelihood_fnc = len(states) * [ll_poisson,]
     log_likelihood_fnc_args = len(states) * [[],]
     # pySODM data
-    df = get_latest_NHSN_HRD_influenza_data(start_date, end_date, fips_state)/7
+    df = get_latest_NHSN_HRD_influenza_data(start_date, end_date, fips_state, preliminary)/7
     data = [df.dropna(), ]
 
     return data, states, log_likelihood_fnc, log_likelihood_fnc_args

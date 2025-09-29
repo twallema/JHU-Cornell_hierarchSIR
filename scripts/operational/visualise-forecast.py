@@ -28,7 +28,7 @@ plot_on = 'centroid'
 ############################
 
 # get the latest data (dummy)
-data, _, _, _ = make_data_pySODM_compatible(datetime(2000,1,1), datetime(2025,2,1), 1)
+data, _, _, _ = make_data_pySODM_compatible(datetime(2000,1,1), datetime(2025,2,1), 1, preliminary=True)
 end_date = max(data[0].index)
 # helper function
 def get_influenza_season_label(date: datetime) -> str:
@@ -96,7 +96,7 @@ for name_state, fips_state in zip(name_state_list, fips_state_list):
     quantiles[[0.025, 0.25, 0.50, 0.75, 0.975]] = quantiles[[0.025, 0.25, 0.50, 0.75, 0.975]] / pop * 10E5
 
     # get data
-    data, _, _, _ = make_data_pySODM_compatible(start_date, end_date, fips_state)
+    data, _, _, _ = make_data_pySODM_compatible(start_date, end_date, fips_state, preliminary=True)
 
     # normalize data
     pop = demography.loc[demography['fips_state'] == fips_state, 'population'].values[0]

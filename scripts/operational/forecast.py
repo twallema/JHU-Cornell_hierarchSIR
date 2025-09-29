@@ -57,7 +57,7 @@ fips_mappings = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/
 name_state_list = [fips_mappings.loc[fips_mappings['fips_state'] == x]['abbreviation_state'].squeeze() for x in fips_state_list]
 
 # get the latest data (dummy)
-data, _, _, _ = make_data_pySODM_compatible(datetime(2000,1,1), datetime(2025,2,1), 1)
+data, _, _, _ = make_data_pySODM_compatible(datetime(2000,1,1), datetime(2025,2,1), 1, preliminary=True)
 end_date = max(data[0].index)
 
 # helper function
@@ -120,7 +120,7 @@ if __name__ == '__main__':
         theta = list(pd.read_csv('../../data/interim/calibration/initial_guesses.csv', index_col=[0,1,2,3,4]).loc[model_name, fips_state, slice(None), slice(None), slice(None)].mean(axis=1))
 
         # format data
-        data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(start_simulation, datetime(3000, 1, 1), fips_state)
+        data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(start_simulation, datetime(3000, 1, 1), fips_state, preliminary=True)
 
         # compute relevant dates
         start_simulation = datetime(season_start, start_calibration_month, 1)   # date forward simulation is started
