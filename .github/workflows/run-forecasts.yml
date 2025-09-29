@@ -24,6 +24,7 @@ jobs:
       with:
         python-version: '3.12'
         architecture: 'arm64' # Only when using Mac self-hosted runner.
+        check-latest: true
 
     - name: Set up conda environment
       uses: conda-incubator/setup-miniconda@v3
