@@ -1,8 +1,7 @@
-name: Forecast deployment
-
+name: Deploy forecasts
 on:
   workflow_run:
-    workflows: ["Automatically collect and archive the preliminary NHSN HRD dataset"]   # auto-trigger when preliminary data has been fetched succesfully
+    workflows: ["Fetch preliminary NHSN HRD dataset"]   # auto-trigger when preliminary data has been fetched succesfully
     types:
       - completed
   workflow_dispatch:  # allows manual trigger from Actions tab
@@ -86,3 +85,4 @@ jobs:
         gh pr merge --delete-branch --squash
 
 
+mo

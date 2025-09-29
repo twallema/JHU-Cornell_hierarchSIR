@@ -118,7 +118,7 @@ if __name__ == '__main__':
         pars, bounds, labels, log_prior_prob_fcn, log_prior_prob_fcn_args = get_priors(model_name, fips_state, hyperparameters)
 
         # retrieve guestimate NM
-        theta = list(pd.read_csv('../../data/interim/calibration/initial_guesses.csv', index_col=[0,1,2,3,4]).loc[model_name, fips_state, slice(None), slice(None), slice(None)].mean(axis=1))
+        theta = list(pd.read_csv(os.path.join(os.path.dirname(__file__),'../../data/interim/calibration/initial_guesses.csv'), index_col=[0,1,2,3,4]).loc[model_name, fips_state, slice(None), slice(None), slice(None)].mean(axis=1))
 
         # format data
         data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(start_simulation, datetime(3000, 1, 1), fips_state, preliminary=True)
@@ -135,7 +135,7 @@ if __name__ == '__main__':
 
         # Make folder structure
         identifier = f'{fips_state}-{name_state}_reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}' # identifier
-        samples_path=fig_path=f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}/{fips_state}-{name_state}/' # Path to backend
+        samples_path=fig_path=os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}/{fips_state}-{name_state}/') # Path to backend
         run_date = datetime.today().strftime("%Y-%m-%d") # get current date
         # check if samples folder exists, if not, make it
         if not os.path.exists(samples_path):
