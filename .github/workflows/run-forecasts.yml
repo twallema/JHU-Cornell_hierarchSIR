@@ -80,11 +80,11 @@ jobs:
         # push changes
         git push origin "$BRANCH_NAME"
 
-    - name: Create a pull request
+    - name: Create a pull request # had to install gh using homebrew to run on Mac
       shell: bash -l {0}
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-        gh pr create --base main --head ${{ env.BRANCH_NAME }} --title "Automated NHSN HRD Update" --body "This PR includes the latest update of the NHSN HRD data."
+        gh pr create --base main --head ${{ env.BRANCH_NAME }} --title "Automated NHSN HRD Update" --body "This PR includes the latest update of the NHSN HRD data."  
     
     - name: Merge pull request
       shell: bash -l {0}
