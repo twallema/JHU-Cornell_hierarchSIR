@@ -83,6 +83,3 @@ jobs:
       shell: bash -l {0}
       run: |
         gh pr merge --delete-branch --squash
-
-
-mo
