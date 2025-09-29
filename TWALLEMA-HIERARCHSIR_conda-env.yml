@@ -1,0 +1,14 @@
+name: TWALLEMA-HIERARCHSIR
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - jupyter
+  - matplotlib
+  - xarray
+  - numpy
+  - pandas
+  - scipy
+  - openpyxl
+  - emcee
