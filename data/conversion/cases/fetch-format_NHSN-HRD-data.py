@@ -1,21 +1,41 @@
 """
-This script contains the calibration of an influenza model to the 2017-2018 surveillance data
+This script downloads, formats and archives the NHSN HRD dataset
 """
 
-__author__      = "Tijs Alleman, Clif McKee"
+__author__      = "T.W. Alleman & Clif McKee"
+__copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group (JHUBSPH) & Bento Lab (Cornell CVM). All Rights Reserved."
 
 ##################
 ## Dependencies ##
 ##################
 
 import os
+import argparse
 import pandas as pd
 from typing import Tuple
 from datetime import datetime, timedelta
+from hierarchSIR.utils import str_to_bool
 
 # Define relevant global  variables
 abs_dir = os.path.dirname(__file__)
 collection_datetime_str = datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
+
+#####################
+## Parse arguments ##
+#####################
+
+# preliminary or consolidated dataset?
+parser = argparse.ArgumentParser()
+parser.add_argument("--preliminary", type=str_to_bool, default=False, help="Download preliminary dataset (available Wednesday) or consolidated dataset (available Saturday).")
+args = parser.parse_args()
+
+# change download link and save folder
+if args.preliminary:
+    url = 'https://data.cdc.gov/api/views/mpgq-jmmr/rows.csv?accessType=DOWNLOAD'
+    save_folder = '../../interim/cases/NHSN-HRD_archive/preliminary/'
+else:
+    url = 'https://data.cdc.gov/api/views/ua7e-t2fy/rows.csv?accessType=DOWNLOAD'
+    save_folder = '../../interim/cases/NHSN-HRD_archive/consolidated/'
 
 ####################
 ## Main Functions ##
@@ -90,6 +110,10 @@ def format_raw_HRD_data(raw_HRD_data: pd.DataFrame) -> pd.DataFrame:
     # Re-arrange columns in a logical order
     interim_HRD_data = data[['season', 'year', 'MMWR', 'date', 'fips_state', 'name_state', 'influenza admissions', 'covid-19 admissions', 'rsv admissions']]
 
+    # Perform a sorting step for ease of interpretation
+    interim_HRD_data['fips_state'] = pd.to_numeric(interim_HRD_data['fips_state'])
+    interim_HRD_data = interim_HRD_data.sort_values(by=["date", "fips_state"], ascending=[True, True])
+
     return interim_HRD_data
 
 
@@ -151,6 +175,6 @@ def attach_flu_season_label(row):
 ## Trigger workflow ##
 ######################
 
-df_raw = get_raw_HRD_data('https://data.cdc.gov/api/views/ua7e-t2fy/rows.csv?accessType=DOWNLOAD')
+df_raw = get_raw_HRD_data(url)
 df_interim = format_raw_HRD_data(df_raw)
-save_interim_data(df_interim, '../../interim/cases/NHSN-HRD_archive/')
+save_interim_data(df_interim, save_folder)

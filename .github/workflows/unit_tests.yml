@@ -20,7 +20,6 @@ jobs:
       with:
         activate-environment: HOPKINSIDD-HIERARCHSIR
         environment-file: HOPKINSIDD-HIERARCHSIR_conda-env.yml
-        auto-activate-base: false
 
     - name: Install Boost Libraries
       shell: bash -l {0}
