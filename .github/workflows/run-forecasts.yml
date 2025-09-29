@@ -48,7 +48,7 @@ jobs:
       shell: bash -l {0}
       run: |
         conda activate HOPKINSIDD-HIERARCHSIR
-        python scripts/operational/forecasts.py
+        python scripts/operational/forecast.py
     
     - name: Commit changes to a new feature branch
       shell: bash -l {0}
