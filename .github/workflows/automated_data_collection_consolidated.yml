@@ -1,4 +1,4 @@
-name: Automatically collect and archive NHSN HRD dataset
+name: Automatically collect and archive the consolidated NHSN HRD dataset
 
 on:
 # +---------------- minute (0 - 59)
@@ -9,7 +9,7 @@ on:
 # |  |  |  |  |
 # *  *  *  *  *  command to be executed
   schedule:
-    - cron: '30 12 * * 1' # Runs every Monday at 8:30 AM EDT (12:30 PM UTC)
+    - cron: '30 12 * * 0' # Runs every Sunday at 8:30 AM EDT (12:30 PM UTC)
   workflow_dispatch:      # Allows manual triggering
 
 permissions:
@@ -38,14 +38,14 @@ jobs:
         run: |
 
           # collect the data
-          python data/conversion/cases/fetch-format_NHSN-HRD-data.py
+          python data/conversion/cases/fetch-format_NHSN-HRD-data.py --preliminary False
 
       - name: Commit changes to a new feature branch
         shell: bash -l {0}
         run: |
 
           # generate timestamped branch name and store as environmental variable
-          BRANCH_NAME="data-update-$(date +'%Y%m%d%H%M%S')"
+          BRANCH_NAME="consolidated-data-update-$(date +'%Y%m%d%H%M%S')"
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
 
           # configure git
@@ -55,7 +55,7 @@ jobs:
           
           # stage ONLY the data file
           git add -A
-          git commit -m "NHSN HRD data update on $(date +'%Y-%m-%d %H:%M:%S')"
+          git commit -m "NHSN HRD consolidated data update on $(date +'%Y-%m-%d %H:%M:%S')"
 
           # Reset all other untracked changes just in case
           git reset --hard  
