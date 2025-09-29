@@ -240,4 +240,4 @@ if __name__ == '__main__':
     # spit out final result
     forecasts = pd.concat(forecasts, axis=0)
     forecasts = forecasts.drop(columns=["strain_0"]) # TODO: generalise over strains
-    forecasts.to_csv(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}/forecast_reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}.csv'))
+    forecasts.to_csv(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/forecast_reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}.csv'))
