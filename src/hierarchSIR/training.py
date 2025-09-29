@@ -2,8 +2,8 @@
 This script contains the log posterior probability function of the Bayesian hierarchical model
 """
 
-__author__      = "Tijs Alleman"
-__copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group, Johns Hopkins Bloomberg School of Public Health and Cornell University; Tim Vanwezemael, Ghent University. All Rights Reserved."
+__author__      = "T.W. Alleman & Tim Vanwezemael"
+__copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group (JHUBSPH) & Bento Lab (Cornell CVM). All Rights Reserved."
 
 import os
 import math
@@ -360,9 +360,6 @@ class log_posterior_probability():
                 if not par in self.par_name_to_idx.keys():
                     continue
                 self.model.parameters[par] = theta[self.par_name_to_idx_per_season[par][i]]
-
-            # Set the right season (needed for the immunity linking)
-            self.model.parameters['season'] = season
 
             # run the forward simulation
             simout = self.model.sim(self.simtimes[i])
@@ -801,7 +798,7 @@ def hyperdistributions(samples_xr, path_filename, pars_model_shapes, hyperpars_s
 #####################
 
 def plot_fit(model, datasets, simtimes, samples_xr, parameter_shapes, path, identifier, run_date,
-                coordinates_data_also_in_model, aggregate_over, additional_axes_data, corresponding_model_states):
+                coordinates_data_also_in_model, aggregate_over, additional_axes_data, corresponding_model_states, spatial_unit):
     """
     Visualises the goodness of fit for every season
     """
@@ -829,9 +826,6 @@ def plot_fit(model, datasets, simtimes, samples_xr, parameter_shapes, path, iden
     # LOOP seasons
     simout=[]
     for season, data, simtime in zip(list(samples_xr.coords['season'].values), datasets, simtimes):
-
-        # set the season
-        model.parameters['season'] = season
 
         # simulate model
         out = model.sim(simtime, N=100, draw_function=draw_function,
@@ -879,21 +873,21 @@ def plot_fit(model, datasets, simtimes, samples_xr, parameter_shapes, path, iden
                     dim_name = additional_axes_data[i][j][0]
                     coord = coord[0]
                     # plot
-                    ax[k].scatter(df.index.get_level_values('date').values, 7*df.loc[slice(None), coord].values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                    ax[k].scatter(df.index.get_level_values('date').values, 7*df.loc[slice(None), coord].values, color='black', alpha=1, linestyle='None', facecolors='None', s=30, linewidth=1)
                     ax[k].fill_between(out['date'], 7*out[corresponding_model_states[i][j]].sel({dim_name: coord}).quantile(dim='draws', q=0.05/2),
-                                7*out[corresponding_model_states[i][j]].sel({dim_name: coord}).quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
+                                7*out[corresponding_model_states[i][j]].sel({dim_name: coord}).quantile(dim='draws', q=1-0.05/2), color='green', alpha=0.15)
                     ax[k].fill_between(out['date'], 7*out[corresponding_model_states[i][j]].sel({dim_name: coord}).quantile(dim='draws', q=0.50/2),
-                                7*out[corresponding_model_states[i][j]].sel({dim_name: coord}).quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)
-                    ax[k].set_title(f'State: {corresponding_model_states[i][j]}; Dim: {dim_name} ({coord})')
+                                7*out[corresponding_model_states[i][j]].sel({dim_name: coord}).quantile(dim='draws', q=1-0.50/2), color='green', alpha=0.20)
+                    ax[k].set_title(f'US State: {spatial_unit}; Model state: {corresponding_model_states[i][j]}; Dim: {dim_name} ({coord})')
                     k += 1
             else:
                 # plot
-                ax[k].scatter(df.index, 7*df.values, color='black', alpha=1, linestyle='None', facecolors='None', s=60, linewidth=2)
+                ax[k].scatter(df.index, 7*df.values, color='black', alpha=1, linestyle='None', facecolors='None', s=30, linewidth=1)
                 ax[k].fill_between(out['date'], 7*out[corresponding_model_states[i][j]].quantile(dim='draws', q=0.05/2),
-                            7*out[corresponding_model_states[i][j]].quantile(dim='draws', q=1-0.05/2), color='blue', alpha=0.15)
+                            7*out[corresponding_model_states[i][j]].quantile(dim='draws', q=1-0.05/2), color='green', alpha=0.15)
                 ax[k].fill_between(out['date'], 7*out[corresponding_model_states[i][j]].quantile(dim='draws', q=0.50/2),
-                            7*out[corresponding_model_states[i][j]].quantile(dim='draws', q=1-0.50/2), color='blue', alpha=0.20)
-                ax[k].set_title(f'State: {corresponding_model_states[i][j]}')
+                            7*out[corresponding_model_states[i][j]].quantile(dim='draws', q=1-0.50/2), color='green', alpha=0.20)
+                ax[k].set_title(f'US State: {spatial_unit}; Model state: {corresponding_model_states[i][j]}')
                 k += 1
             
             # reset output

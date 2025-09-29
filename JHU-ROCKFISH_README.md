@@ -145,5 +145,3 @@ git pull origin
     - Open a terminal where you want to place the files on your computer.
     - Run ```scp -r <username>@rfdtn1.rockfish.jhu.edu:/home/<username>/.ssh/<key_name.pub> .```
     - If connections time out during a secure copy you can try adding the options: ```-o ServerAliveInterval=30 -o ServerAliveCountMax=10```
-
-    
