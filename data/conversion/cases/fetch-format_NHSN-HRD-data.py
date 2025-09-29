@@ -14,7 +14,6 @@ import argparse
 import pandas as pd
 from typing import Tuple
 from datetime import datetime, timedelta
-from hierarchSIR.utils import str_to_bool
 
 # Define relevant global  variables
 abs_dir = os.path.dirname(__file__)
@@ -23,6 +22,11 @@ collection_datetime_str = datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
 #####################
 ## Parse arguments ##
 #####################
+
+# helper function
+def str_to_bool(value):
+    """Convert string arguments to boolean (for SLURM environment variables)."""
+    return value.lower() in ["true", "1", "yes"]
 
 # preliminary or consolidated dataset?
 parser = argparse.ArgumentParser()
@@ -36,7 +40,7 @@ if args.preliminary:
 else:
     url = 'https://data.cdc.gov/api/views/ua7e-t2fy/rows.csv?accessType=DOWNLOAD'
     save_folder = '../../interim/cases/NHSN-HRD_archive/consolidated/'
-
+chec
 ####################
 ## Main Functions ##
 ####################
