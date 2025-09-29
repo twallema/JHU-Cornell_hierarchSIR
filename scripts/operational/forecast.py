@@ -27,27 +27,27 @@ from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, ma
 ##############
 
 # skip fips_state
-skip_fips = []
+skip_fips = [4, 5, 6, 8, 9, 10, 11, 12, 13, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 44, 45, 46, 47, 48, 49, 50, 51, 53, 54, 55, 56, 72]
 
 # define hyperparameters to use
 hyperparameters = 'exclude_None'
 
 # forecast settings/ save settings
 horizon = 4
-quantiles = False           # save quantiles vs. individual trajectories 
+quantiles = True           # save quantiles vs. individual trajectories 
 start_calibration_month = 9       
 
 # optimization parameters
 ## frequentist optimization
 n_nm = 500                                                     # Number of NM search iterations
 ## bayesian inference
-n_mcmc = 2000                                                   # Number of MCMC iterations
+n_mcmc = 1500                                                   # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 2000                                                  # Print diagnostics every `print_n`` iterations
-discard = 1500                                                  # Discard first `discard` iterations as burn-in
+print_n = 1500                                                  # Print diagnostics every `print_n`` iterations
+discard = 1000                                                  # Discard first `discard` iterations as burn-in
 thin = 10                                                      # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
-n = 2000                                                        # Number of simulations performed in MCMC goodness-of-fit figure
+n = 1000                                                        # Number of simulations performed in MCMC goodness-of-fit figure
 
 # figure out what states to loop over
 initial_guesses = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/calibration/initial_guesses.csv'), index_col=[0,1,2,3,4])
@@ -240,4 +240,4 @@ if __name__ == '__main__':
     # spit out final result
     forecasts = pd.concat(forecasts, axis=0)
     forecasts = forecasts.drop(columns=["strain_0"]) # TODO: generalise over strains
-    forecasts.to_csv(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}/forecast_reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}.csv'))
+    forecasts.to_csv(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/forecast_reference_date-{(end_date+timedelta(weeks=1)).strftime('%Y-%m-%d')}.csv'))

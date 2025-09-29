@@ -1,0 +1,78 @@
+name: Run unit tests
+
+on: [pull_request]
+jobs:
+  deploy:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: ['ubuntu-latest',]
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v1
+      with:
+        python-version: '3.12'
+
+    - name: Set up conda environment
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        activate-environment: HOPKINSIDD-HIERARCHSIR
+        environment-file: HOPKINSIDD-HIERARCHSIR_conda-env.yml
+
+    - name: Install Boost Libraries
+      shell: bash -l {0}
+      run: |
+        conda activate HOPKINSIDD-HIERARCHSIR
+        sudo apt-get update && sudo apt-get install -y libboost-all-dev
+
+    - name: Install HOPKINSIDD-HIERARCHSIR 
+      shell: bash -l {0}
+      run: |
+        conda activate HOPKINSIDD-HIERARCHSIR
+        python -m pip install --upgrade pip
+        pip install -e . --force-reinstall
+
+    - name: Recalibrate to obtain forecasts
+      shell: bash -l {0}
+      run: |
+        conda activate HOPKINSIDD-HIERARCHSIR
+        python scripts/operational/forecasts.py
+    
+    - name: Commit changes to a new feature branch
+      shell: bash -l {0}
+      run: |
+
+        # generate timestamped branch name and store as environmental variable
+        BRANCH_NAME="forecast-$(date +'%Y%m%d%H%M%S')"
+        echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
+        # configure git
+        git config --global user.name 'github-actions'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        git checkout -b "$BRANCH_NAME"
+        
+        # stage ONLY the data file
+        git add -A
+        git commit -m "forecast made on $(date +'%Y-%m-%d %H:%M:%S')"
+
+        # Reset all other untracked changes just in case
+        git reset --hard  
+        git clean -fd    
+
+        # push changes
+        git push origin "$BRANCH_NAME"
+
+    - name: Create a pull request
+      shell: bash -l {0}
+      run: |
+        echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+        gh pr create --base main --head ${{ env.BRANCH_NAME }} --title "Automated NHSN HRD Update" --body "This PR includes the latest update of the NHSN HRD data."
+    
+    - name: Merge pull request
+      shell: bash -l {0}
+      run: |
+        gh pr merge --delete-branch --squash
+
+
