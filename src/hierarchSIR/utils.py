@@ -403,7 +403,7 @@ def get_priors(model_name, fips_state, hyperparameters):
     # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     else:
         # load and select priors
-        priors = pd.read_csv('../../data/interim/calibration/hyperparameters.csv')
+        priors = pd.read_csv(os.path.join(abs_dir, '../../data/interim/calibration/hyperparameters.csv'))
         priors = priors.loc[((priors['model'] == model_name) & (priors['fips_state'] == fips_state)), (['hyperparameter', f'{hyperparameters}'])].set_index('hyperparameter').squeeze()
         # assign values
         log_prior_prob_fcn = 1*[log_prior_lognormal,] + 1*[log_prior_normal,] + 1*[log_prior_lognormal,] + 1*[log_prior_normal,] + 12*[log_prior_normal,] 
