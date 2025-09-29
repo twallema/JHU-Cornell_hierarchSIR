@@ -5,7 +5,8 @@ This script visualises the 4-week ahead forecast of the influenza model starting
 __author__      = "T.W. Alleman"
 __copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group (JHUBSPH) & Bento Lab (Cornell CVM). All Rights Reserved."
 
-import sys,os
+import re
+import os
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -16,19 +17,39 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 # hierarchSIR functions
 from hierarchSIR.utils import make_data_pySODM_compatible
 
-reference_date = '2025-02-01' #TODO: find latest algorithmically
+##############
+## Settings ##
+##############
+
+hyperparameters = 'exclude_None'
 model_name = 'SIR-1S'
-hyperparameters = 'initial_guess'
-skip_fips = [2, 72, 15, 28, 17, 39, 33, 36, 24, 54, 11, 9,  44, 10, 13]
+skip_fips = []
 start_calibration_month = 9 
 plot_on = 'centroid'
+
+##########################
+## Find latest forecast ##
+##########################
+
+def extract_timestamp(fname, pattern):
+    match = pattern.search(fname.name)
+    if match:
+        return datetime.strptime(match.group(0)[-10:], "%Y-%m-%d")
+    return None
+
+from pathlib import Path
+forecast_folder = Path(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/'))
+pattern = re.compile(r"forecast_reference_date-\d{4}-\d{2}-\d{2}")                                     # regex to capture gathered timestamp
+files_with_time = [(f, extract_timestamp(f, pattern)) for f in forecast_folder.glob("*.csv")]          # collect files and their timestamps
+files_with_time = [(f, t) for f, t in files_with_time if t is not None]
+latest_forecast_file, reference_date = max(files_with_time, key=lambda x: x[1])                                           # get the latest file
 
 ############################
 ## Load forecast and data ##
 ############################
 
 # get the latest data (dummy)
-data, _, _, _ = make_data_pySODM_compatible(datetime(2000,1,1), datetime(2025,2,1), 1, preliminary=True)
+data, _, _, _ = make_data_pySODM_compatible(datetime(2000,1,1), datetime(3000,2,1), 1, preliminary=True)
 end_date = max(data[0].index)
 # helper function
 def get_influenza_season_label(date: datetime) -> str:
@@ -50,7 +71,7 @@ season = get_influenza_season_label(end_date)
 start_date = datetime(int(season[0:4]), start_calibration_month, 1)
 
 # get the latest forecast (For now, assuming there is only )
-forecast = pd.read_csv(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/reference_date-{reference_date}/forecast_reference_date-{reference_date}.csv'))
+forecast = pd.read_csv(latest_forecast_file, index_col=0)
 fips_state_list =  forecast['location'].unique().tolist()
 fips_state_list = [x for x in fips_state_list if x not in skip_fips]
 fips_mappings = pd.read_csv(os.path.join(os.path.dirname(__file__), '../../data/interim/demography/demography.csv'), dtype={'fips_state': int})
@@ -83,20 +104,13 @@ for name_state, fips_state in zip(name_state_list, fips_state_list):
     
     # get state forecast quantiles
     fc = forecast[forecast["location"] == fips_state]
-    # Compute quantiles
-    quantiles = (
-        fc
-        .groupby(["target_end_date"])["value"]
-        .quantile([0.025, 0.25, 0.5, 0.75, 0.975])          # 25%, median, 75%
-        .unstack()                                          # pivot out quantile levels into columns
-        .reset_index()
-    )
-    # normalize quantiles
+
+    # normalize to incidence per 100K
     pop = demography.loc[demography['fips_state'] == fips_state, 'population'].values[0]
-    quantiles[[0.025, 0.25, 0.50, 0.75, 0.975]] = quantiles[[0.025, 0.25, 0.50, 0.75, 0.975]] / pop * 10E5
+    fc['value'] = fc['value'] / pop * 10E5
 
     # get data
-    data, _, _, _ = make_data_pySODM_compatible(start_date, end_date, fips_state, preliminary=True)
+    data, _, _, _ = make_data_pySODM_compatible(start_date, end_date+timedelta(days=1), fips_state, preliminary=True)
 
     # normalize data
     pop = demography.loc[demography['fips_state'] == fips_state, 'population'].values[0]
@@ -109,8 +123,8 @@ for name_state, fips_state in zip(name_state_list, fips_state_list):
                      borderpad=0)
     
     # plot forecast intervals
-    iax.fill_between(quantiles["target_end_date"], quantiles[0.25], quantiles[0.75], color="green", alpha=0.2)
-    iax.fill_between(quantiles["target_end_date"], quantiles[0.025], quantiles[0.975], color="green", alpha=0.1)
+    iax.fill_between(fc["target_end_date"].unique(), fc.loc[fc['output_type_id'] == 0.25, 'value'], fc.loc[fc['output_type_id'] == 0.75, 'value'], color="green", alpha=0.2)
+    iax.fill_between(fc["target_end_date"].unique(), fc.loc[fc['output_type_id'] == 0.025, 'value'], fc.loc[fc['output_type_id'] == 0.975, 'value'], color="green", alpha=0.1)
     iax.scatter(data.index, data.values, color='black', alpha=1, linestyle='None', facecolors='black', s=10, linewidth=1)
 
     # inside your loop, after plotting into iax
@@ -119,7 +133,7 @@ for name_state, fips_state in zip(name_state_list, fips_state_list):
     iax.tick_params(axis='x', labelsize=5, rotation=0)
     iax.tick_params(axis='y', labelsize=5)
     iax.set_xlim([start_date, end_date+timedelta(weeks=5)])
-    iax.set_ylim([-5,250])
+    iax.set_ylim([-10,200])
 
     # put state in
     iax.text(
@@ -136,6 +150,6 @@ ax.set_ylim([23, 53])
 ax.set_axis_off()
 
 plt.tight_layout()
-plt.savefig(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/reference_date-{reference_date}/forecast_reference_date-{reference_date}.pdf'))
+plt.savefig(os.path.join(os.path.dirname(__file__), f'../../data/interim/calibration/forecast/{model_name}/hyperparameters-{hyperparameters}/forecast_reference_date-{reference_date.strftime("%Y-%m-%d")}.png'), dpi=400)
 #plt.show()
 plt.close()
