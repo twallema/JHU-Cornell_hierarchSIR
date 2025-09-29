@@ -11,12 +11,12 @@ int num_states = 10;
 
 // SIR model
 struct SIR {
-    double rho_i, T_h;
-    std::vector<double> beta, gamma, rho_h;
+    double T_h;
+    std::vector<double> beta, gamma, rho_i, rho_h;
     std::vector<double> beta_modifiers;
 
     SIR(const std::vector<double>& beta, const std::vector<double>& gamma,
-        double rho_i, const std::vector<double>& rho_h, double T_h,
+        const std::vector<double>& rho_i, const std::vector<double>& rho_h, double T_h,
         const std::vector<double>& beta_modifiers)
         : beta(beta), gamma(gamma), rho_i(rho_i), rho_h(rho_h), T_h(T_h), beta_modifiers(beta_modifiers) {}
 
@@ -44,9 +44,9 @@ struct SIR {
             double lambda = beta_t * S * I / T[strain];
 
             dydt[idx] = -lambda;                                                    // dS/dt
-            dydt[idx + 1] = lambda - gamma[strain] * I;                                  // dI/dt
-            dydt[idx + 2] = gamma[strain] * I;                                           // dR/dt
-            dydt[idx + 3] = rho_i * lambda - I_inc;                                 // dI_inc/dt
+            dydt[idx + 1] = lambda - gamma[0] * I;                             // dI/dt
+            dydt[idx + 2] = gamma[0] * I;                                      // dR/dt
+            dydt[idx + 3] = rho_i[0] * lambda - I_inc;                         // dI_inc/dt
             dydt[idx + 4] = rho_h[strain] * lambda - (5/T_h) * H_inc_LCT0;          // dH_inc_LCT0/dt
             dydt[idx + 5] = (5/T_h) * H_inc_LCT0 - (5/T_h) * H_inc_LCT1;            // dH_inc_LCT1/dt
             dydt[idx + 6] = (5/T_h) * H_inc_LCT1 - (5/T_h) * H_inc_LCT2;            // dH_inc_LCT2/dt
@@ -88,15 +88,19 @@ std::vector<double> gaussian_smooth(const std::vector<double>& input, double sig
 
 // Function to compute daily beta modifiers with padding and smoothing
 std::vector<double> process_beta_modifiers(const std::vector<double>& delta_beta_temporal, 
-                                           int modifier_length, double sigma) {
-                                     
-    // Step 1: Expand modifier vector to daily values using modifier length
-    int full_length = modifier_length * static_cast<int>(delta_beta_temporal.size());
-    std::vector<double> daily_beta(full_length, 0.0);
-    for (int i = 0; i < delta_beta_temporal.size(); ++i) {
+                                           int modifier_length, int total_days, double sigma) {
+    std::vector<double> daily_beta(total_days, 0.0);
+    int num_modifiers = delta_beta_temporal.size();
+
+    // Step 1: Expand modifiers to daily values
+    for (int i = 0; i < num_modifiers; ++i) {
+        double modifier = delta_beta_temporal[i];
+        int start_day = i * modifier_length;
         for (int j = 0; j < modifier_length; ++j) {
-            int idx = i * modifier_length + j;
-            daily_beta[idx] = delta_beta_temporal[i];
+            int day = start_day + j;
+            if (day < total_days) {
+                daily_beta[day] = modifier;
+            }
         }
     }
 
@@ -140,13 +144,14 @@ std::vector<std::vector<double>> interpolate_results(const std::vector<std::vect
 std::vector<std::vector<double>> solve(double t_start, double t_end,
                                         double atol, double rtol,
                                         std::vector<double> S0, std::vector<double> I0, std::vector<double> R0,
-                                        std::vector<double> beta, std::vector<double> gamma, double rho_i, std::vector<double> rho_h, double T_h,
+                                        std::vector<double> beta, std::vector<double> gamma, std::vector<double> rho_i, std::vector<double> rho_h, double T_h,
                                         const std::vector<double>& delta_beta_temporal, 
                                         int modifier_length, double sigma
                                         ) {
     double dt = 1;                  // initial guess for step size
     int num_strains = S0.size();    // determines number of strains
-    std::vector<double> beta_modifiers = process_beta_modifiers(delta_beta_temporal, modifier_length, sigma);
+    int total_days = static_cast<int>(t_end) + 1;
+    std::vector<double> beta_modifiers = process_beta_modifiers(delta_beta_temporal, modifier_length, total_days, sigma);
 
     // Flatten initial conditions for integration
     std::vector<double> y;

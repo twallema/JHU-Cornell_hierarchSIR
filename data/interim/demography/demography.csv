@@ -1,53 +1,52 @@
 abbreviation_state,fips_state,name_state,population,region_name
-AL,1,alabama,5020056.0,East South Central
-AK,2,alaska,711621.0,Pacific
-AZ,4,arizona,7166297.0,Mountain
-AR,5,arkansas,3010411.0,West South Central
-CA,6,california,39357513.0,Pacific
-CO,8,colorado,5747873.0,Mountain
-CT,9,connecticut,3572745.0,New England
-DE,10,delaware,988153.0,South Atlantic
-DC,11,district of columbia,667587.0,South Atlantic
-FL,12,florida,21530531.0,South Atlantic
-GA,13,georgia,10670047.0,South Atlantic
-HI,15,hawaii,1408919.0,Pacific
-ID,16,idaho,1845651.0,Mountain
-IL,17,illinois,12770920.0,East North Central
-IN,18,indiana,6788039.0,East North Central
-IA,19,iowa,3190613.0,West North Central
-KS,20,kansas,2916561.0,West North Central
-KY,21,kentucky,4491872.0,East South Central
-LA,22,louisiana,4636306.0,West South Central
-ME,23,maine,1363664.0,New England
-MD,24,maryland,6141896.0,South Atlantic
-MA,25,massachusetts,6993834.0,New England
-MI,26,michigan,10068472.0,East North Central
-MN,27,minnesota,5709883.0,West North Central
-MS,28,mississippi,2945250.0,East South Central
-MO,29,missouri,6137738.0,West North Central
-MT,30,montana,1083714.0,Mountain
-NE,31,nebraska,1956940.0,West North Central
-NV,32,nevada,3103950.0,Mountain
-NH,33,new hampshire,1378191.0,New England
-NJ,34,new jersey,9264593.0,Middle Atlantic
-NM,35,new mexico,2105565.0,Mountain
-NY,36,new york,20084576.0,Middle Atlantic
-NC,37,north carolina,10348537.0,South Atlantic
-ND,38,north dakota,771950.0,West North Central
-OH,39,ohio,11791209.0,East North Central
-OK,40,oklahoma,3945620.0,West South Central
-OR,41,oregon,4243581.0,Pacific
-PA,42,pennsylvania,12992685.0,Middle Atlantic
-RI,44,rhode island,1093388.0,New England
-SC,45,south carolina,5094017.0,South Atlantic
-SD,46,south dakota,884341.0,West North Central
-TN,47,tennessee,6905731.0,East South Central
-TX,48,texas,29116933.0,West South Central
-UT,49,utah,3279242.0,Mountain
-VT,50,vermont,642751.0,New England
-VA,51,virginia,8536088.0,South Atlantic
-WA,53,washington,7674936.0,Pacific
-WV,54,west virginia,1791396.0,South Atlantic
-WI,55,wisconsin,5895100.0,East North Central
-WY,56,wyoming,574772.0,Mountain
-PR,72,puerto rico,3204000.0,NA
+AL,1,alabama,5020056,East South Central
+AK,2,alaska,711621,Pacific
+AZ,4,arizona,7166297,Mountain
+AR,5,arkansas,3010411,West South Central
+CA,6,california,39357513,Pacific
+CO,8,colorado,5747873,Mountain
+CT,9,connecticut,3572745,New England
+DE,10,delaware,988153,South Atlantic
+DC,11,district of columbia,667587,South Atlantic
+FL,12,florida,21530531,South Atlantic
+GA,13,georgia,10670047,South Atlantic
+HI,15,hawaii,1408919,Pacific
+ID,16,idaho,1845651,Mountain
+IL,17,illinois,12770920,East North Central
+IN,18,indiana,6788039,East North Central
+IA,19,iowa,3190613,West North Central
+KS,20,kansas,2916561,West North Central
+KY,21,kentucky,4491872,East South Central
+LA,22,louisiana,4636306,West South Central
+ME,23,maine,1363664,New England
+MD,24,maryland,6141896,South Atlantic
+MA,25,massachusetts,6993834,New England
+MI,26,michigan,10068472,East North Central
+MN,27,minnesota,5709883,West North Central
+MS,28,mississippi,2945250,East South Central
+MO,29,missouri,6137738,West North Central
+MT,30,montana,1083714,Mountain
+NE,31,nebraska,1956940,West North Central
+NV,32,nevada,3103950,Mountain
+NH,33,new hampshire,1378191,New England
+NJ,34,new jersey,9264593,Middle Atlantic
+NM,35,new mexico,2105565,Mountain
+NY,36,new york,20084576,Middle Atlantic
+NC,37,north carolina,10348537,South Atlantic
+ND,38,north dakota,771950,West North Central
+OH,39,ohio,11791209,East North Central
+OK,40,oklahoma,3945620,West South Central
+OR,41,oregon,4243581,Pacific
+PA,42,pennsylvania,12992685,Middle Atlantic
+RI,44,rhode island,1093388,New England
+SC,45,south carolina,5094017,South Atlantic
+SD,46,south dakota,884341,West North Central
+TN,47,tennessee,6905731,East South Central
+TX,48,texas,29116933,West South Central
+UT,49,utah,3279242,Mountain
+VT,50,vermont,642751,New England
+VA,51,virginia,8536088,South Atlantic
+WA,53,washington,7674936,Pacific
+WV,54,west virginia,1791396,South Atlantic
+WI,55,wisconsin,5895100,East North Central
+WY,56,wyoming,574772,Mountain

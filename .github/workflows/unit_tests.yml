@@ -18,24 +18,25 @@ jobs:
     - name: Set up conda environment
       uses: conda-incubator/setup-miniconda@v3
       with:
-        activate-environment: HOPKINSIDD-HIERARCHSIR
-        environment-file: HOPKINSIDD-HIERARCHSIR_conda-env.yml
+        activate-environment: TWALLEMA-HIERARCHSIR
+        environment-file: TWALLEMA-HIERARCHSIR_conda-env.yml
+        auto-activate-base: false
 
     - name: Install Boost Libraries
       shell: bash -l {0}
       run: |
-        conda activate HOPKINSIDD-HIERARCHSIR
+        conda activate TWALLEMA-HIERARCHSIR
         sudo apt-get update && sudo apt-get install -y libboost-all-dev
 
-    - name: Install HOPKINSIDD-HIERARCHSIR 
+    - name: Install TWALLEMA-HIERARCHSIR 
       shell: bash -l {0}
       run: |
-        conda activate HOPKINSIDD-HIERARCHSIR
+        conda activate TWALLEMA-HIERARCHSIR
         python -m pip install --upgrade pip
         pip install -e . --force-reinstall
 
-    # - name: Run unit test
-    #   shell: bash -l {0}
-    #   run: |
-    #     conda activate HOPKINSIDD-HIERARCHSIR
-    #     pytest src/tests/test_lpp.py
+    - name: Run unit test
+      shell: bash -l {0}
+      run: |
+        conda activate TWALLEMA-HIERARCHSIR
+        pytest src/tests/test_lpp.py
