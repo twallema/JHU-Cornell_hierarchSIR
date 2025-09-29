@@ -16,7 +16,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: self-hosted
     env: 
-      RUNNER_TOOL_CACHE: ${{ runner.temp }}/toolcache # Only when using Mac self-hosted runner.
+      RUNNER_TOOL_CACHE: ${{ github.workspace }}/../toolcache # Only when using Mac self-hosted runner.
 
     steps:
     - uses: actions/checkout@v2
