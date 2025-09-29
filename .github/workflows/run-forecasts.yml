@@ -19,11 +19,12 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    # Uncomment to run on a GH Linux runner
+    # -------------------------------------
     # - name: Set up Python
     #   uses: actions/setup-python@v4
     #   with:
     #     python-version: '3.12'
-    #     architecture: 'arm64' # Only when using Mac self-hosted runner.
 
     - name: Set up conda environment
       uses: conda-incubator/setup-miniconda@v3
@@ -31,6 +32,8 @@ jobs:
         activate-environment: HOPKINSIDD-HIERARCHSIR
         environment-file: HOPKINSIDD-HIERARCHSIR_conda-env.yml
 
+    # Uncomment to run on a GH Linux runner
+    # -------------------------------------
     # - name: Install Boost Libraries
     #   shell: bash -l {0}
     #   run: |
@@ -84,7 +87,7 @@ jobs:
       shell: bash -l {0}
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-        gh pr create --base main --head ${{ env.BRANCH_NAME }} --title "Automated NHSN HRD Update" --body "This PR includes the latest update of the NHSN HRD data."  
+        gh pr create --base main --head ${{ env.BRANCH_NAME }} --title "Automated CDC FluSight Forecast Update" --body "This PR includes the latest update of the CDC FluSight forecast."  
     
     - name: Merge pull request
       shell: bash -l {0}
