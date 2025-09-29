@@ -1,12 +1,22 @@
-name: Run unit tests
+name: Forecast deployment
 
-on: [pull_request]
+on:
+  workflow_run:
+    workflows: ["Automatically collect and archive the preliminary NHSN HRD dataset"]   # auto-trigger when preliminary data has been fetched succesfully
+    types:
+      - completed
+  workflow_dispatch:  # allows manual trigger from Actions tab
+
+permissions:
+  contents: write         # Allows pushing commits
+  pull-requests: write    # Allows creating and merging PRs
+
 jobs:
   deploy:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: ['ubuntu-latest',]
+
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+
     steps:
     - uses: actions/checkout@v2
 
