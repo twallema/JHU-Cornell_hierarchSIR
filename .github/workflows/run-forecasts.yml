@@ -11,10 +11,12 @@ permissions:
   pull-requests: write    # Allows creating and merging PRs
 
 jobs:
-  deploy:
 
+  deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     runs-on: self-hosted
+    env: 
+      RUNNER_TOOL_CACHE: ${{ runner.temp }}/toolcache # Only when using Mac self-hosted runner.
 
     steps:
     - uses: actions/checkout@v2
@@ -24,7 +26,6 @@ jobs:
       with:
         python-version: '3.12'
         architecture: 'arm64' # Only when using Mac self-hosted runner.
-        check-latest: true
 
     - name: Set up conda environment
       uses: conda-incubator/setup-miniconda@v3
