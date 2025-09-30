@@ -23,9 +23,9 @@ function create_SIR(max_T, n_Δβ)
         γ = p[5]
         P = 5.0 / Tₕ
 
-    Δβ = p[6:end]
-    modifier = isempty(Δβ) ? zero(typeof(β)) : linear_int(t, Δβ)
-    λ = β * (1 + modifier) * S * I / (S + I + R)
+        Δβ = p[6:end]
+        modifier = linear_int(t, Δβ)
+        λ = β * (1 + modifier) * S * I / (S + I + R)
 
         du[1] = -λ
         du[2] = λ - γ * I
@@ -72,12 +72,7 @@ Hierarchical Turing model without hard parameter bounds. Fits the SIR system to
     cb = PositiveDomain(save = false)
     eval = prob -> solve(prob, Tsit5(); callback=cb, saveat=dt, save_idxs=[4, 10], verbose=false)
 
-    x0 = zeros(T, 10)
-    x0[2] = T(fᵢ)
-    x0[3] = T(fᵣ)
-    x0[1] = one(T) - (x0[2] + x0[3])
-    x0[4:end] .= zero(T)
-    x0 .*= T(population)
+    x0 = MVector{10,T}(one(T) - (T(fᵢ) + T(fᵣ)), T(fᵢ), T(fᵣ), zero(T), zero(T), zero(T), zero(T), zero(T), zero(T), zero(T)) .* T(population)
 
     p = MVector{5 + n_Δβ, T}(undef)
     p[1] = ρᵢ
@@ -114,15 +109,15 @@ end
 Bounded hierarchical Turing model with truncated priors for season-level and
 hyper parameters.
 """
-@model function hierarchical_SIR(data, population, t_span; n_Δβ=7, dt=7.0, γ=Γ, template=ODEProblem(create_SIR(t_span[2], n_Δβ), zeros(10), t_span, zeros(5+n_Δβ)))
+@model function hierarchical_SIR(data, population, t_span; n_Δβ=12, dt=7.0, γ=Γ, template=ODEProblem(create_SIR(t_span[2], n_Δβ), zeros(10), t_span, zeros(5+n_Δβ)))
     n_seasons = size(data, 2)
 
     βμ ~ truncated(Normal(0.455, 0.25), 0.05, 0.95)
     βσ ~ Exponential(0.25)
     T = eltype(βμ)
 
-    Δβμ ~ truncated(filldist(Laplace(0.0, 0.33), n_Δβ), -1.0, 1.0)
-    Δβσ ~ filldist(Exponential(0.15), n_Δβ)
+    Δβμ ~ filldist(truncated(Laplace(0.0, 0.33), -1.0, 1.0), n_Δβ)
+    Δβσ ~ filldist(truncated(Exponential(0.15), 0, 1), n_Δβ)
 
     ρᵢ ~ filldist(truncated(LogNormal(log(0.025679272), 0.334315924), 1e-3, 0.075), n_seasons)
     Tₕ ~ filldist(truncated(LogNormal(log(1.322936585), 0.337142555), 0.5, 14), n_seasons)
@@ -133,17 +128,16 @@ hyper parameters.
     β = Vector{T}(undef, n_seasons)
     Δβ = Array{T}(undef, n_seasons, n_Δβ)
 
-    x0 = zeros(T, 10)
+    x0 = MVector{10,T}(undef)
     p = MVector{5 + n_Δβ, T}(undef)
-    p[5] = T(Γ)
+    p[5] = T(γ)
 
     cb = PositiveDomain(save = false)
-    eval = prob -> solve(prob, Tsit5(); callback=cb, saveat=dt, save_idxs=[4, 10], verbose=true)
+    eval = prob -> solve(prob, Tsit5(); callback=cb, saveat=dt, save_idxs=[4, 10], verbose=false)
 
-    Σ = Diagonal((Δβσ) .^ 2)
     for season in 1:n_seasons
         β[season] ~ truncated(Normal(βμ, βσ), 0.05, 0.95)
-        Δβ[season, :] ~ MvNormal(Δβμ, Σ)
+        Δβ[season, :] ~ arraydist(truncated.(Normal.(Δβμ, Δβσ), -1.0, 1.0))
 
         p[1] = ρᵢ[season]
         p[2] = Tₕ[season]
@@ -161,6 +155,7 @@ hyper parameters.
         sol = eval(c_prob)
 
         if sol.retcode != ReturnCode.Success
+            @warn "failed with $p and $(x0[1:3])"
             Turing.@addlogprob!(-Inf)
             data[:, season, 1] ~ Normal(0, 1)
             data[:, season, 2] ~ Normal(0, 1)

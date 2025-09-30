@@ -15,10 +15,6 @@ Base.@kwdef struct AnalysisConfig
     n_Δβ::Int = 7
     population_fips::Int = 37
     seed::Int = 123
-    nuts_samples::Int = 1000
-    nuts_chains::Int = Threads.nthreads()
-    emcee_walkers::Int = 30
-    emcee_steps::Int = 8000
 end
 
 function prepare_calibration_window(seasons::Vector{String}, start_month::Int, end_month::Int)
@@ -35,13 +31,29 @@ data = cat(Matrix(select(I_dataset, Not(:week))), Matrix(select(H_dataset, Not(:
 t_span = (0.0, 7.0 * (size(data, 1) - 1))
 population = get_demography(config.population_fips)
 
-model = hierarchical_SIR_wo_bounds(data, population, t_span; n_Δβ = config.n_Δβ)
-chain = sample(model, NUTS(adtype=AutoForwardDiff()), MCMCThreads(), 1000, 3)
-
-describe(chain)
+small_model = hierarchical_SIR_wo_bounds(data, population, t_span; n_Δβ = config.n_Δβ)
+full_model = hierarchical_SIR(data, population, t_span; n_Δβ = config.n_Δβ)
 
 using JLD2
-@save "test_chain.jld2" chain config
-
 using Plots, StatsPlots
-plot(chain)
+
+e_chain_small = sample(small_model, Emcee(30), 500)
+describe(e_chain_small)
+JLD2.@save "test_chain_emcee_small.jld2" e_chain_small
+plot(e_chain_small)
+
+n_chain_small = sample(small_model, NUTS(adtype=AutoForwardDiff()), MCMCThreads(), 500, 4)
+describe(n_chain_small)
+JLD2.@save "test_chain_nuts_small.jld2" n_chain_small
+plot(n_chain_small)
+
+e_chain_full = sample(full_model, Emcee(128), 500)
+describe(e_chain_full)
+JLD2.@save "test_chain_emcee_full.jld2" e_chain_full
+plot(e_chain_full)
+
+n_chain_full = sample(full_model, NUTS(adtype=AutoForwardDiff()), MCMCThreads(), 500, 4)
+describe(n_chain_full)
+JLD2.@save "test_chain_nuts_full.jld2" n_chain_full
+plot(n_chain_full)
+
