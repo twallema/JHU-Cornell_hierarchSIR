@@ -37,19 +37,19 @@ full_init = get_initial_guess(full_model, config.seasons)
 # Benchmarking code
 ####################
 function bench_emcee(model, init_params, N)
-    sample(model, Emcee(2*length(init_params)), N; init_params = last.(init_params))
+    sample(model, Emcee(2*length(init_params)), N; init_params = last.(init_params), progress=false)
 end
 
 function bench_nuts_default(model, init_params, N)
-    sample(model, NUTS(), N; init_params = last.(init_params))
+    sample(model, NUTS(), N; init_params = last.(init_params), progress=false)
 end
 
 function bench_nuts_forward(model, init_params, N)
-    sample(model, NUTS(; adtype=AutoForwardDiff()), N; init_params = last.(init_params))
+    sample(model, NUTS(; adtype=AutoForwardDiff()), N; init_params = last.(init_params), progress=false)
 end
 
 function bench_nuts_reverse(model, init_params, N)
-    sample(model, NUTS(adtype=AutoReverseDiff()), N; init_params = last.(init_params))
+    sample(model, NUTS(adtype=AutoReverseDiff()), N; init_params = last.(init_params), progress=false)
 end
 
 println("Running with case $(run_case)")
@@ -62,16 +62,16 @@ if run_case < 0
 
     println("Benchmarking sampling methods:")
 
-    emcee_benchmark = @benchmark bench_emcee($small_model, $small_init, $N_benchmark) samples=N_benchmark_outer seconds=seconds
+    emcee_benchmark = @benchmark bench_emcee($small_model, $small_init, $N_benchmark_inner) samples=N_benchmark_outer seconds=seconds
     println("Emcee: ", emcee_benchmark)
 
-    nuts_default_benchmark = @benchmark bench_nuts_default($small_model, $small_init, $N_benchmark) samples=N_benchmark_outer seconds=seconds
+    nuts_default_benchmark = @benchmark bench_nuts_default($small_model, $small_init, $N_benchmark_inner) samples=N_benchmark_outer seconds=seconds
     println("NUTS (default): ", nuts_default_benchmark)
 
-    nuts_forward_benchmark = @benchmark bench_nuts_forward($small_model, $small_init, $N_benchmark) samples=N_benchmark_outer seconds=seconds
+    nuts_forward_benchmark = @benchmark bench_nuts_forward($small_model, $small_init, $N_benchmark_inner) samples=N_benchmark_outer seconds=seconds
     println("NUTS (ForwardDiff): ", nuts_forward_benchmark)
 
-    nuts_reverse_benchmark = @benchmark bench_nuts_reverse($small_model, $small_init, $N_benchmark) samples=N_benchmark_outer seconds=seconds
+    nuts_reverse_benchmark = @benchmark bench_nuts_reverse($small_model, $small_init, $N_benchmark_inner) samples=N_benchmark_outer seconds=seconds
     println("NUTS (ReverseDiff): ", nuts_reverse_benchmark)
 
     exit()
