@@ -48,6 +48,12 @@ trajectory.
 """
 @inline unpack_value(v::ODESolution, t, obs) = v[t][obs]
 @inline unpack_value(v::Vector{<:Vector}, t, obs) = v[t][obs]
+@inline unpack_value(v::AbstractMatrix, t, obs) = v[obs, t]
+
+@inline has_succeeded(sol::ODESolution, n_obs, n_time_steps) = sol.retcode == ReturnCode.Success
+@inline has_succeeded(sol::Vector{<:Vector}, n_obs, n_time_steps) = length(sol) == n_time_steps && length(sol[1]) == n_obs
+@inline has_succeeded(sol::AbstractMatrix, n_obs, n_time_steps) = size(sol, 1) == n_obs && size(sol, 2) == n_time_steps
+@inline has_succeeded(sol::Nothing) = false
 
 """
     hierarchical_SIR_wo_bounds(data, population, t_span; kwargs...)
@@ -57,45 +63,69 @@ Hierarchical Turing model without hard parameter bounds. Fits the SIR system to
 """
 @model function hierarchical_SIR_wo_bounds(data, population, t_span; n_Δβ=7, dt=7.0, γ=Γ, template=ODEProblem(create_SIR(t_span[2], n_Δβ), zeros(10), t_span, zeros(5+n_Δβ)))
     n_seasons = size(data, 2)
+    n_time_steps = size(data, 1)
+    @assert n_time_steps == round(Int, (t_span[2] - t_span[1]) / dt) + 1 "data time dimension does not match t_span/dt"
 
     ρᵢ ~ Beta(8.19, 293.29)
     Tₕ ~ LogNormal(log(1.322936585), 0.337142555)
     ρₕ ~ Beta(10.921, 3103.543)
     fᵢ ~ Beta(2.3172, 1218.)
     fᵣ ~ Beta(43.659, 99.066)
-    T = eltype(ρᵢ)
 
     β ~ filldist(Beta(6, 7.5), n_seasons)
-    Δβ_raw ~ filldist(Beta(5, 5), n_Δβ)
-    Δβ = T.(2 .* (Δβ_raw .- 0.5))
+
+    # Hierarchical priors for Δβ parameters
+    α_Δβ ~ Exponential(5)  # Mean = 5, constrains α > 0
+    β_Δβ ~ Exponential(5)  # Mean = 5, constrains β > 0
+
+    Δβ_raw ~ filldist(Beta(α_Δβ, β_Δβ), n_Δβ)
+    Δβ = @. 2 * (Δβ_raw - 0.5)
 
     cb = PositiveDomain(save = false)
     eval = prob -> solve(prob, Tsit5(); callback=cb, saveat=dt, save_idxs=[4, 10], verbose=false)
+    one_T = one(ρᵢ)
+    zero_T = zero(ρᵢ)
+    population_T = population * one_T
 
-    x0 = MVector{10,T}(one(T) - (T(fᵢ) + T(fᵣ)), T(fᵢ), T(fᵣ), zero(T), zero(T), zero(T), zero(T), zero(T), zero(T), zero(T)) .* T(population)
+    # Construct AD-friendly initial conditions without instantiating tracked types manually.
+    base_x0 = (
+        one_T - (fᵢ + fᵣ),
+        fᵢ,
+        fᵣ,
+        zero_T,
+        zero_T,
+        zero_T,
+        zero_T,
+        zero_T,
+        zero_T,
+        zero_T,
+    )
+    x0 = Vector{typeof(ρᵢ)}(undef, 10)
+    @inbounds for (idx, val) in enumerate(base_x0)
+        x0[idx] = val * population_T
+    end
 
-    p = MVector{5 + n_Δβ, T}(undef)
+    p = Vector{typeof(ρᵢ)}(undef, 5 + n_Δβ)
     p[1] = ρᵢ
     p[2] = Tₕ
     p[3] = ρₕ
-    p[4] = zero(T)
-    p[5] = γ
+    p[4] = zero_T
+    p[5] = γ * one_T
     @views p[6:end] .= Δβ
 
     for season in 1:n_seasons
         p[4] = β[season]
         c_prob = remake(template; u0 = x0, p = p)
         sol = eval(c_prob)
-        obs = sol
 
-        if sol.retcode != ReturnCode.Success
+        if !has_succeeded(sol, 2, n_time_steps)
             Turing.@addlogprob!(-Inf)
             data[:, season, 1] ~ Normal(0, 1)
             data[:, season, 2] ~ Normal(0, 1)
         else
-            for i in axes(data, 1)
-                d1 = unpack_value(obs, i, 1)
-                d2 = unpack_value(obs, i, 2)
+            for i in 1:n_time_steps
+                d1 = unpack_value(sol, i, 1)
+                d2 = unpack_value(sol, i, 2)
                 data[i, season, 1] ~ Normal(d1, d1 + 0.5)
                 data[i, season, 2] ~ Normal(d2, d2 + 0.5)
             end
@@ -111,6 +141,8 @@ hyper parameters.
 """
 @model function hierarchical_SIR(data, population, t_span; n_Δβ=12, dt=7.0, γ=Γ, template=ODEProblem(create_SIR(t_span[2], n_Δβ), zeros(10), t_span, zeros(5+n_Δβ)))
     n_seasons = size(data, 2)
+    n_time_steps = size(data, 1)
+    @assert n_time_steps == round(Int, (t_span[2] - t_span[1]) / dt) + 1 "data time dimension does not match t_span/dt"
 
     βμ ~ truncated(Normal(0.455, 0.25), 0.05, 0.95)
     βσ ~ Exponential(0.25)
@@ -154,8 +186,7 @@ hyper parameters.
         c_prob = remake(template; u0 = x0, p = p)
         sol = eval(c_prob)
 
-        if sol.retcode != ReturnCode.Success
-            @warn "failed with $p and $(x0[1:3])"
+        if !has_succeeded(sol, 2, n_time_steps)
             Turing.@addlogprob!(-Inf)
             data[:, season, 1] ~ Normal(0, 1)
             data[:, season, 2] ~ Normal(0, 1)
