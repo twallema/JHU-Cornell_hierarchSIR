@@ -7,11 +7,16 @@ sets the time horizon for the piecewise-linear transmission adjustment with
 """
 function create_SIR(max_T, n_Δβ)
     nodes = range(0, max_T, length=n_Δβ)
-    linear_int = (t, Δβ) -> begin
-        idx = clamp(searchsortedlast(nodes, t), 1, length(Δβ) - 1)
-        t1, t2 = nodes[idx], nodes[idx + 1]
-        w = (t - t1) / (t2 - t1)
-        return Δβ[idx] * (1 - w) + Δβ[idx + 1] * w
+    # linear_int = (t, Δβ) -> begin
+    #     idx = clamp(searchsortedlast(nodes, t), 1, length(Δβ) - 1)
+    #     t1, t2 = nodes[idx], nodes[idx + 1]
+    #     w = (t - t1) / (t2 - t1)
+    #     return Δβ[idx] * (1 - w) + Δβ[idx + 1] * w
+    # end
+
+    constant_int = (t, Δβ) -> begin
+        idx = clamp(searchsortedlast(nodes, t), 1, length(Δβ))
+        return Δβ[idx]
     end
 
     return function sir_rhs!(du, u, p, t)
@@ -24,7 +29,7 @@ function create_SIR(max_T, n_Δβ)
         P = 5.0 / Tₕ
 
         Δβ = p[6:end]
-        modifier = linear_int(t, Δβ)
+        modifier = constant_int(t, Δβ)
         λ = β * (1 + modifier) * S * I / (S + I + R)
 
         du[1] = -λ
@@ -72,7 +77,7 @@ Hierarchical Turing model without hard parameter bounds. Fits the SIR system to
     fᵢ ~ Beta(2.3172, 1218.)
     fᵣ ~ Beta(43.659, 99.066)
 
-    β ~ filldist(Beta(6, 7.5), n_seasons)
+    β ~ filldist(Beta(32, 40), n_seasons)
 
     # Hierarchical priors for Δβ parameters
     α_Δβ ~ filldist(Exponential(5), n_Δβ)  # Mean = 5, constrains α > 0
@@ -147,18 +152,18 @@ hyper parameters.
     n_time_steps = size(data, 1)
     @assert n_time_steps == round(Int, (t_span[2] - t_span[1]) / dt) + 1 "data time dimension does not match t_span/dt"
 
-    βμ ~ truncated(Normal(0.455, 0.25), 0.05, 0.95)
-    βσ ~ Exponential(0.25)
+    βμ ~ truncated(Normal(0.455, 0.055), 0.05, 0.95)
+    βσ ~ Exponential(0.055)
     T = eltype(βμ)
 
-    Δβμ ~ filldist(truncated(Laplace(0.0, 0.33), -1.0, 1.0), n_Δβ)
+    Δβμ ~ filldist(truncated(Normal(0.0, 0.1), -1.0, 1.0), n_Δβ)
     Δβσ ~ filldist(truncated(Exponential(0.15), 0, 1), n_Δβ)
 
     ρᵢ ~ filldist(truncated(LogNormal(log(0.025679272), 0.334315924), 1e-3, 0.075), n_seasons)
     Tₕ ~ filldist(truncated(LogNormal(log(1.322936585), 0.337142555), 0.5, 14), n_seasons)
     ρₕ ~ filldist(truncated(LogNormal(log(0.003356751), 0.295460858), 1e-4, 0.0075), n_seasons)
     fᵢ ~ filldist(truncated(LogNormal(log(0.00018612), 0.205517672), 1e-6, 0.001), n_seasons)
-    fᵣ ~ filldist(truncated(Normal(0.303313396, 0.03520003), 0.10, 0.90), n_seasons)
+    fᵣ ~ filldist(truncated(Normal(0.33313396, 0.02320003), 0.10, 0.90), n_seasons)
 
     β = Vector{T}(undef, n_seasons)
     Δβ = Array{T}(undef, n_seasons, n_Δβ)

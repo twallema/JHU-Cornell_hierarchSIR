@@ -81,7 +81,7 @@ end
 # Actual sampling
 ##################
 
-chain_dir = normpath(joinpath(@__DIR__, "..", "..", "data", "julia_chains" ))
+chain_dir = normpath(joinpath(@__DIR__, "..", "..", "data", "julia_chains"))
 isdir(chain_dir) || mkpath(chain_dir)
 
 function run_with_cases(run_case, full_model, small_model, full_init, small_init)
@@ -97,7 +97,8 @@ function run_with_cases(run_case, full_model, small_model, full_init, small_init
         JLD2.@save joinpath(chain_dir, "n_$(model_str)_$(ad_type_str).jld2") chain
     else
         println("Running Emcee on $model_str")
-        e_small_init = sample(small_model, Emcee(150), 10000; init_params = last.(init_params))
+        n_walkers = 2 * length(init_params)
+        e_small_init = sample(small_model, Emcee(n_walkers), 10000; init_params = last.(init_params))
         JLD2.@save joinpath(chain_dir, "e_$(model_str).jld2") e_small_init
     end
 end
