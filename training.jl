@@ -1,5 +1,8 @@
 using Turing
 using JLD2
+using ForwardDiff
+using SciMLSensitivity
+using ReverseDiff
 
 push!(LOAD_PATH, joinpath(@__DIR__, "src"))
 using Revise

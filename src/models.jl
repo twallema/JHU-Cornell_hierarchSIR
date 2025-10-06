@@ -51,8 +51,8 @@ trajectory.
 @inline unpack_value(v::AbstractMatrix, t, obs) = v[obs, t]
 
 @inline has_succeeded(sol::ODESolution, n_obs, n_time_steps) = sol.retcode == ReturnCode.Success
-@inline has_succeeded(sol::Vector{<:Vector}, n_obs, n_time_steps) = length(sol) == n_time_steps && length(sol[1]) == n_obs
-@inline has_succeeded(sol::AbstractMatrix, n_obs, n_time_steps) = size(sol, 1) == n_obs && size(sol, 2) == n_time_steps
+@inline has_succeeded(sol::Vector{<:Vector}, n_obs, n_time_steps) = length(sol) == n_time_steps && length(sol[1]) == n_obs && all(x -> all(isfinite, x), sol)
+@inline has_succeeded(sol::AbstractMatrix, n_obs, n_time_steps) = size(sol, 1) == n_obs && size(sol, 2) == n_time_steps && all(isfinite, sol)
 @inline has_succeeded(sol::Nothing) = false
 
 """
@@ -75,10 +75,13 @@ Hierarchical Turing model without hard parameter bounds. Fits the SIR system to
     β ~ filldist(Beta(6, 7.5), n_seasons)
 
     # Hierarchical priors for Δβ parameters
-    α_Δβ ~ Exponential(5)  # Mean = 5, constrains α > 0
-    β_Δβ ~ Exponential(5)  # Mean = 5, constrains β > 0
+    α_Δβ ~ filldist(Exponential(5), n_Δβ)  # Mean = 5, constrains α > 0
+    β_Δβ ~ filldist(Exponential(5), n_Δβ)  # Mean = 5, constrains β > 0
 
-    Δβ_raw ~ filldist(Beta(α_Δβ, β_Δβ), n_Δβ)
+    Δβ_raw = Array{eltype(α_Δβ)}(undef, n_seasons, n_Δβ)
+    for season in 1:n_seasons
+        Δβ_raw[season, :] ~ filldist(Beta(α_Δβ[season], β_Δβ[season]), n_Δβ)
+    end
     Δβ = @. 2 * (Δβ_raw - 0.5)
 
     cb = PositiveDomain(save = false)
@@ -111,10 +114,10 @@ Hierarchical Turing model without hard parameter bounds. Fits the SIR system to
     p[3] = ρₕ
     p[4] = zero_T
     p[5] = γ * one_T
-    @views p[6:end] .= Δβ
 
     for season in 1:n_seasons
         p[4] = β[season]
+        p[6:end] .= Δβ[season, :]
         c_prob = remake(template; u0 = x0, p = p)
         sol = eval(c_prob)
 

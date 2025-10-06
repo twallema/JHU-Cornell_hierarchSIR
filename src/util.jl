@@ -217,6 +217,7 @@ function convert_seasonal_parameters(parameters::DataFrame, seasons::Vector{<:Ab
             if occursin("delta_beta_temporal_", old_key)
                 idx = parse(Int, split(old_key, "_")[end]) + 1
                 result[Symbol("Δβ[$(i), :][$(idx)]")] = value
+                result[Symbol("Δβ_raw[$(i), :][$(idx)]")] = 0.5 * (value + 1)
             elseif haskey(param_map, old_key)
                 result[Symbol(param_map[old_key])] = value
                 result[Symbol("$(param_map[old_key])[$(i)]")] = value
@@ -260,6 +261,8 @@ function get_initial_guess(model, seasons::Vector{<:AbstractString}; model_name=
     manual_map = Dict(
         [Symbol("Δβ[$i]") => 0.0 for i in 1:12]...,
         [Symbol("raw_Δβ[$i]") => 0.0 for i in 1:12]...,
+        [Symbol("α_Δβ[$i]") => 5.0 for i in 1:12]...,
+        [Symbol("β_Δβ[$i]") => 5.0 for i in 1:12]...,
     )
 
     pars_model_0 = CSV.read(data_path("interim", "calibration", "single-season-optimal-parameters.csv"), DataFrame)
@@ -275,5 +278,5 @@ function get_initial_guess(model, seasons::Vector{<:AbstractString}; model_name=
     hyper_map = convert_hyper_parameters(hyperpars_0; condition=Symbol(identifier))
     param_map = merge(manual_map, seasonal_map, hyper_map)
 
-    return [p => param_map[p] for p in parameters if haskey(param_map, p)]
+    return [p => param_map[p] for p in parameters]
 end
