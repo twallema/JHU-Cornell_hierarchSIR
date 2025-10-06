@@ -48,6 +48,12 @@ trajectory.
 """
 @inline unpack_value(v::ODESolution, t, obs) = v[t][obs]
 @inline unpack_value(v::Vector{<:Vector}, t, obs) = v[t][obs]
+@inline unpack_value(v::AbstractMatrix, t, obs) = v[obs, t]
+
+@inline has_succeeded(sol::ODESolution, n_obs, n_time_steps) = sol.retcode == ReturnCode.Success
+@inline has_succeeded(sol::Vector{<:Vector}, n_obs, n_time_steps) = length(sol) == n_time_steps && length(sol[1]) == n_obs && all(x -> all(isfinite, x), sol)
+@inline has_succeeded(sol::AbstractMatrix, n_obs, n_time_steps) = size(sol, 1) == n_obs && size(sol, 2) == n_time_steps && all(isfinite, sol)
+@inline has_succeeded(sol::Nothing) = false
 
 """
     hierarchical_SIR_wo_bounds(data, population, t_span; kwargs...)
@@ -57,45 +63,72 @@ Hierarchical Turing model without hard parameter bounds. Fits the SIR system to
 """
 @model function hierarchical_SIR_wo_bounds(data, population, t_span; n_Δβ=7, dt=7.0, γ=Γ, template=ODEProblem(create_SIR(t_span[2], n_Δβ), zeros(10), t_span, zeros(5+n_Δβ)))
     n_seasons = size(data, 2)
+    n_time_steps = size(data, 1)
+    @assert n_time_steps == round(Int, (t_span[2] - t_span[1]) / dt) + 1 "data time dimension does not match t_span/dt"
 
-    ρᵢ ~ LogNormal(log(0.025679272), 0.334315924)
+    ρᵢ ~ Beta(8.19, 293.29)
     Tₕ ~ LogNormal(log(1.322936585), 0.337142555)
-    ρₕ ~ LogNormal(log(0.003356751), 0.295460858)
-    fᵢ ~ LogNormal(log(0.00018612), 0.205517672)
-    fᵣ ~ LogNormal(log(0.303313396), 0.12520003)
-    T = eltype(ρᵢ)
+    ρₕ ~ Beta(10.921, 3103.543)
+    fᵢ ~ Beta(2.3172, 1218.)
+    fᵣ ~ Beta(43.659, 99.066)
 
     β ~ filldist(Beta(6, 7.5), n_seasons)
-    Δβ_raw ~ filldist(Beta(5, 5), n_Δβ)
-    Δβ = T.(2 .* (Δβ_raw .- 0.5))
+
+    # Hierarchical priors for Δβ parameters
+    α_Δβ ~ filldist(Exponential(5), n_Δβ)  # Mean = 5, constrains α > 0
+    β_Δβ ~ filldist(Exponential(5), n_Δβ)  # Mean = 5, constrains β > 0
+
+    Δβ_raw = Array{eltype(α_Δβ)}(undef, n_seasons, n_Δβ)
+    for season in 1:n_seasons
+        Δβ_raw[season, :] ~ filldist(Beta(α_Δβ[season], β_Δβ[season]), n_Δβ)
+    end
+    Δβ = @. 2 * (Δβ_raw - 0.5)
 
     cb = PositiveDomain(save = false)
     eval = prob -> solve(prob, Tsit5(); callback=cb, saveat=dt, save_idxs=[4, 10], verbose=false)
+    one_T = one(ρᵢ)
+    zero_T = zero(ρᵢ)
+    population_T = population * one_T
 
-    x0 = MVector{10,T}(one(T) - (T(fᵢ) + T(fᵣ)), T(fᵢ), T(fᵣ), zero(T), zero(T), zero(T), zero(T), zero(T), zero(T), zero(T)) .* T(population)
+    # Construct AD-friendly initial conditions without instantiating tracked types manually.
+    base_x0 = (
+        one_T - (fᵢ + fᵣ),
+        fᵢ,
+        fᵣ,
+        zero_T,
+        zero_T,
+        zero_T,
+        zero_T,
+        zero_T,
+        zero_T,
+        zero_T,
+    )
+    x0 = Vector{typeof(ρᵢ)}(undef, 10)
+    @inbounds for (idx, val) in enumerate(base_x0)
+        x0[idx] = val * population_T
+    end
 
-    p = MVector{5 + n_Δβ, T}(undef)
+    p = Vector{typeof(ρᵢ)}(undef, 5 + n_Δβ)
     p[1] = ρᵢ
     p[2] = Tₕ
     p[3] = ρₕ
-    p[4] = zero(T)
-    p[5] = γ
-    @views p[6:end] .= Δβ
+    p[4] = zero_T
+    p[5] = γ * one_T
 
     for season in 1:n_seasons
         p[4] = β[season]
+        p[6:end] .= Δβ[season, :]
         c_prob = remake(template; u0 = x0, p = p)
         sol = eval(c_prob)
-        obs = sol
 
-        if sol.retcode != ReturnCode.Success
+        if !has_succeeded(sol, 2, n_time_steps)
             Turing.@addlogprob!(-Inf)
             data[:, season, 1] ~ Normal(0, 1)
             data[:, season, 2] ~ Normal(0, 1)
         else
-            for i in axes(data, 1)
-                d1 = unpack_value(obs, i, 1)
-                d2 = unpack_value(obs, i, 2)
+            for i in 1:n_time_steps
+                d1 = unpack_value(sol, i, 1)
+                d2 = unpack_value(sol, i, 2)
                 data[i, season, 1] ~ Normal(d1, d1 + 0.5)
                 data[i, season, 2] ~ Normal(d2, d2 + 0.5)
             end
@@ -111,6 +144,8 @@ hyper parameters.
 """
 @model function hierarchical_SIR(data, population, t_span; n_Δβ=12, dt=7.0, γ=Γ, template=ODEProblem(create_SIR(t_span[2], n_Δβ), zeros(10), t_span, zeros(5+n_Δβ)))
     n_seasons = size(data, 2)
+    n_time_steps = size(data, 1)
+    @assert n_time_steps == round(Int, (t_span[2] - t_span[1]) / dt) + 1 "data time dimension does not match t_span/dt"
 
     βμ ~ truncated(Normal(0.455, 0.25), 0.05, 0.95)
     βσ ~ Exponential(0.25)
@@ -154,8 +189,7 @@ hyper parameters.
         c_prob = remake(template; u0 = x0, p = p)
         sol = eval(c_prob)
 
-        if sol.retcode != ReturnCode.Success
-            @warn "failed with $p and $(x0[1:3])"
+        if !has_succeeded(sol, 2, n_time_steps)
             Turing.@addlogprob!(-Inf)
             data[:, season, 1] ~ Normal(0, 1)
             data[:, season, 2] ~ Normal(0, 1)
@@ -168,43 +202,4 @@ hyper parameters.
             end
         end
     end
-end
-
-"""
-    simulate(ρᵢ, Tₕ, ρₕ, fᵢ, fᵣ, β, Δβ, population, t_span; kwargs...)
-
-Simulate the deterministic SIR dynamics for a single season. Returns an
-`ODESolution`; keyword arguments are forwarded to `DifferentialEquations.solve`.
-"""
-function simulate(ρᵢ, Tₕ, ρₕ, fᵢ, fᵣ, β, Δβ, population, t_span; kwargs...)
-    p = [ρᵢ, Tₕ, ρₕ, β, Γ, Δβ...]
-
-    x0 = zeros(10)
-    x0[2] = fᵢ
-    x0[3] = fᵣ
-    x0[1] = 1 - (x0[2] + x0[3])
-    x0 .*= population
-
-    prob = ODEProblem(create_SIR(t_span[2], length(Δβ)), x0, t_span, p)
-    return solve(prob, Tsit5(); kwargs...)
-end
-
-"""
-    unpack_and_simulate(sample, population, t_span; kwargs...)
-
-Average posterior samples `sample` and run a deterministic simulation using the
-mean parameters.
-"""
-function unpack_and_simulate(sample, population, t_span; kwargs...)
-    return simulate(
-        mean(sample[:ρᵢ]),
-        mean(sample[:Tₕ]),
-        mean(sample[:ρₕ]),
-        mean(sample[:fᵢ]),
-        mean(sample[:fᵣ]),
-        mean(sample[Symbol("β[1]")]),
-        [mean(sample[Symbol("Δβ[1, :][$(i)]")]) for i in 1:4],
-        population, t_span;
-        kwargs...
-    )
 end

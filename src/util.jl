@@ -7,6 +7,22 @@ function data_path(parts...)
     return normpath(joinpath(DATA_DIR, parts...))
 end
 
+Base.@kwdef struct AnalysisConfig
+    seasons::Vector{String} =  ["2014-2015", "2015-2016", "2016-2017", "2017-2018", "2018-2019", "2019-2020",]
+    identifier::String = "exclude_None"
+    start_month::Int = 10
+    end_month::Int = 5
+    n_Δβ::Int = 7
+    population_fips::Int = 37
+    seed::Int = 123
+end
+
+function prepare_calibration_window(seasons::Vector{String}, start_month::Int, end_month::Int)
+    start_dates = [Date(parse(Int, season[1:4]), start_month, 1) for season in seasons]
+    end_dates = [Date(parse(Int, season[1:4]) + 1, end_month, 1) for season in seasons]
+    return start_dates, end_dates
+end
+
 """
     get_demography(fips)
 
@@ -156,6 +172,15 @@ function concatenate_datasets(seasons, start_calibrations, end_calibrations)
     return datasets, I_dataset, H_dataset, season2idx
 end
 
+function data_pipeline(config::AnalysisConfig)
+    start_dates, end_dates = prepare_calibration_window(config.seasons, config.start_month, config.end_month)
+    _, I_dataset, H_dataset, season2idx = concatenate_datasets(config.seasons, start_dates, end_dates)
+    data = cat(Matrix(select(I_dataset, Not(:week))), Matrix(select(H_dataset, Not(:week))), dims = 3)
+    t_span = (0.0, 7.0 * (size(data, 1) - 1))
+    population = get_demography(config.population_fips)
+    return data, population, t_span, season2idx
+end
+
 """
     select_parameters(season; model="SIR-1S", immunity_linking=false, file)
 
@@ -192,6 +217,7 @@ function convert_seasonal_parameters(parameters::DataFrame, seasons::Vector{<:Ab
             if occursin("delta_beta_temporal_", old_key)
                 idx = parse(Int, split(old_key, "_")[end]) + 1
                 result[Symbol("Δβ[$(i), :][$(idx)]")] = value
+                result[Symbol("Δβ_raw[$(i), :][$(idx)]")] = 0.5 * (value + 1)
             elseif haskey(param_map, old_key)
                 result[Symbol(param_map[old_key])] = value
                 result[Symbol("$(param_map[old_key])[$(i)]")] = value
@@ -235,6 +261,8 @@ function get_initial_guess(model, seasons::Vector{<:AbstractString}; model_name=
     manual_map = Dict(
         [Symbol("Δβ[$i]") => 0.0 for i in 1:12]...,
         [Symbol("raw_Δβ[$i]") => 0.0 for i in 1:12]...,
+        [Symbol("α_Δβ[$i]") => 5.0 for i in 1:12]...,
+        [Symbol("β_Δβ[$i]") => 5.0 for i in 1:12]...,
     )
 
     pars_model_0 = CSV.read(data_path("interim", "calibration", "single-season-optimal-parameters.csv"), DataFrame)
@@ -250,5 +278,5 @@ function get_initial_guess(model, seasons::Vector{<:AbstractString}; model_name=
     hyper_map = convert_hyper_parameters(hyperpars_0; condition=Symbol(identifier))
     param_map = merge(manual_map, seasonal_map, hyper_map)
 
-    return [p => param_map[p] for p in parameters if haskey(param_map, p)]
+    return [p => param_map[p] for p in parameters]
 end
