@@ -27,8 +27,8 @@ end
 config = AnalysisConfig()
 data, population, t_span, season2idx = data_pipeline(config)
 
-small_model = hierarchical_SIR_wo_bounds(data, population, t_span; n_Δβ = config.n_Δβ)
-full_model = hierarchical_SIR(data, population, t_span; n_Δβ = config.n_Δβ)
+small_model = hierarchical_SIR_wo_bounds(data, population, t_span; n_Δβ = 7)
+full_model = hierarchical_SIR(data, population, t_span; n_Δβ = 12)
 
 small_init = get_initial_guess(small_model, config.seasons)
 full_init = get_initial_guess(full_model, config.seasons)

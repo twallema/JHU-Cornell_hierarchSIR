@@ -12,7 +12,7 @@ Base.@kwdef struct AnalysisConfig
     identifier::String = "exclude_None"
     start_month::Int = 10
     end_month::Int = 5
-    n_Δβ::Int = 7
+    n_Δβ::Int = 12
     population_fips::Int = 37
     seed::Int = 123
 end
