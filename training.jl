@@ -1,35 +1,12 @@
-using Dates
-using Random
 using Turing
 using JLD2
-using DataFrames
 
 push!(LOAD_PATH, joinpath(@__DIR__, "src"))
+using Revise
 using HierarchicalSIR
 
-Base.@kwdef struct AnalysisConfig
-    seasons::Vector{String} =  ["2014-2015", "2015-2016", "2016-2017", "2017-2018", "2018-2019", "2019-2020",]
-    identifier::String = "exclude_None"
-    start_month::Int = 10
-    end_month::Int = 5
-    n_Δβ::Int = 7
-    population_fips::Int = 37
-    seed::Int = 123
-end
-
-function prepare_calibration_window(seasons::Vector{String}, start_month::Int, end_month::Int)
-    start_dates = [Date(parse(Int, season[1:4]), start_month, 1) for season in seasons]
-    end_dates = [Date(parse(Int, season[1:4]) + 1, end_month, 1) for season in seasons]
-    return start_dates, end_dates
-end
-
 config = AnalysisConfig()
-
-start_dates, end_dates = prepare_calibration_window(config.seasons, config.start_month, config.end_month)
-datasets, I_dataset, H_dataset, season2idx = concatenate_datasets(config.seasons, start_dates, end_dates)
-data = cat(Matrix(select(I_dataset, Not(:week))), Matrix(select(H_dataset, Not(:week))), dims = 3)
-t_span = (0.0, 7.0 * (size(data, 1) - 1))
-population = get_demography(config.population_fips)
+data, population, t_span, season2idx = data_pipeline(config)
 
 small_model = hierarchical_SIR_wo_bounds(data, population, t_span; n_Δβ = config.n_Δβ)
 full_model = hierarchical_SIR(data, population, t_span; n_Δβ = config.n_Δβ)
@@ -37,9 +14,7 @@ full_model = hierarchical_SIR(data, population, t_span; n_Δβ = config.n_Δβ)
 small_init= get_initial_guess(small_model, config.seasons)
 full_init = get_initial_guess(full_model, config.seasons)
 
-using JLD2
-
-e_chain_small = sample(small_model, Emcee(30), 2500; init_params = last.(small_init))
+e_chain_small = sample(small_model, Emcee(30), 25; init_params = last.(small_init))
 describe(e_chain_small)
 JLD2.@save "test_chain_emcee_small_init.jld2" e_chain_small
 
@@ -54,4 +29,3 @@ JLD2.@save "test_chain_emcee_full_init.jld2" e_chain_full
 n_chain_full = sample(full_model, NUTS(adtype=AutoForwardDiff()), MCMCThreads(), 500, 4)
 describe(n_chain_full)
 JLD2.@save "test_chain_nuts_full_init.jld2" n_chain_full
-
