@@ -34,26 +34,24 @@ population = get_demography(config.population_fips)
 small_model = hierarchical_SIR_wo_bounds(data, population, t_span; n_Δβ = config.n_Δβ)
 full_model = hierarchical_SIR(data, population, t_span; n_Δβ = config.n_Δβ)
 
+small_init= get_initial_guess(small_model, config.seasons)
+full_init = get_initial_guess(full_model, config.seasons)
+
 using JLD2
-using Plots, StatsPlots
 
-e_chain_small = sample(small_model, Emcee(30), 500)
+e_chain_small = sample(small_model, Emcee(30), 2500; init_params = last.(small_init))
 describe(e_chain_small)
-JLD2.@save "test_chain_emcee_small.jld2" e_chain_small
-plot(e_chain_small)
+JLD2.@save "test_chain_emcee_small_init.jld2" e_chain_small
 
-n_chain_small = sample(small_model, NUTS(adtype=AutoForwardDiff()), MCMCThreads(), 500, 4)
+n_chain_small = sample(small_model, NUTS(adtype=AutoForwardDiff()), MCMCThreads(), 500, 4; init_params = last.(small_init))
 describe(n_chain_small)
-JLD2.@save "test_chain_nuts_small.jld2" n_chain_small
-plot(n_chain_small)
+JLD2.@save "test_chain_nuts_small_init.jld2" n_chain_small
 
 e_chain_full = sample(full_model, Emcee(128), 500)
 describe(e_chain_full)
-JLD2.@save "test_chain_emcee_full.jld2" e_chain_full
-plot(e_chain_full)
+JLD2.@save "test_chain_emcee_full_init.jld2" e_chain_full
 
 n_chain_full = sample(full_model, NUTS(adtype=AutoForwardDiff()), MCMCThreads(), 500, 4)
 describe(n_chain_full)
-JLD2.@save "test_chain_nuts_full.jld2" n_chain_full
-plot(n_chain_full)
+JLD2.@save "test_chain_nuts_full_init.jld2" n_chain_full
 
