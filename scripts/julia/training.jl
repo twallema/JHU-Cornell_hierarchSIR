@@ -5,8 +5,24 @@ using ForwardDiff
 using SciMLSensitivity
 using ReverseDiff
 
-push!(LOAD_PATH, joinpath(@__DIR__, "src"))
+push!(LOAD_PATH, joinpath(@__DIR__, "..", "..", "src"))
 using HierarchicalSIR
+
+run_case = -1
+if length(ARGS) >= 1
+    run_case += 1
+    if contains(ARGS[1], "emcee")
+        run_case += 1
+    elseif !contains(ARGS[1], "nuts")
+        error("First argument must be either 'emcee' or 'nuts'")
+    end
+    if length(ARGS) >= 2 && contains(ARGS[2], "small")
+        run_case += 2
+    end
+    if length(ARGS) >= 3 && contains(ARGS[3], "rev")
+        run_case += 4
+    end
+end
 
 config = AnalysisConfig()
 data, population, t_span, season2idx = data_pipeline(config)
@@ -20,9 +36,6 @@ full_init = get_initial_guess(full_model, config.seasons)
 ####################
 # Benchmarking code
 ####################
-
-N_benchmark = 250
-
 function bench_emcee(model, init_params, N)
     sample(model, Emcee(2*length(init_params)), N; init_params = last.(init_params))
 end
@@ -39,20 +52,30 @@ function bench_nuts_reverse(model, init_params, N)
     sample(model, NUTS(adtype=AutoReverseDiff()), N; init_params = last.(init_params))
 end
 
-# Run benchmarks
-println("Benchmarking sampling methods:")
+println("Running with case $(run_case)")
 
-emcee_benchmark = @benchmark bench_emcee($small_model, $small_init, $N_benchmark)
-println("Emcee: ", emcee_benchmark)
+if run_case < 0
+    # Run benchmarks
+    N_benchmark_inner = 100 # samples per chain
+    N_benchmark_outer = 5  # number of chains
+    seconds = 600
 
-nuts_default_benchmark = @benchmark bench_nuts_default($small_model, $small_init, $N_benchmark)
-println("NUTS (default): ", nuts_default_benchmark)
+    println("Benchmarking sampling methods:")
 
-nuts_forward_benchmark = @benchmark bench_nuts_forward($small_model, $small_init, $N_benchmark)
-println("NUTS (ForwardDiff): ", nuts_forward_benchmark)
+    emcee_benchmark = @benchmark bench_emcee($small_model, $small_init, $N_benchmark) samples=N_benchmark_outer seconds=seconds
+    println("Emcee: ", emcee_benchmark)
 
-nuts_reverse_benchmark = @benchmark bench_nuts_reverse($small_model, $small_init, $N_benchmark)
-println("NUTS (ReverseDiff): ", nuts_reverse_benchmark)
+    nuts_default_benchmark = @benchmark bench_nuts_default($small_model, $small_init, $N_benchmark) samples=N_benchmark_outer seconds=seconds
+    println("NUTS (default): ", nuts_default_benchmark)
+
+    nuts_forward_benchmark = @benchmark bench_nuts_forward($small_model, $small_init, $N_benchmark) samples=N_benchmark_outer seconds=seconds
+    println("NUTS (ForwardDiff): ", nuts_forward_benchmark)
+
+    nuts_reverse_benchmark = @benchmark bench_nuts_reverse($small_model, $small_init, $N_benchmark) samples=N_benchmark_outer seconds=seconds
+    println("NUTS (ReverseDiff): ", nuts_reverse_benchmark)
+
+    exit()
+end
 
 ##################
 # Actual sampling
@@ -61,12 +84,22 @@ println("NUTS (ReverseDiff): ", nuts_reverse_benchmark)
 chain_dir = normpath(joinpath(@__DIR__, "..", "..", "data", "julia_chains" ))
 isdir(chain_dir) || mkpath(chain_dir)
 
-e_small_init = sample(small_model, Emcee(150), 10000; init_params = last.(small_init))
-JLD2.@save joinpath(chain_dir, "e_small_init.jld2") e_small_init
+function run_with_cases(run_case, full_model, small_model, full_init, small_init)
+    model = run_case >= 2 ? small_model : full_model
+    model_str = run_case >= 2 ? "small" : "full"
+    init_params = run_case >= 2 ? small_init : full_init
 
-n_small_init = sample(small_model, NUTS(adtype=AutoForwardDiff()), MCMCThreads(), 2500, 6; init_params = last.(small_init))
-JLD2.@save joinpath(chain_dir, "n_small_init.jld2") n_small_init
+    if run_case % 2 == 0
+        adtype = run_case >= 4 ? AutoReverseDiff() : AutoForwardDiff()
+        ad_type_str = run_case >= 4 ? "rev" : "fwd"
+        println("Running NUTS with $(adtype) on $model_str")
+        chain = sample(model, NUTS(; adtype), MCMCThreads(), 2500, 6; init_params = last.(init_params))
+        JLD2.@save joinpath(chain_dir, "n_$(model_str)_$(ad_type_str).jld2") chain
+    else
+        println("Running Emcee on $model_str")
+        e_small_init = sample(small_model, Emcee(150), 10000; init_params = last.(init_params))
+        JLD2.@save joinpath(chain_dir, "e_$(model_str).jld2") e_small_init
+    end
+end
 
-e_full_init = sample(full_model, Emcee(150), 10000; init_params = last.(full_init))
-JLD2.@save joinpath(chain_dir, "e_full_init.jld2") e_full_init
-
+@btime run_with_cases(run_case, full_model, small_model, full_init, small_init)
