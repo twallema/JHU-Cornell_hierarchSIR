@@ -85,7 +85,7 @@ Hierarchical Turing model without hard parameter bounds. Fits the SIR system to
 
     Δβ_raw = Array{eltype(α_Δβ)}(undef, n_seasons, n_Δβ)
     for season in 1:n_seasons
-        Δβ_raw[season, :] ~ filldist(Beta(α_Δβ[season], β_Δβ[season]), n_Δβ)
+        Δβ_raw[season, :] ~ arraydist(Beta.(α_Δβ, β_Δβ))
     end
     Δβ = @. 2 * (Δβ_raw - 0.5)
 
