@@ -46,11 +46,12 @@ julia --project -t 16 scripts/julia/training.jl
 ```
 The `-t` argument specifies the number of threads to use, the `--project` argument ensures the correct environment is used.
 
-* The first argument can be `--emcee` or `--nuts` to sample the model with the given sampler, the second argument can be `--small` or `--full` to choose the model size (default `--full`). If the nuts sampler is chosen, the third argument can be `--forward` or `--reverse` to choose the autodiff backend (default `--forward`).
+* The first argument can be `--emcee` or `--nuts` to sample the model with the given sampler, the second argument can be `--small` or `--full` to choose the model size (default `--full`). If the nuts sampler is chosen, the third argument can be `--forward` or `--reverse` to choose the autodiff backend (default `--forward`), e.g.
 ```bash
-julia --project -t 16 scripts/julia/training.jl --emcee --small
-julia --project -t 16 scripts/julia/training.jl --nuts --full --reverse
+julia --project -t 16 scripts/julia/training.jl --emcee
+julia --project -t 16 scripts/julia/training.jl --nuts --small --reverse
 ```
+The first script 
 To adjust more parameters, the script has to be edited.
 
 Chains are stored in `data/julia_chains`.

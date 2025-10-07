@@ -6,7 +6,7 @@ sets the time horizon for the piecewise-linear transmission adjustment with
 `n_Δβ` knots.
 """
 function create_SIR(max_T, n_Δβ)
-    nodes = range(0, max_T, length=n_Δβ)
+    nodes = range(0, max_T, length=(n_Δβ+1))
     # linear_int = (t, Δβ) -> begin
     #     idx = clamp(searchsortedlast(nodes, t), 1, length(Δβ) - 1)
     #     t1, t2 = nodes[idx], nodes[idx + 1]
@@ -66,7 +66,7 @@ trajectory.
 Hierarchical Turing model without hard parameter bounds. Fits the SIR system to
 `data` (incidence and hospitalizations) over `t_span` for a population size.
 """
-@model function hierarchical_SIR_wo_bounds(data, population, t_span; n_Δβ=7, dt=7.0, γ=Γ, template=ODEProblem(create_SIR(t_span[2], n_Δβ), zeros(10), t_span, zeros(5+n_Δβ)))
+@model function hierarchical_SIR_wo_bounds(data, population, t_span; n_Δβ=6, dt=7.0, γ=Γ, template=ODEProblem(create_SIR(t_span[2], n_Δβ), zeros(10), t_span, zeros(5+n_Δβ)))
     n_seasons = size(data, 2)
     n_time_steps = size(data, 1)
     @assert n_time_steps == round(Int, (t_span[2] - t_span[1]) / dt) + 1 "data time dimension does not match t_span/dt"
