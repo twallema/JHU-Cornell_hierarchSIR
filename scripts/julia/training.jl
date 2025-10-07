@@ -103,4 +103,4 @@ function run_with_cases(run_case, full_model, small_model, full_init, small_init
     end
 end
 
-@btime run_with_cases(run_case, full_model, small_model, full_init, small_init)
+@time run_with_cases(run_case, full_model, small_model, full_init, small_init)
