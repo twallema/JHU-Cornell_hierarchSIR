@@ -56,23 +56,27 @@ println("Running with case $(run_case)")
 
 if run_case < 0
     # Run benchmarks
-    N_benchmark_inner = 100 # samples per chain
-    N_benchmark_outer = 5  # number of chains
-    seconds = 600
+    N_benchmark_inner = 250 # samples per chain
+    N_benchmark_outer = 15  # number of chains
+    seconds = 12 * 60 * 60   # 12 hours
 
     println("Benchmarking sampling methods:")
 
     emcee_benchmark = @benchmark bench_emcee($small_model, $small_init, $N_benchmark_inner) samples=N_benchmark_outer seconds=seconds
     println("Emcee: ", emcee_benchmark)
+    display(emcee_benchmark)
 
     nuts_default_benchmark = @benchmark bench_nuts_default($small_model, $small_init, $N_benchmark_inner) samples=N_benchmark_outer seconds=seconds
     println("NUTS (default): ", nuts_default_benchmark)
+    display(nuts_default_benchmark)
 
     nuts_forward_benchmark = @benchmark bench_nuts_forward($small_model, $small_init, $N_benchmark_inner) samples=N_benchmark_outer seconds=seconds
     println("NUTS (ForwardDiff): ", nuts_forward_benchmark)
+    display(nuts_forward_benchmark)
 
     nuts_reverse_benchmark = @benchmark bench_nuts_reverse($small_model, $small_init, $N_benchmark_inner) samples=N_benchmark_outer seconds=seconds
     println("NUTS (ReverseDiff): ", nuts_reverse_benchmark)
+    display(nuts_reverse_benchmark)
 
     exit()
 end

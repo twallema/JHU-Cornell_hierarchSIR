@@ -55,9 +55,11 @@ trajectory.
 @inline unpack_value(v::Vector{<:Vector}, t, obs) = v[t][obs]
 @inline unpack_value(v::AbstractMatrix, t, obs) = v[obs, t]
 
-@inline has_succeeded(sol::ODESolution, n_obs, n_time_steps) = sol.retcode == ReturnCode.Success
-@inline has_succeeded(sol::Vector{<:Vector}, n_obs, n_time_steps) = length(sol) == n_time_steps && length(sol[1]) == n_obs && all(x -> all(isfinite, x), sol)
-@inline has_succeeded(sol::AbstractMatrix, n_obs, n_time_steps) = size(sol, 1) == n_obs && size(sol, 2) == n_time_steps && all(isfinite, sol)
+@inline check_elements(x::Array{<:Number}) = all(isfinite, x) && all(>=(0), x)
+@inline check_elements(x::Array{<:AbstractArray}) = all(check_elements, x)
+@inline has_succeeded(sol::Vector{<:Vector}, n_obs, n_time_steps) = length(sol) == n_time_steps && length(sol[1]) == n_obs && check_elements(sol)
+@inline has_succeeded(sol::AbstractMatrix, n_obs, n_time_steps) = size(sol, 1) == n_obs && size(sol, 2) == n_time_steps && check_elements(sol)
+@inline has_succeeded(sol::ODESolution, n_obs, n_time_steps) = (sol.retcode == ReturnCode.Success) && check_elements(sol.u)
 @inline has_succeeded(sol::Nothing) = false
 
 """
@@ -202,8 +204,8 @@ hyper parameters.
             for i in axes(data, 1)
                 d1 = unpack_value(sol, i, 1)
                 d2 = unpack_value(sol, i, 2)
-                data[i, season, 1] ~ Normal(d1, d1 + 0.5)
-                data[i, season, 2] ~ Normal(d2, d2 + 0.5)
+                data[i, season, 1] ~ truncated(Normal(d1, d1 + 0.5), 0, Inf)
+                data[i, season, 2] ~ truncated(Normal(d2, d2 + 0.5), 0, Inf)
             end
         end
     end
