@@ -27,8 +27,8 @@ from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, ma
 ##############
 
 # define seasons and hyperparameter combo's to loop over
-season_lst = ['2024-2025', '2024-2025', '2024-2025', '2024-2025', '2024-2025', '2024-2025']
-hyperparameters_lst = ['2024-2025_training_1', '2024-2025_training_2', '2024-2025_training_3', '2024-2025_training_4', '2024-2025_training_5', '2024-2025_training_6']
+season_lst = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']
+hyperparameters_lst = [None, None, None, None, None, None, None, None]
 
 # model settings/ save settings
 fips_state = 37             # NC
