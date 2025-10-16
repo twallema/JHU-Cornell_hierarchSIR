@@ -65,13 +65,13 @@ start_calibration_month = 10                                                    
 end_calibration_month = 5                                                                                           # end calibration on month 5, day 1
 run_date = datetime.today().strftime("%Y-%m-%d")
 ## define number of chains
-max_n = 100000
+max_n = 50000
 pert = 0.05
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))
 ## printing and postprocessing
-print_n = 100000
+print_n = 50000
 backend = None
-discard = 80000
+discard = 40000
 thin = 500
 
 # Needed for multiprocessing to work properly
@@ -149,7 +149,7 @@ if __name__ == '__main__':
 
         # hyperparameters: use all seasons included as the default starting point
         hyperpars_0 = pd.read_csv('../../data/interim/calibration/hyperparameters.csv', index_col=[0,1,2,3,4])
-        hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, thermal_comfort, use_ED_visits, slice(None)), 'initial_guess'].values.tolist()
+        hyperpars_0 = hyperpars_0.loc[(model_name, immunity_linking, thermal_comfort, use_ED_visits, slice(None)), 'exclude_None'].values.tolist()
 
         # combine
         theta_0 = hyperpars_0 + pars_0
