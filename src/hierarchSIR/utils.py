@@ -559,17 +559,26 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
     """
     if not immunity_linking:
         pars = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']                                       # parameters to calibrate
-        bounds = [(0,0.10), (0.1, 14), (0,0.01), (0,0.60), (1e-9,1e-3), (0.30,0.60), (-0.50,0.50)]                          # parameter bounds
+        bounds = [(0,0.1), (0.1, 7), (0,0.01), (0.10,0.70), (1e-9,1e-3), (0.30,0.60), (-0.30,0.30)]                          # parameter bounds
         labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$f_{R}$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']       # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
-            # assign priors (R0 ~ N(1.6, 0.2); modifiers nudged to zero; all others uninformative)
-            log_prior_prob_fcn = 3*[log_prior_gamma,] + [log_prior_normal,] + [log_prior_gamma,] + 2*[log_prior_normal,]
-            log_prior_prob_fcn_args = [{'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[0])},
-                                       {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[1])},
-                                       {'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[2])},
+            # used for single season fit to get initial guesses
+            # assign priors R0 ~ N(1.6, 0.2, f_R ~ Normal(0.4, 0.1); modifiers centered around zero (revert back to SIR outside data); all others uninformative)
+            # log_prior_prob_fcn = 3*[log_prior_gamma,] + [log_prior_normal,] + [log_prior_gamma,] + 2*[log_prior_normal,]
+            # log_prior_prob_fcn_args = [{'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[0])},
+            #                            {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[1])},
+            #                            {'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[2])},
+            #                            {'avg':  0.4, 'stdev': 0.10},
+            #                            {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[4])},
+            #                            {'avg':  0.455, 'stdev': 0.055},
+            #                            {'avg':  0, 'stdev': 0.10}]
+            log_prior_prob_fcn = 3*[log_prior_uniform,] + [log_prior_normal,] + [log_prior_uniform,] + 2*[log_prior_normal,]
+            log_prior_prob_fcn_args = [{'bounds': bounds[0]},
+                                       {'bounds': bounds[1]},
+                                       {'bounds': bounds[2]},
                                        {'avg':  0.4, 'stdev': 0.10},
-                                       {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[4])},
+                                       {'bounds': bounds[4]},
                                        {'avg':  0.455, 'stdev': 0.055},
                                        {'avg':  0, 'stdev': 0.10}]
         # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -666,19 +675,30 @@ def get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparame
 
     else:
         pars = ['rho_i', 'T_h', 'rho_h', 'iota_1', 'iota_2', 'iota_3', 'f_I', 'beta', 'delta_beta_temporal']                                                # parameters to calibrate
-        bounds = [(0,0.1), (0.1, 14), (0,0.01), (0,0.001), (0,0.001), (0,0.001), (1e-9,1e-3), (0.30,0.60), (-0.50,0.50)]                                    # parameter bounds
+        bounds = [(0,0.1), (0.1, 7), (0,0.01), (0,0.001), (0,0.001), (0,0.001), (1e-9,1e-3), (0.30,0.60), (-0.30,0.30)]                                    # parameter bounds
         labels = [r'$\rho_{i}$', r'$T_h$', r'$\rho_{h}$',  r'$\iota_1$', r'$\iota_2$', r'$\iota_3$', r'$f_{I}$', r'$\beta$', r'$\Delta \beta_{t}$']         # labels in output figures
         # UNINFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         if not hyperparameters:
-            # assign priors (R0 ~ N(1.6, 0.2); modifiers and immunity parameters nudged to zero; all others uninformative)
-            log_prior_prob_fcn = 7*[log_prior_gamma,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
-            log_prior_prob_fcn_args = [{'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[0])},
-                                       {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[1])},
-                                       {'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[2])},
-                                       {'a': 1, 'loc': 0, 'scale': 2E-04},
-                                       {'a': 1, 'loc': 0, 'scale': 2E-04},
-                                       {'a': 1, 'loc': 0, 'scale': 2E-04},
-                                       {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[6])},
+            # used for single season fit to get initial guesses
+            # assign priors R0 ~ N(1.6, 0.2, f_R ~ Normal(0.4, 0.1); modifiers centered around zero (revert back to SIR outside data); all others uninformative)
+            # log_prior_prob_fcn = 7*[log_prior_gamma,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
+            # log_prior_prob_fcn_args = [{'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[0])},
+            #                            {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[1])},
+            #                            {'a': 1, 'loc': 0, 'scale': 0.05*max(bounds[2])},
+            #                            {'a': 1, 'loc': 0, 'scale': 2E-04},
+            #                            {'a': 1, 'loc': 0, 'scale': 2E-04},
+            #                            {'a': 1, 'loc': 0, 'scale': 2E-04},
+            #                            {'a': 1, 'loc': 0, 'scale': 0.1*max(bounds[6])},
+            #                            {'avg':  0.455, 'stdev': 0.055},
+            #                            {'avg':  0, 'stdev': 0.10}]
+            log_prior_prob_fcn = 7*[log_prior_uniform,] + 2*[log_prior_normal,]                                                                                   # prior probability functions
+            log_prior_prob_fcn_args = [{'bounds': bounds[0]},
+                                       {'bounds': bounds[1]},
+                                       {'bounds': bounds[2]},
+                                       {'bounds': bounds[3]},
+                                       {'bounds': bounds[4]},
+                                       {'bounds': bounds[5]},
+                                       {'bounds': bounds[6]},
                                        {'avg':  0.455, 'stdev': 0.055},
                                        {'avg':  0, 'stdev': 0.10}]
         # INFORMED: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
