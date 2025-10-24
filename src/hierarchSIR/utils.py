@@ -815,7 +815,7 @@ from scipy.ndimage import gaussian_filter1d
 def get_transmission_coefficient_timeseries(modifier_vector: np.ndarray,
                                             sigma: float=2.5) -> np.ndarray:
     """
-    A function mapping the modifier_vectors between Sep 15 and May 15 and smoothing it with a gaussian filter
+    A function mapping the modifier_vectors between Oct 15 and Apr 15 and smoothing it with a gaussian filter
 
     input
     -----
