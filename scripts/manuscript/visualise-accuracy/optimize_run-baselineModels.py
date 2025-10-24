@@ -57,7 +57,7 @@ def objective_func(sigma, start_baseline_month, start_baseline_day, end_baseline
 ## compute WIS in function of sigma
 ### compute WIS
 WIS=[]
-sigma = np.arange(0.15,0.60,0.025)
+sigma = np.arange(0.20,0.50,0.01)
 for s in sigma:
     print(s)
     WIS.append(objective_func(s, start_baseline_month, start_baseline_day, end_baseline_month, end_baseline_day))
@@ -74,8 +74,7 @@ ax.plot(sigma, WIS_sum, color='black', marker='s')
 ax.set_xlabel('Baseline model parameter $\\sigma$')
 ax.set_ylabel('Sum of WIS')
 plt.tight_layout()
-#plt.savefig('optimization-baseline-model.pdf')
-plt.show()
+plt.savefig('optimization-baseline-model.pdf')
 plt.close()
 
 ## add model name
@@ -98,7 +97,7 @@ for focal_season in seasons:
         ### COMPUTE historical drift 
         mu_horizon = []
         for i in range(4):
-            ### GET historical drift 
+            ### GET historical drift
             mu, _ = get_historic_drift(focal_season, seasons, date+timedelta(weeks=i), 2)
             mu_horizon.append(mu)
         ### SIMULATE baseline model
@@ -119,7 +118,7 @@ collect_seasons['model'] = 'GRW_drift'
 # Save results
 baselineModels_accuracy = pd.concat([WIS_optim, collect_seasons], axis=0)
 baselineModels_accuracy = baselineModels_accuracy.set_index(['model', 'season', 'reference_date', 'horizon'])
-baselineModels_accuracy.to_csv('../../data/interim/calibration/baselineModels-accuracy.csv')
+baselineModels_accuracy.to_csv('../../../data/interim/calibration/baselineModels-accuracy.csv')
 
 print(baselineModels_accuracy.groupby(by=['model'])['WIS'].mean())
 print(baselineModels_accuracy.groupby(by=['model', 'season'])['WIS'].mean())
