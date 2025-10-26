@@ -194,10 +194,9 @@ def get_demography(fips_state: int) -> int:
 ################################
 
 def get_NC_influenza_data(startdate: datetime,
-                          enddate: datetime,
-                          season: str) -> pd.DataFrame:
+                          enddate: datetime) -> pd.DataFrame:
     """
-    Get the North Carolina Influenza dataset -- containing ED visits, ED admissions and all subtype information -- for a given season
+    Get the North Carolina Influenza dataset between a start and an enddate
 
     input
     -----
@@ -208,9 +207,6 @@ def get_NC_influenza_data(startdate: datetime,
     - enddate: str/datetime
         - end of dataset
 
-    - season: str
-        - influenza season
-
     output
     ------
 
@@ -218,66 +214,11 @@ def get_NC_influenza_data(startdate: datetime,
         - index: 'date' [datetime], columns: 'H_inc', 'I_inc', 'H_inc_A', 'H_inc_B', 'H_inc_AH1', 'H_inc_AH3' (frequency: weekly, converted to daily)
     """
 
-    # load raw Hospitalisation and ILI data + convert to daily incidence
-    data_raw = [
-        pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/raw/cases/hosp-admissions_NC_2010-2025.csv'), index_col=0, parse_dates=True)[['flu_hosp']].squeeze()/7,  # hosp
-        pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/raw/cases/ED-visits_NC_2010-2025.csv'), index_col=0, parse_dates=True)[['flu_ED']].squeeze()/7               # ILI
-            ]   
-    # rename 
-    data_raw[0] = data_raw[0].rename('H_inc')
-    data_raw[1] = data_raw[1].rename('I_inc')
-    # merge
-    data_raw = pd.concat(data_raw, axis=1)
-    # change index name
-    data_raw.index.name = 'date'
-    # slice right dates
-    data_raw = data_raw.loc[slice(startdate,enddate)]
-    # load subtype data flu A vs. flu B
-    df_subtype = pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/cases/subtypes_NC_14-25.csv'), index_col=1, parse_dates=True)
-    # load right season
-    df_subtype = df_subtype[df_subtype['season']==season][['flu_A', 'flu_B']]
-    # merge with the epi data
-    df_merged = pd.merge(data_raw, df_subtype, how='outer', left_on='date', right_on='date')
-    # assume a 50/50 ratio where no subtype data is available
-    df_merged[['flu_A', 'flu_B']] = df_merged[['flu_A', 'flu_B']].fillna(1)
-    # compute fraction of Flu A
-    df_merged['fraction_A'] = df_merged['flu_A'] / (df_merged['flu_A'] + df_merged['flu_B']) # compute percent A
-    # re-compute flu A and flu B cases
-    df_merged['H_inc_A'] = df_merged['H_inc'] * df_merged['fraction_A']
-    df_merged['H_inc_B'] = df_merged['H_inc'] * (1-df_merged['fraction_A'])
-    # throw out rows with na
-    df_merged = df_merged.dropna()
-    # throw out `fraction_A`
-    df = df_merged[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B']].loc[slice(startdate,enddate)]
-    # load FluVIEW subtype data to get flu A (H1) vs. flu A (H3)
-    df_subtype = pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/cases/subtypes_FluVIEW-interactive_14-25.csv'))
-    # select South HHS region
-    df_subtype = df_subtype[df_subtype['REGION'] == 'Region 4']
-    # convert year + week to a date YYYY-MM-DD index on Saturday
-    df_subtype['date'] = df_subtype.apply(lambda row: get_cdc_week_saturday(row['YEAR'], row['WEEK']), axis=1)
-    # compute ratios of Flu A (H1) / Flu A (H3)
-    df_subtype['ratio_H1'] = df_subtype['A (H1)'] / (df_subtype['A (H1)'] + df_subtype['A (H3)'])
-    # what if there is no flu A (H1) or flu A (H3)
-    df_subtype['ratio_H1'] = df_subtype['ratio_H1'].fillna(1)
-    # retain only relevant columns
-    df_subtype = df_subtype[['date', 'ratio_H1']].set_index('date').squeeze()
-    # merge with dataset
-    df_merged = df.merge(df_subtype, left_index=True, right_index=True, how='left')
-    # compute A (H1) and A (H3)
-    df_merged['H_inc_AH1'] = df_merged['H_inc_A'] * df_merged['ratio_H1']
-    df_merged['H_inc_AH3'] = df_merged['H_inc_A'] * (1 - df_merged['ratio_H1'])
-    return df_merged[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B', 'H_inc_AH1', 'H_inc_AH3']]
+    # load data and slice out right dates
+    data = pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/cases/incidences_NC.csv'), index_col=0, parse_dates=True).loc[slice(startdate, enddate)]
 
-def get_cdc_week_saturday(year, week):
-    # CDC epiweeks start on Sunday and end on Saturday
-    # CDC week 1 is the week with at least 4 days in January
-    # Start from Jan 4th and find the Sunday of that week
-    jan4 = datetime(year, 1, 4)
-    start_of_week1 = jan4 - timedelta(days=jan4.weekday() + 1)  # Move to previous Sunday
+    return data[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B', 'H_inc_AH1', 'H_inc_AH3']]
 
-    # Add (week - 1) weeks and 6 days to get Saturday
-    saturday_of_week = start_of_week1 + timedelta(weeks=week-1, days=6)
-    return saturday_of_week
 
 def get_NC_cumulatives_per_season() -> pd.DataFrame:
     """
@@ -289,41 +230,8 @@ def get_NC_cumulatives_per_season() -> pd.DataFrame:
     cumulatives: pd.DataFrame
         index: season, horizon. columns: I_inc, H_inc, H_inc_A, H_inc_B, H_inc_AH1, H_inc_AH3.
     """
-    # define seasons we want output for
-    seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2022-2023', '2023-2024', '2024-2025']
 
-    # loop over them
-    seasons_collect = []
-    for season in seasons:
-        # get the season start
-        season_start = int(season[0:4])
-        # go back two seasons
-        horizons_collect = []
-        for i in [0, -1, -2, -3]:
-            # get the data
-            data = get_NC_influenza_data(datetime(season_start+i,10,1), datetime(season_start+1+i,5,1), f'{season_start+i}-{season_start+1+i}')*7
-            # calculate cumulative totals
-            column_sums = {
-                "horizon": i,
-                "H_inc": data["H_inc"].sum(),
-                "I_inc": data["I_inc"].sum(),
-                "H_inc_A": data["H_inc_A"].sum(),
-                "H_inc_B": data["H_inc_B"].sum(),
-                "H_inc_AH1": data["H_inc_AH1"].sum(),
-                "H_inc_AH3": data["H_inc_AH3"].sum(),
-            }
-            # create the DataFrame
-            horizons_collect.append(pd.DataFrame([column_sums]))
-        # concatenate data
-        data = pd.concat(horizons_collect)
-        # add current season
-        data['season'] = season    
-        # add to archive
-        seasons_collect.append(data)
-    # concatenate across seasons
-    data = pd.concat(seasons_collect).set_index(['season', 'horizon'])
-
-    return data
+    return pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/cases/historic-cumulatives_NC.csv'), index_col=[0,1])
 
 
 from pySODM.optimization.objective_functions import ll_poisson
@@ -374,51 +282,51 @@ def make_data_pySODM_compatible(strains: int,
         log_likelihood_fnc = len(states) * [ll_poisson,]
         log_likelihood_fnc_args = len(states) * [[],]
         # pySODM formatting for flu A H1
-        flu_AH1 = get_NC_influenza_data(start_date, end_date, season)['H_inc_AH1']
+        flu_AH1 = get_NC_influenza_data(start_date, end_date)['H_inc_AH1']
         flu_AH1 = flu_AH1.rename('H_inc') # pd.Series needs to have matching model state's name
         flu_AH1 = flu_AH1.reset_index()
         flu_AH1['strain'] = 0
         flu_AH1 = flu_AH1.set_index(['date', 'strain']).squeeze()
         # pySODM formatting for flu A H3
-        flu_AH3 = get_NC_influenza_data(start_date, end_date, season)['H_inc_AH3']
+        flu_AH3 = get_NC_influenza_data(start_date, end_date)['H_inc_AH3']
         flu_AH3 = flu_AH3.rename('H_inc') # pd.Series needs to have matching model state's name
         flu_AH3 = flu_AH3.reset_index()
         flu_AH3['strain'] = 1
         flu_AH3 = flu_AH3.set_index(['date', 'strain']).squeeze()
         # pySODM formatting for flu B
-        flu_B = get_NC_influenza_data(start_date, end_date, season)['H_inc_B']
+        flu_B = get_NC_influenza_data(start_date, end_date)['H_inc_B']
         flu_B = flu_B.rename('H_inc') # pd.Series needs to have matching model state's name
         flu_B = flu_B.reset_index()
         flu_B['strain'] = 2
         flu_B = flu_B.set_index(['date', 'strain']).squeeze()
         # attach all datasets
-        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_AH1, flu_AH3, flu_B, get_NC_influenza_data(start_date, end_date, season)['H_inc']]
+        data = [get_NC_influenza_data(start_date, end_date)['I_inc'], flu_AH1, flu_AH3, flu_B, get_NC_influenza_data(start_date, end_date)['H_inc']]
     elif strains == 2:
         # pySODM llp data arguments
         states = ['I_inc', 'H_inc', 'H_inc', 'H_inc']
         log_likelihood_fnc = len(states) * [ll_poisson,]
         log_likelihood_fnc_args = len(states) * [[],]
         # pySODM formatting for flu A
-        flu_A = get_NC_influenza_data(start_date, end_date, season)['H_inc_A']
+        flu_A = get_NC_influenza_data(start_date, end_date)['H_inc_A']
         flu_A = flu_A.rename('H_inc') # pd.Series needs to have matching model state's name
         flu_A = flu_A.reset_index()
         flu_A['strain'] = 0
         flu_A = flu_A.set_index(['date', 'strain']).squeeze()
         # pySODM formatting for flu B
-        flu_B = get_NC_influenza_data(start_date, end_date, season)['H_inc_B']
+        flu_B = get_NC_influenza_data(start_date, end_date)['H_inc_B']
         flu_B = flu_B.rename('H_inc') # pd.Series needs to have matching model state's name
         flu_B = flu_B.reset_index()
         flu_B['strain'] = 1
         flu_B = flu_B.set_index(['date', 'strain']).squeeze()
         # attach all datasets
-        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], flu_A, flu_B, get_NC_influenza_data(start_date, end_date, season)['H_inc']]
+        data = [get_NC_influenza_data(start_date, end_date)['I_inc'], flu_A, flu_B, get_NC_influenza_data(start_date, end_date)['H_inc']]
     elif strains == 1:
         # pySODM llp data arguments
         states = ['I_inc', 'H_inc']
         log_likelihood_fnc = len(states) * [ll_poisson,]
         log_likelihood_fnc_args = len(states) * [[],]
         # pySODM data
-        data = [get_NC_influenza_data(start_date, end_date, season)['I_inc'], get_NC_influenza_data(start_date, end_date, season)['H_inc']]
+        data = [get_NC_influenza_data(start_date, end_date)['I_inc'], get_NC_influenza_data(start_date, end_date)['H_inc']]
     # omit I_inc
     if not use_ED_visits:
         data = data[1:]

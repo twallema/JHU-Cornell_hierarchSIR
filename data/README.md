@@ -36,6 +36,10 @@ Contains an overview of the raw data sources, and the conversion scripts used to
 
 + `subtypes_FluVIEW-interactive_14-25.csv`: Contains the weekly subtype interformation for the US' HHS regions from 2014-2025. Columns: "REGION TYPE", "YEAR", "WEEK", "A (H1)", "A(H3)", "B".  Built by combining `ICL_NREVSS_Combined_prior_to_2015_16.csv` and `ICL_NREVSS_Public_Health_Labs.csv`. From `ICL_NREVSS_Public_Health_Labs.csv`, only the column "B" was retained and not the subtyping of B into Yam and Vic, this was not done because this dataset is only used to determine the ratio of A(H1) vs A(H3).  Week 53 of 2015 had to be inserted manually, it is a copy of week 52. Week 53 of 2014 had to be removed, for some weird reason.
 
++ `incidences_NC.csv`: Contains the weekly incidence of ED visits (`I_inc`) and ED admissions (`H_inc`) in North Carolina, divided by seven. Also contains the weekly ED admissions for Influenza A and B, as well as Influenza AH1N1 and AH3N2. Made using `data/conversion/cases/build-NC-cases.py`.
+
++ `historic-cumulatives_NC.csv`: Contains, for a given season, the cumulative influenza incidence in prior seasons. Made using `data/conversion/cases/build-NC-cases.py`.
+
 ### Vaccination
  
 + `vaccination_incidences_2010-2024.csv`: Formats the raw vaccination data from 2010-2024, `vacc_alldoses_age_Flu_2024_R1_allflu_allseasons.csv`, to use the naming conventions used in this software.
@@ -49,6 +53,10 @@ Contains an overview of the raw data sources, and the conversion scripts used to
 ### Demography
 
 + `build-demography.py`: Script used to build the US state-level demography.
+
+### Cases
+
++ `build-NC-cases.py`: A script used to format the raw NC ED admissions and visits, as well as subtype data, into a clean dataframe of influenza incidences per subtype.
 
 ### Vaccination
 
