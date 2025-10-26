@@ -82,7 +82,7 @@ if __name__ == '__main__':
         ## dates
         season_start = int(season[0:4])                             # start year of season
         start_simulation = datetime(season_start, 10, 1)            # date forward simulation is started
-        start_calibration = datetime(season_start, 11, 15)          # incremental calibration will start from here
+        start_calibration = datetime(season_start+1, 4, 15)          # incremental calibration will start from here
         end_calibration = datetime(season_start+1, 4, 7)            # and incrementally (weekly) calibrate until this date
         end_validation = datetime(season_start+1, 5, 1)             # enddate of validation data used on plots
 
@@ -97,7 +97,7 @@ if __name__ == '__main__':
         theta = list(pd.read_csv('../../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2]).loc[(model_name, immunity_linking, slice(None))].mean(axis=1))
 
         # format data
-        data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(strains, use_ED_visits, start_simulation, end_calibration, season)
+        data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(strains, use_ED_visits, start_simulation, end_calibration, str(fips_state))
 
         #################
         ## Setup model ##

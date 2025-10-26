@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import gmean
 from datetime import datetime, timedelta
-from hierarchSIR.utils import get_NC_influenza_data
+from hierarchSIR.utils import get_influenza_data
 from hierarchSIR.accuracy import compute_WIS
 
 # helper function
@@ -120,7 +120,7 @@ for mn in model_names:
                                 ## append to list
                                 simouts.append(tmp)
                                 ## get groundthruth data (+ the forecast horizon of four weeks)
-                                data = get_NC_influenza_data(reference_date+timedelta(weeks=-1), reference_date+timedelta(weeks=3), season)['H_inc']*7
+                                data = get_influenza_data(reference_date+timedelta(weeks=-1), reference_date+timedelta(weeks=3), location)['H_inc']*7
                                 datas.append(data)
                                 ## get baseline WIS scores
                                 baseline = pd.read_csv('baselineModels-accuracy.csv', parse_dates=True, date_format='%Y-%m-%d')

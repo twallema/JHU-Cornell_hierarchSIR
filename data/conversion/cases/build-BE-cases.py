@@ -164,7 +164,7 @@ df_merged['H_inc_AH1'] =  df_merged['H_inc_A'] * (df_merged['perc_h1n1'] / (df_m
 df_merged['H_inc_AH3'] =  df_merged['H_inc_A'] * (df_merged['perc_h3n2'] / (df_merged['perc_h1n1'] + df_merged['perc_h3n2']))
 # retain only relevant columns
 df_merged = df_merged[['season', 'I_inc', 'H_inc', 'H_inc_A', 'H_inc_B', 'H_inc_AH1', 'H_inc_AH3']]
-df_merged.to_csv(os.path.join(abs_dir, '../../interim/cases/incidences_BE.csv'), index=True)
+df_merged.to_csv(os.path.join(abs_dir, '../../interim/cases/incidences_57.csv'), index=True)
 
 
 ######################################
@@ -203,5 +203,5 @@ for season in seasons:
     seasons_collect.append(data)
 # concatenate across seasons
 data = pd.concat(seasons_collect).set_index(['season', 'horizon'])
-data.to_csv(os.path.join(abs_dir, '../../interim/cases/historic-cumulatives_BE.csv'), index=True)
+data.to_csv(os.path.join(abs_dir, '../../interim/cases/historic-cumulatives_57.csv'), index=True)
 

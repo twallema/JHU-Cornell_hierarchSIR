@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
-from hierarchSIR.utils import get_NC_influenza_data
+from hierarchSIR.utils import get_influenza_data
 from hierarchSIR.accuracy import simulate_geometric_random_walk, compute_WIS, get_historic_drift
 
 # settings
@@ -35,9 +35,9 @@ def objective_func(sigma, start_baseline_month, start_baseline_day, end_baseline
     collect_seasons=[]
     for season in seasons:
         ## get the data
-        data = 7*get_NC_influenza_data(datetime(int(season[0:4]), start_baseline_month, start_baseline_day) - timedelta(weeks=1),
+        data = 7*get_influenza_data(datetime(int(season[0:4]), start_baseline_month, start_baseline_day) - timedelta(weeks=1),
                                        datetime(int(season[0:4])+1, end_baseline_month, end_baseline_day)+timedelta(weeks=4),
-                                       season)['H_inc']
+                                       location)['H_inc']
         ## LOOP weeks
         collect_weeks=[]
         for date in data.index[:-4]:
@@ -88,9 +88,9 @@ WIS_optim['model'] = 'GRW_nodrift'
 collect_seasons=[]
 for focal_season in seasons:
     ## get the current season's data
-    data = 7*get_NC_influenza_data(datetime(int(focal_season[0:4]), start_baseline_month, start_baseline_day) - timedelta(weeks=1),
+    data = 7*get_influenza_data(datetime(int(focal_season[0:4]), start_baseline_month, start_baseline_day) - timedelta(weeks=1),
                                     datetime(int(focal_season[0:4])+1, end_baseline_month, end_baseline_day)+timedelta(weeks=4),
-                                    focal_season)['H_inc']
+                                    location)['H_inc']
     ## LOOP weeks
     collect_weeks=[]
     for date in data.index[:-4]:
@@ -98,7 +98,7 @@ for focal_season in seasons:
         mu_horizon = []
         for i in range(4):
             ### GET historical drift
-            mu, _ = get_historic_drift(focal_season, seasons, date+timedelta(weeks=i), 2)
+            mu, _ = get_historic_drift(focal_season, seasons, date+timedelta(weeks=i), 2, location)
             mu_horizon.append(mu)
         ### SIMULATE baseline model
         simout = simulate_geometric_random_walk(mu_horizon, sigma_optim, date, data[date], n_sim=1000)

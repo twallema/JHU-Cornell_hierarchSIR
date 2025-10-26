@@ -6,6 +6,7 @@ from hierarchSIR.training import log_posterior_probability
 from hierarchSIR.utils import initialise_model, make_data_pySODM_compatible
 
 # Define model settings
+fips_state = 37
 strains = 2
 seasons = ['2017-2018', '2018-2019']
 season = seasons[0]
@@ -14,14 +15,14 @@ immunity_linking = False
 use_ED_visits = False
 
 # initialise model
-model = initialise_model(strains, immunity_linking=immunity_linking, season=season)
+model = initialise_model(strains, immunity_linking=immunity_linking, season=season, fips_state=37)
 
 # get and format data
 start_calibrations = [datetime(int(season[0:4]), 10, 1) for season in seasons]
 end_calibrations = [datetime(int(season[0:4])+1, 5, 1) for season in seasons]
 datasets = []
 for start_calibration, end_calibration, season in zip(start_calibrations, end_calibrations, seasons):
-    data, _, _, _ = make_data_pySODM_compatible(strains, use_ED_visits, start_calibration, end_calibration, season)
+    data, _, _, _ = make_data_pySODM_compatible(strains, use_ED_visits, start_calibration, end_calibration, str(fips_state))
     datasets.append(data)
 
 # define parameters, their bounds and their hyperdistributions

@@ -4,7 +4,7 @@ import pandas as pd
 import xarray as xr
 from scipy.stats import linregress
 from datetime import datetime, timedelta
-from hierarchSIR.utils import get_NC_influenza_data
+from hierarchSIR.utils import get_influenza_data
 
 def compute_WIS(simout, data):
     """
@@ -156,7 +156,7 @@ def simulate_geometric_random_walk(mu, sigma, data_end_date, data_end_value, n_s
     return df
 
 
-def get_historic_drift(focal_season, seasons, date, drift_horizon):
+def get_historic_drift(focal_season, seasons, date, drift_horizon, location):
     """A function to compute the drift in a historical dataset over a horizon
     """
     historic_slopes=[]
@@ -167,9 +167,9 @@ def get_historic_drift(focal_season, seasons, date, drift_horizon):
         #### handle leap years
         month, day = (3,1) if ((date.month == 2) & (date.day == 29) & (year % 4 != 0)) else (date.month, date.day)
         #### extract data
-        historic_data = 7*get_NC_influenza_data(datetime(year, month, day) - timedelta(days=0),
+        historic_data = 7*get_influenza_data(datetime(year, month, day) - timedelta(days=0),
                                 datetime(year, month, day)+timedelta(weeks=drift_horizon),
-                                historic_season)['H_inc'].to_frame().iloc[-drift_horizon:]
+                                location)['H_inc'].to_frame().iloc[-drift_horizon:]
         historic_data = historic_data.reset_index()
         historic_data['horizon'] = 7*np.array((range(-drift_horizon, 0)))
         historic_data = historic_data[['horizon', 'H_inc']]

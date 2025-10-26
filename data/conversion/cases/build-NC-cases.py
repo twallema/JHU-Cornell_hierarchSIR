@@ -91,7 +91,7 @@ df_merged['H_inc_AH3'] = df_merged['H_inc_A'] * (1 - df_merged['ratio_H1'])
 df_merged["season"] = df_merged.index.map(get_season_label)
 # only retain post-2014
 df_merged = df_merged[['season', 'H_inc', 'I_inc', 'H_inc_A', 'H_inc_B', 'H_inc_AH1', 'H_inc_AH3']]#.loc[slice(datetime(2014,9,1), None)]
-df_merged.to_csv(os.path.join(abs_dir, '../../interim/cases/incidences_NC.csv'), index=True)
+df_merged.to_csv(os.path.join(abs_dir, '../../interim/cases/incidences_37.csv'), index=True)
 
 
 ######################################
@@ -130,5 +130,5 @@ for season in seasons:
     seasons_collect.append(data)
 # concatenate across seasons
 data = pd.concat(seasons_collect).set_index(['season', 'horizon'])
-data.to_csv(os.path.join(abs_dir, '../../interim/cases/historic-cumulatives_NC.csv'), index=True)
+data.to_csv(os.path.join(abs_dir, '../../interim/cases/historic-cumulatives_37.csv'), index=True)
 
