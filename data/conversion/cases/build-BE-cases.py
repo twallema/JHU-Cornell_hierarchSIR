@@ -159,13 +159,15 @@ df_merged['I_inc'] = df_merged['ILI_0to100']
 df_merged['H_inc'] = df_merged['ILI_0to100']
 df_merged['H_inc_A'] = df_merged['H_inc'] * (df_merged['perc_h1n1'] + df_merged['perc_h3n2'] + df_merged['perc_flu_a_notsubtyped'])
 df_merged['H_inc_B'] = df_merged['H_inc'] * (df_merged['perc_yam'] + df_merged['perc_vic'] + df_merged['perc_flu_b_nolineage'])
-# get rid of unnecessary columns
+# unpack to flu AH1N1 and AH3N2
 df_merged['H_inc_AH1'] =  df_merged['H_inc_A'] * (df_merged['perc_h1n1'] / (df_merged['perc_h1n1'] + df_merged['perc_h3n2']))
 df_merged['H_inc_AH3'] =  df_merged['H_inc_A'] * (df_merged['perc_h3n2'] / (df_merged['perc_h1n1'] + df_merged['perc_h3n2']))
+# if no flu A was subtyped impute 50/50
+df_merged['H_inc_AH1'] = df_merged['H_inc_AH1'].fillna(0.5)
+df_merged['H_inc_AH3'] = df_merged['H_inc_AH3'].fillna(0.5)
 # retain only relevant columns
 df_merged = df_merged[['season', 'I_inc', 'H_inc', 'H_inc_A', 'H_inc_B', 'H_inc_AH1', 'H_inc_AH3']]
 df_merged.to_csv(os.path.join(abs_dir, '../../interim/cases/incidences_57.csv'), index=True)
-
 
 ######################################
 ## build season cumulatives dataset ##

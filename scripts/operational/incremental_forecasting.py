@@ -31,20 +31,20 @@ season_lst = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '
 hyperparameters_lst = [None, None, None, None, None, None, None, None]
 
 # model settings/ save settings
-fips_state = 37             # NC
+fips_state = 57             # NC
 quantiles = False           # save quantiles vs. individual trajectories 
 
 # optimization parameters
 ## frequentist optimization
-n_nm = 2000                                                     # Number of NM search iterations
+n_nm = 500                                                     # Number of NM search iterations
 ## bayesian inference
-n_mcmc = 8000                                                   # Number of MCMC iterations
+n_mcmc = 2000                                                   # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 8000                                                  # Print diagnostics every `print_n`` iterations
-discard = 6000                                                  # Discard first `discard` iterations as burn-in
+print_n = 2000                                                  # Print diagnostics every `print_n`` iterations
+discard = 1000                                                  # Discard first `discard` iterations as burn-in
 thin = 100                                                      # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
-n = 1000                                                        # Number of simulations performed in MCMC goodness-of-fit figure
+n = 100                                                        # Number of simulations performed in MCMC goodness-of-fit figure
 
 #####################
 ## Parse arguments ##
@@ -82,7 +82,7 @@ if __name__ == '__main__':
         ## dates
         season_start = int(season[0:4])                             # start year of season
         start_simulation = datetime(season_start, 10, 1)            # date forward simulation is started
-        start_calibration = datetime(season_start+1, 4, 15)          # incremental calibration will start from here
+        start_calibration = datetime(season_start+1, 4, 1)          # incremental calibration will start from here
         end_calibration = datetime(season_start+1, 4, 7)            # and incrementally (weekly) calibrate until this date
         end_validation = datetime(season_start+1, 5, 1)             # enddate of validation data used on plots
 
@@ -140,7 +140,7 @@ if __name__ == '__main__':
             else:
                 weights = [1/max(df) for df in data_calib]
                 weights = np.array(weights) / np.mean(weights)
-                
+
             # Setup objective function (no priors defined = uniform priors based on bounds)
             lpp = log_posterior_probability(model, pars, bounds, data_calib, states, log_likelihood_fnc, log_likelihood_fnc_args,
                                                             log_prior_prob_fnc=log_prior_prob_fcn, log_prior_prob_fnc_args=log_prior_prob_fcn_args,

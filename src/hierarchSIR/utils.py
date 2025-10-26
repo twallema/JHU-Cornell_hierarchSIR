@@ -54,14 +54,14 @@ def initialise_model(strains=False, immunity_linking=False, season=None, fips_st
     # initialise initial condition function
     if immunity_linking:
         if strains==3:
-            historic_cumulative_incidence = get_cumulatives_per_season()[['H_inc_AH1', 'H_inc_AH3', 'H_inc_B']]
+            historic_cumulative_incidence = get_cumulatives_per_season(fips_state)[['H_inc_AH1', 'H_inc_AH3', 'H_inc_B']]
         elif strains==2:
-            historic_cumulative_incidence = get_cumulatives_per_season()[['H_inc_A', 'H_inc_B']]
+            historic_cumulative_incidence = get_cumulatives_per_season(fips_state)[['H_inc_A', 'H_inc_B']]
         else:
-            historic_cumulative_incidence = get_cumulatives_per_season()['H_inc']
+            historic_cumulative_incidence = get_cumulatives_per_season(fips_state)['H_inc']
         ICF = initial_condition_function(population, historic_cumulative_incidence).w_immunity_linking
     else:
-        historic_cumulative_incidence = get_cumulatives_per_season()['H_inc']
+        historic_cumulative_incidence = get_cumulatives_per_season(fips_state)['H_inc']
         ICF = initial_condition_function(population, historic_cumulative_incidence).wo_immunity_linking
 
     # adjust parameters dictionary
@@ -195,7 +195,7 @@ def get_demography(fips_state: int) -> int:
 
 def get_influenza_data(startdate: datetime,
                           enddate: datetime,
-                            location: str) -> pd.DataFrame:
+                            fips_state: int) -> pd.DataFrame:
     """
     Get the North Carolina Influenza dataset between a start and an enddate
 
@@ -208,8 +208,8 @@ def get_influenza_data(startdate: datetime,
     - enddate: str/datetime
         - end of dataset
 
-    - location: str
-        - NC or BE
+    - fips_state: int
+        - 37 or 57 (NC or BE)
 
     output
     ------
@@ -219,20 +219,20 @@ def get_influenza_data(startdate: datetime,
     """
 
     # load data and slice out right dates
-    data = pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/cases/incidences_{location}.csv'), index_col=0, parse_dates=True).loc[slice(startdate, enddate)]
+    data = pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/cases/incidences_{fips_state}.csv'), index_col=0, parse_dates=True).loc[slice(startdate, enddate)]
 
     return data[['H_inc', 'I_inc', 'H_inc_A', 'H_inc_B', 'H_inc_AH1', 'H_inc_AH3']]
 
 
-def get_cumulatives_per_season(location: str) -> pd.DataFrame:
+def get_cumulatives_per_season(fips_state: int) -> pd.DataFrame:
     """
     A function that returns, for each season, the cumulative total incidence in the season - 0, season - 1 and season - 2.
 
     input
     ------
 
-    - location: str
-        - NC or BE
+    - fips_state: int
+        - 37 or 57 (NC or BE)
 
     output
     ------
@@ -241,7 +241,7 @@ def get_cumulatives_per_season(location: str) -> pd.DataFrame:
         index: season, horizon. columns: I_inc, H_inc, H_inc_A, H_inc_B, H_inc_AH1, H_inc_AH3.
     """
 
-    return pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/cases/historic-cumulatives_{location}.csv'), index_col=[0,1])
+    return pd.read_csv(os.path.join(os.path.dirname(__file__),f'../../data/interim/cases/historic-cumulatives_{fips_state}.csv'), index_col=[0,1])
 
 
 from pySODM.optimization.objective_functions import ll_poisson
@@ -249,7 +249,7 @@ def make_data_pySODM_compatible(strains: int,
                                 use_ED_visits: bool,
                                 start_date: datetime,
                                 end_date: datetime,
-                                location: str): 
+                                fips_state: int): 
     """
     A function formatting the NC Influenza data in pySODM format depending on the desire to use strain or ED visit information
 
@@ -292,51 +292,51 @@ def make_data_pySODM_compatible(strains: int,
         log_likelihood_fnc = len(states) * [ll_poisson,]
         log_likelihood_fnc_args = len(states) * [[],]
         # pySODM formatting for flu A H1
-        flu_AH1 = get_influenza_data(start_date, end_date, location)['H_inc_AH1']
+        flu_AH1 = get_influenza_data(start_date, end_date, fips_state)['H_inc_AH1']
         flu_AH1 = flu_AH1.rename('H_inc') # pd.Series needs to have matching model state's name
         flu_AH1 = flu_AH1.reset_index()
         flu_AH1['strain'] = 0
         flu_AH1 = flu_AH1.set_index(['date', 'strain']).squeeze()
         # pySODM formatting for flu A H3
-        flu_AH3 = get_influenza_data(start_date, end_date, location)['H_inc_AH3']
+        flu_AH3 = get_influenza_data(start_date, end_date, fips_state)['H_inc_AH3']
         flu_AH3 = flu_AH3.rename('H_inc') # pd.Series needs to have matching model state's name
         flu_AH3 = flu_AH3.reset_index()
         flu_AH3['strain'] = 1
         flu_AH3 = flu_AH3.set_index(['date', 'strain']).squeeze()
         # pySODM formatting for flu B
-        flu_B = get_influenza_data(start_date, end_date, location)['H_inc_B']
+        flu_B = get_influenza_data(start_date, end_date, fips_state)['H_inc_B']
         flu_B = flu_B.rename('H_inc') # pd.Series needs to have matching model state's name
         flu_B = flu_B.reset_index()
         flu_B['strain'] = 2
         flu_B = flu_B.set_index(['date', 'strain']).squeeze()
         # attach all datasets
-        data = [get_influenza_data(start_date, end_date, location)['I_inc'], flu_AH1, flu_AH3, flu_B, get_influenza_data(start_date, end_date, location)['H_inc']]
+        data = [get_influenza_data(start_date, end_date, fips_state)['I_inc'], flu_AH1, flu_AH3, flu_B, get_influenza_data(start_date, end_date, fips_state)['H_inc']]
     elif strains == 2:
         # pySODM llp data arguments
         states = ['I_inc', 'H_inc', 'H_inc', 'H_inc']
         log_likelihood_fnc = len(states) * [ll_poisson,]
         log_likelihood_fnc_args = len(states) * [[],]
         # pySODM formatting for flu A
-        flu_A = get_influenza_data(start_date, end_date, location)['H_inc_A']
+        flu_A = get_influenza_data(start_date, end_date, fips_state)['H_inc_A']
         flu_A = flu_A.rename('H_inc') # pd.Series needs to have matching model state's name
         flu_A = flu_A.reset_index()
         flu_A['strain'] = 0
         flu_A = flu_A.set_index(['date', 'strain']).squeeze()
         # pySODM formatting for flu B
-        flu_B = get_influenza_data(start_date, end_date, location)['H_inc_B']
+        flu_B = get_influenza_data(start_date, end_date, fips_state)['H_inc_B']
         flu_B = flu_B.rename('H_inc') # pd.Series needs to have matching model state's name
         flu_B = flu_B.reset_index()
         flu_B['strain'] = 1
         flu_B = flu_B.set_index(['date', 'strain']).squeeze()
         # attach all datasets
-        data = [get_influenza_data(start_date, end_date, location)['I_inc'], flu_A, flu_B, get_influenza_data(start_date, end_date, location)['H_inc']]
+        data = [get_influenza_data(start_date, end_date, fips_state)['I_inc'], flu_A, flu_B, get_influenza_data(start_date, end_date, fips_state)['H_inc']]
     elif strains == 1:
         # pySODM llp data arguments
         states = ['I_inc', 'H_inc']
         log_likelihood_fnc = len(states) * [ll_poisson,]
         log_likelihood_fnc_args = len(states) * [[],]
         # pySODM data
-        data = [get_influenza_data(start_date, end_date, location)['I_inc'], get_influenza_data(start_date, end_date, location)['H_inc']]
+        data = [get_influenza_data(start_date, end_date, fips_state)['I_inc'], get_influenza_data(start_date, end_date, fips_state)['H_inc']]
     # omit I_inc
     if not use_ED_visits:
         data = data[1:]
