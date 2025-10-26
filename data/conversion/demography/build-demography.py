@@ -50,5 +50,8 @@ out = merged_df.drop(columns=["STATE", "DIVISION"])
 # rename column
 out = out.rename(columns={"POPEST2020_CIV": "population"})
 
+# add Belgium
+out.loc[51] = ['BE', '69', 'belgium', 11430000,'Europe']
+
 # save
 out.to_csv(os.path.join(os.getcwd(),'../../interim/demography/demography.csv'), index=False)
