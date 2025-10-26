@@ -169,3 +169,8 @@ dmypy.json
 data/raw/thermal_comfort_indices/*.nc
 data/interim/calibration/incremental-calibration
 data/interim/calibration/hierarchical-training
+
+## Confidential Belgian Influenza dataset
+data/raw/cases/DTA_JH_2024_update14112024.xlsx
+data/interim/cases/historic-cumulatives_BE.csv
+data/interim/cases/incidences_BE.csv
