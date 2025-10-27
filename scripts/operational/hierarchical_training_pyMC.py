@@ -6,15 +6,13 @@ __author__      = "Tijs Alleman"
 __copyright__   = "Copyright (c) 2025 by T.W. Alleman, IDD Group, Johns Hopkins Bloomberg School of Public Health. All Rights Reserved."
 
 import sys,os
-import emcee
+import math
 import argparse
 import numpy as np
 import pandas as pd
 import multiprocessing as mp
 from datetime import datetime
-from multiprocessing import get_context
-from hierarchSIR.training import log_posterior_probability, dump_sampler_to_xarray, traceplot, plot_fit, hyperdistributions
-from hierarchSIR.utils import initialise_model, make_data_pySODM_compatible, str_to_bool, get_NC_influenza_data
+from hierarchSIR.utils import initialise_model, str_to_bool, get_NC_influenza_data
 
 import pytensor
 import pymc as pm
@@ -179,8 +177,6 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
     # Apply perturbations to create the 2D array
     pos = np.array(theta_0)[None, :] * perturbations
 
-    import sys
-    sys.exit()
 
     #######################
     ## Define pyMC model ##
@@ -190,17 +186,12 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
     n_strains = strains
     n_seasons = len(seasons)
     within_season_parameter_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
-    coords = {
-        'season': seasons,
-        'strains': range(n_strains),
-    }
 
     def flatten_within_season_params(i, params):
         return pt.concatenate([
             pt.flatten(p[i]) for p in params
         ])
     
-    import math
     def sim_one_season(theta, parameter_names, model_states, strain_coords, start_date, end_date, eval_dates):
 
         # unflatten within-season parameters and assign to model
