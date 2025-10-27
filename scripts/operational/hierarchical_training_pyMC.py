@@ -99,7 +99,7 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
 
         eval_dates = []
         data = []
-        # loop ove rseasons
+        # loop over seasons
         for start_calibration in start_calibrations:
             # get the data & trim temporally
             df = get_NC_influenza_data(start_calibration, None).iloc[:n_observations]
@@ -113,11 +113,19 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
                 data_season.append(df['H_inc'].values)
                 model_states.append('H_inc')
                 strain_coords.append(None)
-            # append ED visits
+            elif strains == 2:
+                data_season.extend([df['H_inc_A'].values, df['H_inc_B'].values, df['H_inc'].values])
+                model_states.extend(['H_inc', 'H_inc', 'H_inc'])
+                strain_coords.extend([0, 1, None])
+            elif strains == 3:
+                data_season.extend([df['H_inc_AH1'].values, df['H_inc_AH3'].values, df['H_inc_B'].values, df['H_inc'].values])
+                model_states.extend(['H_inc', 'H_inc', 'H_inc', 'H_inc'])
+                strain_coords.extend([0, 1, 2, None])
+            # prepend ED visits
             if use_ED_visits:
-                data_season.append(df['I_inc'].values)
-                model_states.append('I_inc')
-                strain_coords.append(None)
+                data_season.insert(0, df['I_inc'].values)
+                model_states.insert(0, 'I_inc')
+                strain_coords.insert(0, None)
             # stack data to (n_variables, n_observations)
             data.append(np.stack(data_season))
         # stack data to (n_season, n_variables, n_observations)
@@ -127,10 +135,21 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
     
     # get the data
     n_observations = 31
-    data, eval_dates, model_states, strain_coords = get_data(use_ED_visits, strains, start_calibrations, n_observations)
+    data, eval_dates, model_states, strain_coords = get_data(use_ED_visits, strains, start_calibrations, n_observations) # (n_season, n_variables, n_observations)
 
     # compute the tempered likelihood weights
-
+    if strains > 1:
+        ## weigh by inverse maximum in timeseries
+        weights = 1/np.max(data[:, :-1,:], axis=2)
+        ## normalise back to one
+        weights /= np.mean(weights)
+        ## set weight of sum(H_inc) to maximum weight
+        weights = np.append(weights, np.max(weights, axis=1)[:,None], axis=1)
+    else:
+        ## weigh by inverse maximum in timeseries
+        weights = 1/np.max(data, axis=2)
+        ## normalise back to one
+        weights /= np.mean(weights)
 
     #####################
     ## Setup ODE model ##
@@ -159,6 +178,9 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
         )
     # Apply perturbations to create the 2D array
     pos = np.array(theta_0)[None, :] * perturbations
+
+    import sys
+    sys.exit()
 
     #######################
     ## Define pyMC model ##
@@ -272,7 +294,19 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
         model_predictions = pytensor_forward_model_matrix(theta_matrix)
 
         # compute likelihood
-        obs = pm.Poisson('obs', mu=pt.maximum(model_predictions, 1e-3), observed=data)
+        #obs = pm.Poisson('obs', mu=pt.maximum(model_predictions, 1e-3), observed=data)
+
+        # Compute tempered poisson likelihood
+        ## define custom function to compute logp
+        def logp_weighted_poisson(value, mu, weights):
+            """Weighted Poisson log-likelihood over (n_seasons, n_variables, n_obs)."""
+            # Compute elementwise Poisson logp
+            logp = pm.logp(pm.Poisson.dist(mu=mu), value)
+            # Sum over observations, apply weights
+            logp_sum = (weights * logp.sum(axis=-1)).sum()
+            return logp_sum
+        ## Wrap in a CustomDist
+        likelihood = pm.CustomDist("likelihood", pt.maximum(model_predictions, 1e-3), weights, logp=logp_weighted_poisson, observed=data)
 
     with model:
         trace = pm.sample(10, tune=10, target_accept=0.99, chains=n_chains, cores=processes, init='adapt_diag', progressbar=True)
@@ -297,3 +331,11 @@ for var in variables2plot:
     arviz.plot_trace(trace, var_names=[var]) 
     plt.savefig(f'{samples_path}/trace/trace-{var}.pdf')
     plt.close()
+
+# Sample posterior predictive checks
+with model:
+    posterior_predictive = pm.sample_posterior_predictive(trace)
+
+# Save traces and posterior predictive
+arviz.to_netcdf(trace, f"{samples_path}/trace.nc")
+arviz.to_netcdf(posterior_predictive, f"{samples_path}/posterior_predictive.nc")
