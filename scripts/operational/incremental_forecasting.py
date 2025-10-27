@@ -27,7 +27,7 @@ from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, ma
 ##############
 
 # define seasons and hyperparameter combo's to loop over
-season_lst = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']
+season_lst = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020']
 hyperparameters_lst = [None, None, None, None, None, None, None, None]
 
 # model settings/ save settings
@@ -36,15 +36,15 @@ quantiles = False           # save quantiles vs. individual trajectories
 
 # optimization parameters
 ## frequentist optimization
-n_nm = 500                                                     # Number of NM search iterations
+n_nm = 3000                                                     # Number of NM search iterations
 ## bayesian inference
-n_mcmc = 2000                                                   # Number of MCMC iterations
+n_mcmc = 8000                                                   # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
-print_n = 2000                                                  # Print diagnostics every `print_n`` iterations
-discard = 1000                                                  # Discard first `discard` iterations as burn-in
+print_n = 8000                                                  # Print diagnostics every `print_n`` iterations
+discard = 6000                                                  # Discard first `discard` iterations as burn-in
 thin = 100                                                      # Thinning factor emcee chains
 processes = int(os.environ.get('NUM_CORES', mp.cpu_count()))    # Number of CPUs to use
-n = 100                                                        # Number of simulations performed in MCMC goodness-of-fit figure
+n = 200                                                        # Number of simulations performed in MCMC goodness-of-fit figure
 
 #####################
 ## Parse arguments ##
@@ -94,7 +94,7 @@ if __name__ == '__main__':
         pars, bounds, labels, log_prior_prob_fcn, log_prior_prob_fcn_args = get_priors(model_name, strains, immunity_linking, use_ED_visits, hyperparameters)
 
         # retrieve guestimate NM
-        theta = list(pd.read_csv('../../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2]).loc[(model_name, immunity_linking, slice(None))].mean(axis=1))
+        theta = list(pd.read_csv('../../data/interim/calibration/single-season-optimal-parameters.csv', index_col=[0,1,2,3]).loc[(fips_state, model_name, immunity_linking, slice(None))].mean(axis=1))
 
         # format data
         data, states, log_likelihood_fnc, log_likelihood_fnc_args = make_data_pySODM_compatible(strains, use_ED_visits, start_simulation, end_calibration, str(fips_state))
@@ -129,8 +129,8 @@ if __name__ == '__main__':
             ##################################
 
             # split data in calibration and validation dataset
-            data_calib = [df.loc[slice(start_simulation, end_date)] for df in data]
-            data_valid = [df.loc[slice(end_date+timedelta(days=1), end_validation)] for df in data]
+            data_calib = [df.loc[slice(start_simulation, end_date)].dropna() for df in data]
+            data_valid = [df.loc[slice(end_date+timedelta(days=1), end_validation)].dropna() for df in data]
 
             # normalisation weights for lpp
             if strains > 1:
