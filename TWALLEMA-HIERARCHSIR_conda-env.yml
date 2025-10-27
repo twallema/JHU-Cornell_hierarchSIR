@@ -12,3 +12,7 @@ dependencies:
   - scipy
   - openpyxl
   - emcee
+  - pymc>=5
+  - pytensor=2.31.7
+  - pytensor-base=2.31.7
+  - arviz
