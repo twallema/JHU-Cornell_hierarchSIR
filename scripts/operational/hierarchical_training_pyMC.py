@@ -20,6 +20,8 @@ import pytensor.tensor as pt
 pytensor.config.cxx = '/usr/bin/clang++'
 pytensor.config.on_opt_error = "ignore"
 
+import matplotlib.pyplot as plt
+
 #####################
 ## Parse arguments ##
 #####################
@@ -177,8 +179,18 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
     # Apply perturbations to create the 2D array
     pos = np.array(theta_0)[None, :] * perturbations
 
+    # get initial values
+    within_0 = pars_model_0.loc[(model_name, immunity_linking, slice(None)), seasons]
+    rho_i_0 = within_0.loc[(model_name, immunity_linking, 'rho_i'), seasons].values
+    T_h_0 = within_0.loc[(model_name, immunity_linking, 'T_h'), seasons].values
+    rho_h_0 = np.expand_dims(within_0.loc[(model_name, immunity_linking, 'rho_h'), seasons].values, axis=1)
+    f_R_0 = np.expand_dims(within_0.loc[(model_name, immunity_linking, 'f_R'), seasons].values, axis=1)
+    f_I_0 = np.expand_dims(within_0.loc[(model_name, immunity_linking, 'f_I'), seasons].values, axis=1)
+    beta_0 = np.expand_dims(within_0.loc[(model_name, immunity_linking, 'beta'), seasons].values, axis=1)
+    slice = within_0.loc[(model_name, immunity_linking, slice(None)), seasons]
+    delta_beta_temporal_0 = slice.xs('SIR-1S', level='model').xs(False, level='immunity_linking').loc[slice.index.get_level_values('parameter').str.startswith('delta_beta_temporal_')].to_numpy().transpose()
 
-    #######################
+    ####################### 
     ## Define pyMC model ##
     #######################
 
@@ -186,6 +198,23 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
     n_strains = strains
     n_seasons = len(seasons)
     within_season_parameter_names = ['rho_i', 'T_h', 'rho_h', 'f_R', 'f_I', 'beta', 'delta_beta_temporal']
+
+
+    def logp_weighted_poisson(value, mu, weights):
+        # elementwise Poisson logp then weighted sum over (season,variable)
+        logp = pm.logp(pm.Poisson.dist(mu=pt.maximum(mu, 1e-6)), value)   # shape (..., n_obs)
+        return (weights * logp.sum(axis=-1)).sum()   # scalar total logp
+
+    def random_poisson(mu, weights=None, rng=None, size=None):
+        """
+        Return posterior-predictive draws. We ignore weights because the generative
+        model is plain Poisson(mu).
+        """
+        # mu is a numpy array (shape: n_seasons,n_variables,n_obs)
+        rng = np.random.default_rng(rng)
+        # numpy poisson accepts lam scalar or array and returns same-shape draws
+        # size is usually None for observed random; ignore it to match mu shape
+        return rng.poisson(lam=mu)
 
     def flatten_within_season_params(i, params):
         return pt.concatenate([
@@ -239,37 +268,37 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
             # rho_i
             rho_i_mu = pm.Uniform('rho_i_mu', lower=0, upper=1e-1, initval=0.025)
             rho_i_sigma = pm.HalfNormal('rho_i_sigma', sigma=1/3)
-            rho_i = pm.Truncated('rho_i', pm.LogNormal.dist(mu=pt.log(rho_i_mu), sigma=rho_i_sigma), shape=n_seasons, lower=1e-3, upper=1e-1)
+            rho_i = pm.Truncated('rho_i', pm.LogNormal.dist(mu=pt.log(rho_i_mu), sigma=rho_i_sigma), shape=n_seasons, lower=1e-3, upper=1e-1, initval=rho_i_0)
 
             # T_h
             T_h_mu = pm.Uniform('T_h_mu', lower=0, upper=7, initval=3.5)
             T_h_sigma = pm.HalfNormal('T_h_sigma', sigma=1/3)
-            T_h = pm.Truncated('T_h', pm.LogNormal.dist(mu=pt.log(T_h_mu), sigma=T_h_sigma), shape=n_seasons, lower=0.5, upper=14)
+            T_h = pm.Truncated('T_h', pm.LogNormal.dist(mu=pt.log(T_h_mu), sigma=T_h_sigma), shape=n_seasons, lower=0.5, upper=14, initval=T_h_0)
 
         # rho_h
         rho_h_mu = pm.Uniform('rho_h_mu', lower=0, upper=1e-2, initval=0.0025)
         rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
-        rho_h = pm.Truncated('rho_h', pm.LogNormal.dist(mu=np.log(rho_h_mu), sigma=rho_h_sigma), shape=(n_seasons, n_strains), lower=1e-4, upper=1e-2)
+        rho_h = pm.Truncated('rho_h', pm.LogNormal.dist(mu=np.log(rho_h_mu), sigma=rho_h_sigma), shape=(n_seasons, n_strains), lower=1e-4, upper=1e-2, initval=rho_h_0)
 
         # f_R
         f_R_mu = pm.Normal('f_R_mu', mu=0.4, sigma=0.1, initval=0.4)
         f_R_sigma = pm.HalfNormal('f_R_sigma', sigma=0.1)
-        f_R = pm.Truncated('f_R', pm.Normal.dist(mu=f_R_mu, sigma=f_R_sigma), shape=(n_seasons, n_strains), lower=0, upper=1)
+        f_R = pm.Truncated('f_R', pm.Normal.dist(mu=f_R_mu, sigma=f_R_sigma), shape=(n_seasons, n_strains), lower=0, upper=1, initval=f_R_0)
                            
         # f_I
-        f_I_mu = pm.Uniform('f_I_mu', lower=0, upper=1e-3, initval=1e-5)
+        f_I_mu = pm.Uniform('f_I_mu', lower=0, upper=5e-4, initval=2.5e-4)
         f_I_sigma = pm.HalfNormal('f_I_sigma', sigma=1/3)
-        f_I = pm.Truncated('f_I', pm.LogNormal.dist(mu=pt.log(f_I_mu), sigma=f_I_sigma), shape=(n_seasons, n_strains), lower=1e-6, upper=1e-3)
+        f_I = pm.Truncated('f_I', pm.LogNormal.dist(mu=pt.log(f_I_mu), sigma=f_I_sigma), shape=(n_seasons, n_strains), lower=1e-6, upper=5e-4, initval=f_I_0)
                              
         # beta
         beta_mu = pm.Normal('beta_mu', mu=0.455, sigma=0.055, initval=0.055)
         beta_sigma = pm.HalfNormal('beta_sigma', sigma=0.055)
-        beta = pm.Truncated('beta', pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), shape=(n_seasons, n_strains), lower=0.35, upper=0.55)
+        beta = pm.Truncated('beta', pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), shape=(n_seasons, n_strains), lower=0.40, upper=0.50, initval=beta_0)
 
         # delta_beta_temporal (#TODO: replace with AR-GARCH)
         delta_beta_temporal_mu = pm.Normal('delta_beta_temporal_mu', mu=0, sigma=0.10, shape=n_modifiers)
         delta_beta_temporal_sigma = pm.HalfNormal('delta_beta_temporal_sigma', sigma=1/3, shape=n_modifiers)
-        delta_beta_temporal = pm.Truncated('delta_beta_temporal', pm.Normal.dist(mu=delta_beta_temporal_mu, sigma=delta_beta_temporal_sigma), shape=(n_seasons, n_modifiers), lower=-0.3, upper=0.3)
+        delta_beta_temporal = pm.Truncated('delta_beta_temporal', pm.Normal.dist(mu=delta_beta_temporal_mu, sigma=delta_beta_temporal_sigma), shape=(n_seasons, n_modifiers), lower=-0.3, upper=0.3, initval=delta_beta_temporal_0)
 
         # simulate ODE model
         if use_ED_visits:
@@ -284,20 +313,9 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
         ## run simulation model
         model_predictions = pytensor_forward_model_matrix(theta_matrix)
 
-        # compute likelihood
-        #obs = pm.Poisson('obs', mu=pt.maximum(model_predictions, 1e-3), observed=data)
 
         # Compute tempered poisson likelihood
-        ## define custom function to compute logp
-        def logp_weighted_poisson(value, mu, weights):
-            """Weighted Poisson log-likelihood over (n_seasons, n_variables, n_obs)."""
-            # Compute elementwise Poisson logp
-            logp = pm.logp(pm.Poisson.dist(mu=mu), value)
-            # Sum over observations, apply weights
-            logp_sum = (weights * logp.sum(axis=-1)).sum()
-            return logp_sum
-        ## Wrap in a CustomDist
-        likelihood = pm.CustomDist("likelihood", pt.maximum(model_predictions, 1e-3), weights, logp=logp_weighted_poisson, observed=data)
+        likelihood = pm.CustomDist("likelihood", pt.maximum(model_predictions, 1e-3), weights, logp=logp_weighted_poisson, random=random_poisson, observed=data)
 
     with model:
         trace = pm.sample(10, tune=10, target_accept=0.99, chains=n_chains, cores=processes, init='adapt_diag', progressbar=True)
