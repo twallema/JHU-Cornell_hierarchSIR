@@ -324,14 +324,14 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
             thetas.append(flatten_within_season_params(i, within_season_parameter_distributions))
         theta_matrix = pt.stack(thetas, axis=0)
         ## run simulation model
-        model_predictions = pytensor_forward_model_matrix(theta_matrix)
+        model_predictions = 7*pytensor_forward_model_matrix(theta_matrix)
 
         # Compute tempered poisson likelihood
-        likelihood = pm.CustomDist("likelihood", pt.maximum(model_predictions, 1e-3), weights, logp=logp_weighted_poisson, random=random_poisson, observed=data)
+        likelihood = pm.CustomDist("likelihood", pt.maximum(model_predictions, 1e-3), weights, logp=logp_weighted_poisson, random=random_poisson, observed=7*data)
 
 
 with model:
-        trace = pm.sample(100, tune=100, chains=n_chains, init='jitter+adapt_diag', cores=processes, progressbar=True)
+        trace = pm.sample(50, tune=50, chains=n_chains, init='jitter+adapt_diag', cores=processes, progressbar=True)
 
 # Traceplot
 variables2plot = [
