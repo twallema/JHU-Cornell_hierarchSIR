@@ -309,15 +309,80 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
         beta = pm.Truncated('beta', pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), shape=(n_seasons, n_strains), lower=0.35, upper=0.55, initval=0.455*np.random.normal(loc=1, scale=pert, size=beta_0.shape))
 
         # delta_beta_temporal (#TODO: replace with AR-GARCH)
-        delta_beta_temporal_mu = pm.Normal('delta_beta_temporal_mu', mu=0, sigma=0.1, shape=n_modifiers)
-        delta_beta_temporal_sigma = pm.HalfNormal('delta_beta_temporal_sigma', sigma=0.15, shape=n_modifiers)
-        delta_beta_temporal = pm.TruncatedNormal('delta_beta_temporal', mu=delta_beta_temporal_mu, sigma=delta_beta_temporal_sigma, shape=(n_seasons, n_modifiers), lower=-0.5, upper=0.5)
+        #delta_beta_temporal_mu = pm.Normal('delta_beta_temporal_mu', mu=0, sigma=0.1, shape=n_modifiers)
+        #delta_beta_temporal_sigma = pm.HalfNormal('delta_beta_temporal_sigma', sigma=0.15, shape=n_modifiers)
+        #delta_beta_temporal = pm.TruncatedNormal('delta_beta_temporal', mu=delta_beta_temporal_mu, sigma=delta_beta_temporal_sigma, shape=(n_seasons, n_modifiers), lower=-0.5, upper=0.5)
+
+
+        # ------- Priors (example choices) -------
+
+        # baseline variance (positive)
+        omega = pm.HalfNormal("omega", sigma=0.001)
+
+        # psi, alpha, beta constrained to [0,1) via Beta priors;
+        psi = pm.Beta("psi", alpha=2.0, beta=2.0)
+        alpha = pm.Beta("alpha", alpha=2.0, beta=2.0)   # reactive shock weight
+        beta_garch  = pm.Beta("beta_garch",  alpha=2.0, beta=2.0)   # volatility persistence
+
+        # initial states (you can make these priors instead)
+        delta0 = pm.Deterministic("delta0", pt.zeros(n_seasons))               # initial Δβ; assume model starts from
+        eps0 = pm.Deterministic("eps0", pt.zeros(n_seasons))                   # assume no prior shock
+        sigma20 = pm.HalfNormal("sigma20", sigma=0.01, shape=n_seasons)        # initial variance
+
+        # sample iid standard normals ----------
+        # eta_t ~ Normal(0,1) independent; we'll map to eps_t = eta_t * sqrt(sigma2_t)
+        eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers, n_seasons))
+
+        # Hyperparameter for delta_beta_temporal
+        mu_t = pm.Normal("mu_t", mu=0, sigma=0.1, shape=n_modifiers)
+        # For passing mu_prev into the scan we create mu_prev (shifted right)
+        mu_vec = pt.as_tensor_variable(mu_t)
+        mu_prev = pt.concatenate([[mu_t[0]], mu_vec[:-1]])
+
+        # scan step: inputs: eta_t, mu_t, mu_prev; states: prev_delta, prev_sigma2, prev_eps
+        def step(eta_t, mu_t, mu_prev_t,
+                 prev_delta, prev_sigma2, prev_eps,
+                 psi, omega, alpha, beta):
+            
+            # 1) compute current conditional variance (uses prev_eps and prev_sigma2)
+            sigma2_t = omega + alpha * (prev_eps ** 2) + beta * prev_sigma2
+
+            # numerical safety: ensure non-negativity
+            sigma2_t = pt.maximum(sigma2_t, 1e-12)
+
+            # 2) map iid standard-normal innovation to heteroskedastic shock
+            eps_t = eta_t * pt.sqrt(sigma2_t)
+
+            # 3) AR(1)-style deviation around mu
+            delta_t = mu_t + psi * (prev_delta - mu_prev_t) + eps_t
+
+            return delta_t, sigma2_t, eps_t
+
+        # Provide initial states as a list (must match order of returned states)
+        outputs_info = [delta0, sigma20, eps0]
+
+        # Run scan over T steps
+        (delta_seq, sigma2_seq, eps_seq), updates = pytensor.scan(
+            fn=step,
+            sequences=[eta, mu_vec, mu_prev],
+            outputs_info=outputs_info,
+            non_sequences=[psi, omega, alpha, beta_garch],
+            n_steps=n_modifiers
+        )
+
+        # Register deterministic variables to inspect later
+        delta_path = pm.Deterministic("delta_path", pt.transpose(delta_seq))    # Δβ_t for t=0..T-1
+        sigma2_path = pm.Deterministic("sigma2_path", pt.transpose(sigma2_seq))
+        eps_path = pm.Deterministic("eps_path", pt.transpose(eps_seq))
+
+
+
 
         # simulate ODE model
         if use_ED_visits:
-            within_season_parameter_distributions = [rho_i, T_h, rho_h, f_R, f_I, beta, delta_beta_temporal]
+            within_season_parameter_distributions = [rho_i, T_h, rho_h, f_R, f_I, beta, delta_path]
         else:
-            within_season_parameter_distributions = [rho_h, f_R, f_I, beta, delta_beta_temporal]
+            within_season_parameter_distributions = [rho_h, f_R, f_I, beta, delta_path]
         ## flatten within-season parameters and stack into an (n_seasons, n_parameters) matrix
         thetas = []
         for i in range(n_seasons):
@@ -331,7 +396,7 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
 
 
 with model:
-        trace = pm.sample(500, tune=1000, chains=n_chains, init='jitter+adapt_diag', cores=processes, progressbar=True)
+        trace = pm.sample(10, tune=10, chains=1, init='jitter+adapt_diag', cores=processes, progressbar=True)
 
 # Traceplot
 variables2plot = [
@@ -339,7 +404,7 @@ variables2plot = [
                 'f_R_mu', 'f_R_sigma', 'f_R',           # f_R
                 'f_I_mu', 'f_I_sigma', 'f_I',           # f_I
                 'beta_mu', 'beta_sigma', 'beta',        # beta
-                'delta_beta_temporal_mu', 'delta_beta_temporal_sigma'
+                'mu_t', 'psi', 'alpha', 'beta_garch', 'omega'
                 ]
 
 if use_ED_visits:
