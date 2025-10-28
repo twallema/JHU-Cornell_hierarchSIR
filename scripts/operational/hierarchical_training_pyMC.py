@@ -281,17 +281,17 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
             # rho_i
             rho_i_mu = pm.Uniform('rho_i_mu', lower=0, upper=1e-1, initval=0.025)
             rho_i_sigma = pm.HalfNormal('rho_i_sigma', sigma=1/3)
-            rho_i = pm.Truncated('rho_i', pm.LogNormal.dist(mu=pt.log(rho_i_mu), sigma=rho_i_sigma), shape=n_seasons, lower=1e-3, upper=1e-1)
+            rho_i = pm.Truncated('rho_i', pm.LogNormal.dist(mu=pt.log(rho_i_mu), sigma=rho_i_sigma), shape=n_seasons, lower=1e-4, upper=1e-1)
 
             # T_h
             T_h_mu = pm.Uniform('T_h_mu', lower=0, upper=7, initval=3.5)
             T_h_sigma = pm.HalfNormal('T_h_sigma', sigma=1/3)
-            T_h = pm.Truncated('T_h', pm.LogNormal.dist(mu=pt.log(T_h_mu), sigma=T_h_sigma), shape=n_seasons, lower=0.5, upper=14)
+            T_h = pm.Truncated('T_h', pm.LogNormal.dist(mu=pt.log(T_h_mu), sigma=T_h_sigma), shape=n_seasons, lower=0.1, upper=14)
 
         # rho_h
         rho_h_mu = pm.Uniform('rho_h_mu', lower=0, upper=1e-2, initval=0.0025)
         rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
-        rho_h = pm.Truncated('rho_h', pm.LogNormal.dist(mu=np.log(rho_h_mu), sigma=rho_h_sigma), shape=(n_seasons, n_strains), lower=1e-4, upper=1e-2)
+        rho_h = pm.Truncated('rho_h', pm.LogNormal.dist(mu=np.log(rho_h_mu), sigma=rho_h_sigma), shape=(n_seasons, n_strains), lower=1e-5, upper=1e-2)
 
         # f_R
         f_R_mu = pm.Normal('f_R_mu', mu=0.4, sigma=0.1, initval=0.4)
@@ -301,17 +301,17 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
         # f_I
         f_I_mu = pm.Uniform('f_I_mu', lower=0, upper=5e-4, initval=2.5e-4)
         f_I_sigma = pm.HalfNormal('f_I_sigma', sigma=1/3)
-        f_I = pm.Truncated('f_I', pm.LogNormal.dist(mu=pt.log(f_I_mu), sigma=f_I_sigma), shape=(n_seasons, n_strains), lower=1e-6, upper=5e-4)
+        f_I = pm.Truncated('f_I', pm.LogNormal.dist(mu=pt.log(f_I_mu), sigma=f_I_sigma), shape=(n_seasons, n_strains), lower=1e-6, upper=1e-3)
                              
         # beta
-        beta_mu = pm.Normal('beta_mu', mu=0.455, sigma=0.055, initval=0.055)
+        beta_mu = pm.Normal('beta_mu', mu=0.455, sigma=0.055, initval=0.455)
         beta_sigma = pm.HalfNormal('beta_sigma', sigma=0.055)
-        beta = pm.Truncated('beta', pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), shape=(n_seasons, n_strains), lower=0.40, upper=0.50)
+        beta = pm.Truncated('beta', pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), shape=(n_seasons, n_strains), lower=0.35, upper=0.55, initval=0.455*np.random.normal(loc=1, scale=pert, size=beta_0.shape))
 
         # delta_beta_temporal (#TODO: replace with AR-GARCH)
         delta_beta_temporal_mu = pm.Normal('delta_beta_temporal_mu', mu=0, sigma=0.1, shape=n_modifiers)
         delta_beta_temporal_sigma = pm.HalfNormal('delta_beta_temporal_sigma', sigma=0.15, shape=n_modifiers)
-        delta_beta_temporal = pm.TruncatedNormal('delta_beta_temporal', mu=delta_beta_temporal_mu, sigma=delta_beta_temporal_sigma, shape=(n_seasons, n_modifiers), lower=-0.3, upper=0.3)
+        delta_beta_temporal = pm.TruncatedNormal('delta_beta_temporal', mu=delta_beta_temporal_mu, sigma=delta_beta_temporal_sigma, shape=(n_seasons, n_modifiers), lower=-0.5, upper=0.5)
 
         # simulate ODE model
         if use_ED_visits:
@@ -331,7 +331,7 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
 
 
 with model:
-        trace = pm.sample(20, tune=20, chains=n_chains, init='jitter+adapt_diag', cores=processes, progressbar=True)
+        trace = pm.sample(500, tune=1000, chains=n_chains, init='jitter+adapt_diag', cores=processes, progressbar=True)
 
 # Traceplot
 variables2plot = [
