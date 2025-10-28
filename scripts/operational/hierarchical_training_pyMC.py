@@ -55,7 +55,7 @@ start_calibration_month = 10                                                    
 end_calibration_month = 5                                                                                           # end calibration on month 5, day 1
 run_date = datetime.today().strftime("%Y-%m-%d")
 ## define number of chains
-n_chains = 6
+n_chains = 4
 max_n = 50000
 pert = 0.05
 processes = min(n_chains, int(os.environ.get('NUM_CORES', mp.cpu_count())))
@@ -331,7 +331,7 @@ for seasons, identifier in zip(seasons_list, identifiers_list):
 
 
 with model:
-        trace = pm.sample(50, tune=50, chains=n_chains, init='jitter+adapt_diag', cores=processes, progressbar=True)
+        trace = pm.sample(20, tune=20, chains=n_chains, init='jitter+adapt_diag', cores=processes, progressbar=True)
 
 # Traceplot
 variables2plot = [
