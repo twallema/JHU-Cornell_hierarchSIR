@@ -250,14 +250,22 @@ function convert_hyper_parameters(parameters::DataFrame; condition=:exclude_None
     return result
 end
 
+function get_parameter_names(chain::MCMCChains.Chains)
+    return [n for n in names(chain) if !any(isequal(Symbol(n)), [:lp, :logprior, :loglikelihood])]
+end
+
+function get_parameter_names(model::Turing.DynamicPPL.Model)
+    chain = sample(model, Prior(), 1)
+    return get_parameter_names(chain)
+end
+
 """
     get_initial_guess(model, seasons; kwargs...)
 
 Produce an initial parameter assignment compatible with a Turing model.
 """
 function get_initial_guess(model, seasons::Vector{<:AbstractString}; model_name="SIR-1S", immunity_linking=false, use_ED_visits=true, identifier="exclude_None")
-    chain = sample(model, Prior(), 1)
-    parameters = chain.name_map.parameters
+    parameters = get_parameter_names(model)
     manual_map = Dict(
         [Symbol("Δβ[$i]") => 0.0 for i in 1:12]...,
         [Symbol("raw_Δβ[$i]") => 0.0 for i in 1:12]...,
@@ -279,4 +287,165 @@ function get_initial_guess(model, seasons::Vector{<:AbstractString}; model_name=
     param_map = merge(manual_map, seasonal_map, hyper_map)
 
     return [p => param_map[p] for p in parameters]
+end
+
+@inline parameter_root(str::AbstractString) = Symbol(first(split(str, "["; limit=2)))
+@inline parameter_root(sym::Symbol) = parameter_root(String(sym))
+@inline parameter_indices(str::AbstractString) = [parse(Int, m.match) for m in eachmatch(r"\d+", str)]
+@inline parameter_indices(sym::Symbol) = parameter_indices(String(sym))
+
+extract_value(chain::MCMCChains.Chains, name::Symbol, walker::Int) =
+    parameter_root(name) => Float64(chain[name][end, walker])
+
+function extract_vector(chain::MCMCChains.Chains, root::Symbol, names::Vector{Symbol}, walker::Int)
+    relevant = [n for n in names if length(parameter_indices(n)) == 1]
+    isempty(relevant) && return extract_value(chain, root, walker)
+    max_idx = maximum(parameter_indices(n)[1] for n in relevant)
+    values = zeros(Float64, max_idx)
+    for n in relevant
+        idx = parameter_indices(n)[1]
+        values[idx] = Float64(chain[n][end, walker])
+    end
+    return root => values
+end
+
+function extract_matrix(chain::MCMCChains.Chains, root::Symbol, names::Vector{Symbol}, walker::Int)
+    relevant = [n for n in names if length(parameter_indices(n)) == 2]
+    isempty(relevant) && return extract_vector(chain, root, names, walker)
+    first_dims = [parameter_indices(n)[1] for n in relevant]
+    second_dims = [parameter_indices(n)[2] for n in relevant]
+    matrix = zeros(Float64, maximum(first_dims), maximum(second_dims))
+    for n in relevant
+        idx = parameter_indices(n)
+        matrix[idx[1], idx[2]] = Float64(chain[n][end, walker])
+    end
+    return root => matrix
+end
+
+function aggregate_parameter_pairs(chain::MCMCChains.Chains, parameter_names::Vector{Symbol}, walker::Int)
+    processed = Set{Symbol}()
+    pairs = Pair{Symbol, Any}[]
+
+    for name in parameter_names
+        root = parameter_root(name)
+        root in processed && continue
+        push!(processed, root)
+
+        names_for_root = [n for n in parameter_names if parameter_root(n) == root]
+        scalar_names = [n for n in names_for_root if isempty(parameter_indices(n))]
+        indexed_names = [n for n in names_for_root if !isempty(parameter_indices(n))]
+
+        if isempty(indexed_names)
+            push!(pairs, extract_value(chain, scalar_names[1], walker))
+            continue
+        end
+
+        max_len = maximum(length(parameter_indices(n)) for n in indexed_names)
+        if max_len == 1
+            push!(pairs, extract_vector(chain, root, indexed_names, walker))
+        else
+            push!(pairs, extract_matrix(chain, root, indexed_names, walker))
+        end
+    end
+
+    return pairs
+end
+
+function expand_Δβ_matrix(old_matrix::AbstractMatrix, old_αs::AbstractVector, old_βs::AbstractVector, n_Δβ_target::Int)
+    prev_n_Δβ = size(old_matrix, 2)
+    if prev_n_Δβ == n_Δβ_target
+        return copy(old_matrix), copy(old_αs), copy(old_βs)
+    else
+        @assert n_Δβ_target > prev_n_Δβ
+        repeat_factor = max(1, ceil(Int, n_Δβ_target / prev_n_Δβ))
+        expanded = zeros(Float64, size(old_matrix, 1), n_Δβ_target)
+        for season in axes(old_matrix, 1)
+            row = repeat(old_matrix[season, :], inner=repeat_factor)
+            expanded[season, :] = row[1:n_Δβ_target]
+        end
+        expanded_αs = repeat(old_αs, inner=repeat_factor)[1:n_Δβ_target]
+        expanded_βs = repeat(old_βs, inner=repeat_factor)[1:n_Δβ_target]
+        return expanded, expanded_αs, expanded_βs
+    end
+end
+
+"""
+    build_init_from_prev(prev_chain, n_Δβ_target, n_seasons; noise=0.01)
+
+Recycle the tail of a previous Emcee chain to form initial walkers for the next
+stage, expanding the Δβ grid when required.
+"""
+function build_init_from_prev(prev_chain::MCMCChains.Chains, n_Δβ_target::Int, n_seasons::Int; noise::Real=0.01)
+    names = get_parameter_names(prev_chain)
+    n_walkers = size(prev_chain, 3)
+
+    init_params = Vector{InitFromParams}(undef, n_walkers)
+
+    for walker in 1:n_walkers
+        pairs = aggregate_parameter_pairs(prev_chain, names, walker)
+
+        idx = findfirst(p -> p.first == :Δβ_raw, pairs)
+        if isnothing(idx)
+            new_Δβ_matrix = fill(0.5, n_seasons, n_Δβ_target) + noise * randn(n_seasons, n_Δβ_target)
+            push!(pairs, :Δβ_raw => new_Δβ_matrix)
+            push!(pairs, :α_Δβ => fill(50.0, n_Δβ_target) + noise * randn(n_Δβ_target))
+            push!(pairs, :β_Δβ => fill(50.0, n_Δβ_target) + noise * randn(n_Δβ_target))
+        else
+            α_idx = findfirst(p -> p.first == :α_Δβ, pairs)
+            β_idx = findfirst(p -> p.first == :β_Δβ, pairs)
+            @assert !isnothing(α_idx) && !isnothing(β_idx)
+            new_Δβ_matrix, new_α_Δβ, new_β_Δβ = expand_Δβ_matrix(pairs[idx].second, pairs[α_idx].second, pairs[β_idx].second, n_Δβ_target)
+            pairs[idx] = :Δβ_raw => new_Δβ_matrix + noise * randn(n_seasons, n_Δβ_target)
+            pairs[α_idx] = :α_Δβ => new_α_Δβ + noise * randn(n_Δβ_target)
+            pairs[β_idx] = :β_Δβ => new_β_Δβ + noise * randn(n_Δβ_target)
+        end
+
+        init_params[walker] = InitFromParams(NamedTuple(pairs), nothing)
+    end
+
+    return init_params
+end
+
+"""
+    run_multistage_emcee(data, population, t_span, config; kwargs...)
+
+Run Emcee over a sequence of Δβ resolutions, reusing posterior samples from one
+stage to initialise the next. The `model_builder` callback should accept
+`n_Δβ` like `hierarchical_SIR` and `hierarchical_SIR_wo_bounds` do.
+"""
+function run_multistage_emcee(
+    data,
+    population,
+    t_span,
+    config;
+    ks = (0, 3, 6, 12),
+    steps = (7500, 7500, 7500, 15000),
+    noise = 0.005,
+    model_builder = hierarchical_SIR_wo_bounds
+)
+    length(ks) == length(steps) || throw(ArgumentError("ks and steps must have matching lengths"))
+    n_seasons = size(data, 2)
+
+    models = Dict(k => model_builder(data, population, t_span; n_Δβ=k) for k in ks)
+    init_guess = get_initial_guess(models[ks[end]], config.seasons)
+    n_walkers = 2 * length(init_guess)
+
+    chains = Dict{Int, MCMCChains.Chains}()
+    prev_chain = nothing
+
+    for (stage_idx, k) in enumerate(ks)
+        model = models[k]
+        stage_steps = steps[stage_idx]
+
+        if stage_idx == 1
+            chains[k] = sample(model, Emcee(n_walkers), stage_steps)
+        else
+            init_params = build_init_from_prev(prev_chain, k, n_seasons; noise)
+            chains[k] = sample(model, Emcee(n_walkers), stage_steps; initial_params=init_params)
+        end
+
+        prev_chain = chains[k]
+    end
+
+    return chains
 end

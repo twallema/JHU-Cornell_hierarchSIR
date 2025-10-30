@@ -37,7 +37,9 @@ function unpack_and_simulate(chain::MCMCChains.Chains, population, t_span; agg_f
     β = :β in param_names ? agg_f(chain[:β]) : agg_f(chain[season_symbol("β", season)])
 
     Δβ_keys = [k for k in param_names if occursin("Δβ", String(k))]
-    if occursin("raw", String(Δβ_keys[1]))
+    if isempty(Δβ_keys)
+        Δβ = zeros(1)
+    elseif occursin("raw", String(Δβ_keys[1]))
         Δβ_raw = [agg_f(chain[k]) for k in sort(Δβ_keys)]
         Δβ = 2 .* (Δβ_raw .- 0.5)
     else

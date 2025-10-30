@@ -6,18 +6,19 @@ sets the time horizon for the piecewise-linear transmission adjustment with
 `n_Δβ` knots.
 """
 function create_SIR(max_T, n_Δβ)
-    nodes = range(0, max_T, length=(n_Δβ+1))
     # linear_int = (t, Δβ) -> begin
     #     idx = clamp(searchsortedlast(nodes, t), 1, length(Δβ) - 1)
     #     t1, t2 = nodes[idx], nodes[idx + 1]
     #     w = (t - t1) / (t2 - t1)
     #     return Δβ[idx] * (1 - w) + Δβ[idx + 1] * w
     # end
-
-    constant_int = (t, Δβ) -> begin
-        idx = clamp(searchsortedlast(nodes, t), 1, length(Δβ))
-        return Δβ[idx]
-    end
+    constant_int = n_Δβ > 0 ? begin
+        nodes = range(0, max_T, length=(n_Δβ+1))
+        (t, Δβ) -> begin    
+            idx = clamp(searchsortedlast(nodes, t), 1, length(Δβ))
+            return Δβ[idx]
+        end
+    end : (t, Δβ) -> 0
 
     return function sir_rhs!(du, u, p, t)
         S, I, R, I_inc, H_inc_LCT0, H_inc_LCT1, H_inc_LCT2, H_inc_LCT3, H_inc_LCT4, H_inc = u
@@ -45,6 +46,14 @@ function create_SIR(max_T, n_Δβ)
     end
 end
 
+function UnphysicalCallback()
+    return DiscreteCallback(
+        (u, t, integrator) -> any(<(0), u),
+        (integrator) -> terminate!(integrator, :Failure);
+        save_positions=(false, false)
+    )
+end
+
 """
     unpack_value(solution, idx, comp)
 
@@ -55,8 +64,8 @@ trajectory.
 @inline unpack_value(v::Vector{<:Vector}, t, obs) = v[t][obs]
 @inline unpack_value(v::AbstractMatrix, t, obs) = v[obs, t]
 
-@inline check_elements(x::Array{<:Number}) = all(isfinite, x) && all(>=(0), x)
-@inline check_elements(x::Array{<:AbstractArray}) = all(check_elements, x)
+@inline check_elements(x::AbstractArray{<:Number}) = all(isfinite, x) && all(>=(0), x)
+@inline check_elements(x::AbstractArray{<:AbstractArray}) = all(check_elements, x)
 @inline has_succeeded(sol::Vector{<:Vector}, n_obs, n_time_steps) = length(sol) == n_time_steps && length(sol[1]) == n_obs && check_elements(sol)
 @inline has_succeeded(sol::AbstractMatrix, n_obs, n_time_steps) = size(sol, 1) == n_obs && size(sol, 2) == n_time_steps && check_elements(sol)
 @inline has_succeeded(sol::ODESolution, n_obs, n_time_steps) = (sol.retcode == ReturnCode.Success) && check_elements(sol.u)
@@ -76,55 +85,46 @@ Hierarchical Turing model without hard parameter bounds. Fits the SIR system to
     ρᵢ ~ Beta(8.19, 293.29)
     Tₕ ~ LogNormal(log(1.322936585), 0.337142555)
     ρₕ ~ Beta(10.921, 3103.543)
-    fᵢ ~ Beta(2.3172, 1218.)
-    fᵣ ~ Beta(43.659, 99.066)
+    fᵢ ~ filldist(Beta(2.3172, 1218.), n_seasons)
+    fᵣ ~ filldist(Beta(43.659, 99.066), n_seasons)
 
     β ~ filldist(Beta(32, 40), n_seasons)
 
     # Hierarchical priors for Δβ parameters
-    α_Δβ ~ filldist(Exponential(5), n_Δβ)  # Mean = 5, constrains α > 0
-    β_Δβ ~ filldist(Exponential(5), n_Δβ)  # Mean = 5, constrains β > 0
+    if n_Δβ > 0
+        α_Δβ ~ filldist(Normal(50, sqrt(50)), n_Δβ)  # Mean = 5, constrains α > 0
+        β_Δβ ~ filldist(Normal(50, sqrt(50)), n_Δβ)  # Mean = 5, constrains β > 0
 
-    Δβ_raw = Array{eltype(α_Δβ)}(undef, n_seasons, n_Δβ)
-    for season in 1:n_seasons
-        Δβ_raw[season, :] ~ arraydist(Beta.(α_Δβ, β_Δβ))
+        Δβ_raw = Array{eltype(β)}(undef, n_seasons, n_Δβ)
+        for season in 1:n_seasons
+            Δβ_raw[season, :] ~ filldist(Beta(100, 100), n_Δβ)
+        end
+        Δβ = @. 2 * (Δβ_raw - 0.5)
     end
-    Δβ = @. 2 * (Δβ_raw - 0.5)
-
-    cb = PositiveDomain(save = false)
+    cb = UnphysicalCallback()
     eval = prob -> solve(prob, Tsit5(); callback=cb, saveat=dt, save_idxs=[4, 10], verbose=false)
     one_T = one(ρᵢ)
     zero_T = zero(ρᵢ)
     population_T = population * one_T
 
-    # Construct AD-friendly initial conditions without instantiating tracked types manually.
-    base_x0 = (
-        one_T - (fᵢ + fᵣ),
-        fᵢ,
-        fᵣ,
-        zero_T,
-        zero_T,
-        zero_T,
-        zero_T,
-        zero_T,
-        zero_T,
-        zero_T,
-    )
     x0 = Vector{typeof(ρᵢ)}(undef, 10)
-    @inbounds for (idx, val) in enumerate(base_x0)
-        x0[idx] = val * population_T
-    end
-
     p = Vector{typeof(ρᵢ)}(undef, 5 + n_Δβ)
     p[1] = ρᵢ
     p[2] = Tₕ
     p[3] = ρₕ
     p[4] = zero_T
     p[5] = γ * one_T
+    p[6:end] .= zero_T
 
     for season in 1:n_seasons
         p[4] = β[season]
-        p[6:end] .= Δβ[season, :]
+        (n_Δβ > 0) && (p[6:end] .= Δβ[season, :])
+        x0[2] = fᵢ[season] * one_T
+        x0[3] = fᵣ[season] * one_T
+        x0[1] = one_T - (x0[2] + x0[3])
+        x0[4:end] .= zero_T
+        x0 .*= population_T
+
         c_prob = remake(template; u0 = x0, p = p)
         sol = eval(c_prob)
 
@@ -136,8 +136,8 @@ Hierarchical Turing model without hard parameter bounds. Fits the SIR system to
             for i in 1:n_time_steps
                 d1 = unpack_value(sol, i, 1)
                 d2 = unpack_value(sol, i, 2)
-                data[i, season, 1] ~ Normal(d1, d1 + 0.5)
-                data[i, season, 2] ~ Normal(d2, d2 + 0.5)
+                data[i, season, 1] ~ Normal(d1, sqrt(d1 + 10))
+                data[i, season, 2] ~ Normal(d2, sqrt(d2 + 10))
             end
         end
     end
@@ -158,8 +158,8 @@ hyper parameters.
     βσ ~ Exponential(0.055)
     T = eltype(βμ)
 
-    Δβμ ~ filldist(truncated(Normal(0.0, 0.1), -1.0, 1.0), n_Δβ)
-    Δβσ ~ filldist(truncated(Exponential(0.15), 0, 1), n_Δβ)
+    Δβμ ~ filldist(truncated(Normal(0.0, 0.025), -1, 1), n_Δβ)
+    Δβσ ~ filldist(truncated(Exponential(0.0125), 0, 1), n_Δβ)
 
     ρᵢ ~ filldist(truncated(LogNormal(log(0.025679272), 0.334315924), 1e-3, 0.075), n_seasons)
     Tₕ ~ filldist(truncated(LogNormal(log(1.322936585), 0.337142555), 0.5, 14), n_seasons)
@@ -174,7 +174,7 @@ hyper parameters.
     p = MVector{5 + n_Δβ, T}(undef)
     p[5] = T(γ)
 
-    cb = PositiveDomain(save = false)
+    cb = UnphysicalCallback()
     eval = prob -> solve(prob, Tsit5(); callback=cb, saveat=dt, save_idxs=[4, 10], verbose=false)
 
     for season in 1:n_seasons
@@ -204,8 +204,8 @@ hyper parameters.
             for i in axes(data, 1)
                 d1 = unpack_value(sol, i, 1)
                 d2 = unpack_value(sol, i, 2)
-                data[i, season, 1] ~ truncated(Normal(d1, d1 + 0.5), 0, Inf)
-                data[i, season, 2] ~ truncated(Normal(d2, d2 + 0.5), 0, Inf)
+                data[i, season, 1] ~ truncated(Normal(d1, d1 + 10), 0, Inf)
+                data[i, season, 2] ~ truncated(Normal(d2, d2 + 10), 0, Inf)
             end
         end
     end

@@ -8,6 +8,7 @@ using DifferentialEquations
 using Distributions
 using MCMCChains
 using Random
+using SciMLSensitivity
 using StaticArrays
 using Statistics
 using Turing
@@ -25,6 +26,8 @@ export Γ,
        create_SIR,
        hierarchical_SIR,
        hierarchical_SIR_wo_bounds,
+       optimize_seasonal_parameters,
+       run_multistage_emcee,
        simulate,
        unpack_and_simulate,
        simulate_posterior,
