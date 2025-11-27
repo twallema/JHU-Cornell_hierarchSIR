@@ -39,7 +39,7 @@ saveat = diffrax.SaveAt(ts=[0, 10, 20, 30, 40, 50])
 def sol_op_jax(args_diff, args_nodiff):
     # unpack parameters
     beta, gamma = args_diff
-    t0, t1 = args_nodiff
+    t0, t1, ts = args_nodiff
     # wrap ODE rhs
     term = diffrax.ODETerm(SIR_vector_field)
     # solve
@@ -51,7 +51,7 @@ def sol_op_jax(args_diff, args_nodiff):
         dt0=0.1,
         y0=jnp.array([10e6, 1, 0]),
         args = (beta, gamma),
-        saveat=saveat,
+        saveat=diffrax.SaveAt(ts=list(ts)),
         stepsize_controller=diffrax.PIDController(rtol=1e-12, atol=1e-12)
     )
     return sol.ys[:,2] # return R state only
@@ -124,7 +124,7 @@ time = [0, 10, 20, 30, 40, 50]
 data = [0, 12, 45, 320, 1400, 9000]
 
 # Non-Differentiable model parameters
-args_nodiff = (time[0], time[-1])
+args_nodiff = (time[0], time[-1], tuple(time))
 
 # Compile model
 sol_op = SolOp(args_nodiff)
