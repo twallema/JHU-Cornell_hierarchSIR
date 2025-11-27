@@ -56,14 +56,14 @@ def sol_op_jax(args_diff, args_nodiff, args_static):
     # solve ODE
     sol = diffrax.diffeqsolve(
         term,
-        diffrax.Dopri5(),
+        diffrax.Tsit5(),
         t0=t0,
         t1=t1,
         dt0=0.1,
         y0=jnp.array([10e6, 1, 0]),
         args = (beta, gamma),
         saveat=diffrax.SaveAt(ts=list(ts)),
-        stepsize_controller=diffrax.PIDController(rtol=1e-12, atol=1e-12)
+        stepsize_controller=diffrax.PIDController(rtol=1e-3, atol=1e-3)
     )
     return sol.ys[:,2] # return R state only
 
@@ -171,7 +171,7 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(100, tune=100, chains=2, init='jitter+adapt_diag', cores=1, progressbar=True, initvals=[{'alpha': 0.05}, {'beta': 0.15}])
+    trace = pm.sample(500, tune=500, chains=2, init='jitter+adapt_diag', cores=1, progressbar=True) #, initvals=[{'alpha': 0.05}, {'beta': 0.15}])
 
 # Generate traces
 arviz.plot_trace(trace, var_names=['alpha', 'beta']) 
