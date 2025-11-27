@@ -97,6 +97,23 @@ class SolOp(Op):
         ys = jitted_sol_op_jax(args_diff, args_nodiff, self.args_static)
         outputs[0][0] = np.asarray(ys)
 
+    def grad(self, inputs, output_grads):
+        """
+        Return symbolic gradients for the inputs of this Op.
+        The return list must have the same length as `inputs`.
+        """
+        args_diff, args_nodiff = inputs
+        (gz,) = output_grads
+
+        # vjp_sol_op is the VJPSolOp instance you created at module scope
+        # It builds an Apply node that computes the gradient w.r.t. args_diff.
+        grad_wrt_args_diff = vjp_sol_op(args_diff, gz, args_nodiff)
+
+        # We block gradients through args_nodiff: return a zero tensor of the same shape.
+        grad_wrt_args_nodiff = pt.zeros_like(args_nodiff)
+
+        return [grad_wrt_args_diff, grad_wrt_args_nodiff]
+
 class VJPSolOp(Op):
     def __init__(self, args_static):
         self.args_static = args_static
@@ -138,23 +155,23 @@ vjp_sol_op = VJPSolOp(args_static)
 
 with pm.Model() as model:
     # Differentiable parameters (those we wish to calibrate)
-    beta = pm.Normal("beta", 0.5, 0.05)
+    beta = pm.Truncated("beta", pm.LogNormal.dist(mu=-2, sigma=0.25), lower=0, upper=1) # E[X] = 0.14, SD[X] = 0.035
     args_diff = pt.stack([beta,])
     # Non-Differentiable parameters (those we do not wish to calibrate) 
-    gamma = pt.as_tensor_variable([1/3,])
+    gamma = pt.as_tensor_variable([1/10,])
     args_nodiff = gamma
     # Run model
     ys = sol_op(args_diff, args_nodiff)
     ys = pt.math.softplus(ys)
     # Likelihood
-    alpha = pm.HalfNormal("alpha", 0.01)
+    alpha = pm.HalfNormal("alpha", 0.05)
     data = pm.NegativeBinomial("data", mu=ys, alpha=1/alpha, observed=data)
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(1000, tune=1000, chains=2, init='jitter+adapt_diag', cores=1, progressbar=True)
+    trace = pm.sample(100, tune=100, chains=2, init='jitter+adapt_diag', cores=1, progressbar=True, initvals=[{'alpha': 0.05}, {'beta': 0.15}])
 
 # Generate traces
 arviz.plot_trace(trace, var_names=['alpha', 'beta']) 
