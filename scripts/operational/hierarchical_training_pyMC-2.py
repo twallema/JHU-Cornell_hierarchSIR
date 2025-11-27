@@ -34,15 +34,17 @@ def SIR_vector_field(t, y, args):
 
 
 import diffrax
-saveat = diffrax.SaveAt(ts=[0, 10, 20, 30, 40, 50])
 
-def sol_op_jax(args_diff, args_nodiff):
-    # unpack parameters
-    beta, gamma = args_diff
-    t0, t1, ts = args_nodiff
+def sol_op_jax(args_diff, args_nodiff, args_static):
+    # unpack differentiable parameters
+    beta = args_diff[0]
+    # unpack non-differentiable parameters and block gradients
+    gamma = jax.lax.stop_gradient(args_nodiff[0])
+    # unpack static arguments
+    t0, t1, ts = args_static
     # wrap ODE rhs
     term = diffrax.ODETerm(SIR_vector_field)
-    # solve
+    # solve ODE
     sol = diffrax.diffeqsolve(
         term,
         diffrax.Dopri5(),
@@ -56,66 +58,64 @@ def sol_op_jax(args_diff, args_nodiff):
     )
     return sol.ys[:,2] # return R state only
 
-jitted_sol_op_jax = jax.jit(sol_op_jax, static_argnums=1)
+jitted_sol_op_jax = jax.jit(sol_op_jax, static_argnums=2)
 
 
 # Define VJP function
 # ~~~~~~~~~~~~~~~~~~~
 
-def vjp_sol_op_jax(args_diff, gz, args_nodiff):
-    _, vjp_fn = jax.vjp(lambda th: sol_op_jax(th, args_nodiff), args_diff)
+def vjp_sol_op_jax(args_diff, gz, args_nodiff, args_static):
+    _, vjp_fn = jax.vjp(lambda th: sol_op_jax(th, args_nodiff, args_static), args_diff)
     return vjp_fn(gz)[0]
 
-jitted_vjp_sol_op_jax = jax.jit(vjp_sol_op_jax, static_argnums=2)
+jitted_vjp_sol_op_jax = jax.jit(vjp_sol_op_jax, static_argnums=3)
 
 
 # Define the Op and VJPOp classes for the ODE problem
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 class SolOp(Op):
-    def __init__(self, args_nodiff):
-        self.args_nodiff = args_nodiff  # store non-differentiated constants here
+    def __init__(self, args_static):
+        self.args_static = args_static
 
-    def make_node(self, args_diff):
-        outputs = [pt.vector(dtype="float64")]
-        return Apply(self, [pt.as_tensor_variable(args_diff)], outputs)
+    def make_node(self, args_diff, args_nodiff):
+        args_diff = pt.as_tensor_variable(args_diff)
+        args_nodiff = pt.as_tensor_variable(args_nodiff)
+        return Apply(self, [args_diff, args_nodiff], [pt.vector()])
 
     def perform(self, node, inputs, outputs):
-        (args_diff,) = inputs
-        result = jitted_sol_op_jax(args_diff, self.args_nodiff)
-        outputs[0][0] = np.asarray(result, dtype="float64")
-
-    def grad(self, inputs, output_grads):
-        (args_diff,) = inputs
-        (gz,) = output_grads
-        return [vjp_sol_op(args_diff, gz)]
-
+        args_diff, args_nodiff = inputs
+        ys = jitted_sol_op_jax(args_diff, args_nodiff, self.args_static)
+        outputs[0][0] = np.asarray(ys)
 
 class VJPSolOp(Op):
-    def __init__(self, args_nodiff):
-        self.args_nodiff = args_nodiff
+    def __init__(self, args_static):
+        self.args_static = args_static
 
-    def make_node(self, args_diff, gz):
-        inputs = [pt.as_tensor_variable(args_diff), pt.as_tensor_variable(gz)]
-        outputs = [inputs[0].type()]
-        return Apply(self, inputs, outputs)
+    def make_node(self, args_diff, gz, args_nodiff):
+        return Apply(self, [
+            pt.as_tensor_variable(args_diff),
+            pt.as_tensor_variable(gz),
+            pt.as_tensor_variable(args_nodiff)
+        ], [pt.vector()])
 
     def perform(self, node, inputs, outputs):
-        args_diff, gz = inputs
-        result = jitted_vjp_sol_op_jax(args_diff, gz, self.args_nodiff)
-        outputs[0][0] = np.asarray(result, dtype="float64")
+        args_diff, gz, args_nodiff = inputs
+        grad = jitted_vjp_sol_op_jax(args_diff, gz, args_nodiff, self.args_static)
+        outputs[0][0] = np.asarray(grad)
+
 
 # Register with jax
 # ~~~~~~~~~~~~~~~~~
 
-
 @jax_funcify.register(SolOp)
 def sol_op_jax_funcify(op, **kwargs):
-    return lambda args_diff: sol_op_jax(args_diff, op.args_nodiff)
+    return lambda args_diff, args_nodiff: sol_op_jax(args_diff, args_nodiff, op.args_static)
 
 @jax_funcify.register(VJPSolOp)
 def vjp_sol_op_jax_funcify(op, **kwargs):
-    return lambda args_diff, gz: vjp_sol_op_jax(args_diff, gz, op.args_nodiff)
+    return lambda args_diff, gz, args_nodiff: vjp_sol_op_jax(args_diff, gz, args_nodiff, op.args_static)
+
 
 # Build pyMC model
 # ~~~~~~~~~~~~~~~~
@@ -124,20 +124,21 @@ time = [0, 10, 20, 30, 40, 50]
 data = [0, 12, 45, 320, 1400, 9000]
 
 # Non-Differentiable model parameters
-args_nodiff = (time[0], time[-1], tuple(time))
+args_static = (time[0], time[-1], tuple(time))
 
 # Compile model
-sol_op = SolOp(args_nodiff)
-vjp_sol_op = VJPSolOp(args_nodiff)
-
+sol_op = SolOp(args_static)
+vjp_sol_op = VJPSolOp(args_static)
 
 with pm.Model() as model:
-    # Differentiable parameters
+    # Differentiable parameters (those we wish to calibrate)
     beta = pm.Normal("beta", 0.5, 0.05)
+    args_diff = pt.stack([beta,])
+    # Non-Differentiable parameters (those we do not wish to calibrate) 
     gamma = pt.as_tensor_variable([1/3,])
-    args_diff = pt.concatenate([beta.ravel(), gamma.ravel()])
+    args_nodiff = gamma
     # Run model
-    ys = sol_op(args_diff)
+    ys = sol_op(args_diff, args_nodiff)
     ys = pt.math.softplus(ys)
     # Likelihood
     alpha = pm.HalfNormal("alpha", 1)
