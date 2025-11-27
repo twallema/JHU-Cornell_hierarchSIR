@@ -1,22 +1,31 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
 import pytensor
-import pymc as pm
 import pytensor.tensor as pt
 pytensor.config.cxx = '/usr/bin/clang++'
 pytensor.config.on_opt_error = "ignore"
-
-
-import numpy as np
-import matplotlib.pyplot as plt
-import pytensor
-import pytensor.tensor as pt
 from pytensor.graph import Apply, Op
 from pytensor.link.jax.dispatch import jax_funcify
 
 import jax
 import jax.numpy as jnp
 
+import pymc as pm
 import pymc.sampling.jax
 import arviz
+
+
+# Generate a synthetic dataset - exponential growth with overdisperion
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Parameters 
+alpha = 0.05
+t_d = 10
+n_timesteps = 90
+# Sample data
+ts = np.linspace(start=0, stop=n_timesteps-1, num=n_timesteps)
+data = np.random.negative_binomial(1/alpha, (1/alpha)/(np.exp(ts*np.log(2)/t_d) + (1/alpha)))
 
 
 # Define and solve a diffrax differential equation and wrap it inside jax jit
@@ -120,11 +129,8 @@ def vjp_sol_op_jax_funcify(op, **kwargs):
 # Build pyMC model
 # ~~~~~~~~~~~~~~~~
 
-time = [0, 10, 20, 30, 40, 50]
-data = [0, 12, 45, 320, 1400, 9000]
-
 # Non-Differentiable model parameters
-args_static = (time[0], time[-1], tuple(time))
+args_static = (ts[0], ts[-1], tuple(ts))
 
 # Compile model
 sol_op = SolOp(args_static)
@@ -141,14 +147,14 @@ with pm.Model() as model:
     ys = sol_op(args_diff, args_nodiff)
     ys = pt.math.softplus(ys)
     # Likelihood
-    alpha = pm.HalfNormal("alpha", 1)
+    alpha = pm.HalfNormal("alpha", 0.01)
     data = pm.NegativeBinomial("data", mu=ys, alpha=1/alpha, observed=data)
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(100, tune=100, chains=2, init='jitter+adapt_diag', cores=1, progressbar=True)
+    trace = pm.sample(1000, tune=1000, chains=2, init='jitter+adapt_diag', cores=1, progressbar=True)
 
 # Generate traces
 arviz.plot_trace(trace, var_names=['alpha', 'beta']) 
@@ -166,11 +172,11 @@ with model:
 
 # Visualise
 fig,ax=plt.subplots()
-ax.plot(time, posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values, linewidth=1, color='red')
-ax.fill_between(time,
+ax.plot(ts, posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values, linewidth=1, color='red')
+ax.fill_between(ts,
                 posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.025),
                 posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.975),
                 color='red', alpha=0.1)
-ax.scatter(time, posterior_predictive.observed_data['data'].values, marker='o', color='black')
+ax.scatter(ts, posterior_predictive.observed_data['data'].values, marker='o', color='black')
 plt.show()
 plt.close()
