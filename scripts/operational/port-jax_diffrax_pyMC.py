@@ -94,6 +94,11 @@ def SIR_vector_field(t, y, args):
     # unpack states and parameters
     S, I, R, H = y
     beta, delta_beta_daily, gamma, rho_h = args
+    # prevent negative state values due to rounding errors
+    S = jnp.clip(S, 0.0, None)
+    I = jnp.clip(I, 0.0, None)
+    R = jnp.clip(R, 0.0, None)
+    H = jnp.clip(H, 0.0, None)
     # compute total population
     N = S + I + R
     # get modifier
