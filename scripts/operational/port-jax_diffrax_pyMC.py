@@ -92,17 +92,20 @@ def make_delta_beta_daily(delta_beta, duration, t0, t1, sigma=1):
 # define ODE rhs
 def SIR_vector_field(t, y, args):
     # unpack states and parameters
-    S, I, R = y
-    beta, delta_beta_daily, gamma = args
+    S, I, R, H = y
+    beta, delta_beta_daily, gamma, rho_h = args
     # compute total population
     N = S + I + R
     # get modifier
     delta_beta = 1 + jnp.interp(t, xp=delta_beta_daily[0,:], fp=delta_beta_daily[1,:])
     # compute state derivatives
-    dS = - delta_beta * beta * S * I / N
-    dI = delta_beta * beta * S * I / N - gamma * I
+    FOI = delta_beta * beta * I / N
+    dS = - S * FOI
+    dI = S * FOI - gamma * I
     dR = gamma * I
-    return jnp.array([dS, dI, dR])
+    # observation
+    dH = rho_h * S * FOI - H
+    return jnp.array([dS, dI, dR, dH])
 
 # build jax model wrapper
 import diffrax
@@ -113,12 +116,15 @@ def stop_gradients(x):
 def sol_op_jax(args_diff, args_nodiff, args_static):
     # unpack differentiable parameters
     beta = args_diff[0]
-    delta_beta = args_diff[1:]
+    rho_h = args_diff[1]
+    f_I = args_diff[2]
+    f_R = args_diff[3]
+    delta_beta = args_diff[3:]
     # unpack non-differentiable parameters and block gradients
     args_nodiff = stop_gradients(args_nodiff)
     gamma = args_nodiff[0]
     # unpack static arguments
-    t0, t1, ts, modifier_length = args_static
+    t0, t1, ts, modifier_length, population = args_static
     # evaluate modifiers
     delta_beta_daily = make_delta_beta_daily(delta_beta, modifier_length, t0, t1)
     # wrap ODE rhs
@@ -130,12 +136,12 @@ def sol_op_jax(args_diff, args_nodiff, args_static):
         t0=t0,
         t1=t1,
         dt0=0.1,
-        y0=jnp.array([10e6, 1, 0]),
-        args = (beta, delta_beta_daily, gamma),
+        y0=population * jnp.array([1-f_I-f_R, f_I, f_R, 0]),
+        args = (beta, delta_beta_daily, gamma, rho_h),
         saveat=diffrax.SaveAt(ts=list(ts)),
-        stepsize_controller=diffrax.PIDController(rtol=1e-2, atol=1e-2)
+        stepsize_controller=diffrax.PIDController(rtol=1e-4, atol=1e-4)
     )
-    return sol.ys[:,2] # return R state only
+    return sol.ys[:,-1] # return observed state only
 
 jitted_sol_op_jax = jax.jit(sol_op_jax, static_argnums=2)
 
@@ -216,38 +222,50 @@ def vjp_sol_op_jax_funcify(op, **kwargs):
 # Build pyMC model
 # ~~~~~~~~~~~~~~~~
 
-# Non-Differentiable model parameters
+# Define static forward simulation model parameters
+population = 11E6
 n_modifiers = 5
 modifier_length = 14
-args_static = (ts[0], ts[-1], tuple(ts), modifier_length)
+args_static = (ts[0], ts[-1], tuple(ts), modifier_length, population)
 
-# Compile model
+# Compile forward simulation model
 sol_op = SolOp(args_static)
 vjp_sol_op = VJPSolOp(args_static)
 
+# Build pyMC probablistic model
 with pm.Model() as model:
+
     # Differentiable parameters (those we wish to calibrate)
     beta = pm.Truncated("beta", pm.LogNormal.dist(mu=-2, sigma=0.25), lower=0, upper=1) # E[X] = 0.14, SD[X] = 0.035
     delta_beta = pm.Truncated("delta_beta", pm.Normal.dist(mu=0, sigma=0.01), size=n_modifiers, lower=-0.05, upper=0.05)
-    args_diff = pt.concatenate([beta.reshape((1,)), delta_beta]) # flatten all inputs
+    rho_h = pm.LogNormal("rho_h", mu=-6, sigma=0.25)
+    f_I = pm.LogNormal("f_I", mu=-10, sigma=0.5)
+    f_R = pm.Beta("f_R", alpha=5, beta=5)
+
     # Non-Differentiable parameters (those we do not wish to calibrate) 
     gamma = pt.as_tensor_variable([1/10,])
+    
+    # Build forward simulation arguments
+    args_diff = pt.concatenate([beta.reshape((1,)), rho_h.reshape((1,)), f_I.reshape((1,)), f_R.reshape((1,)), delta_beta]) # flatten all inputs
     args_nodiff = gamma
+
     # Run model
     ys = sol_op(args_diff, args_nodiff)
     ys = pt.math.softplus(ys)
+
     # Likelihood
     alpha = pm.HalfNormal("alpha", 0.05)
     data = pm.NegativeBinomial("data", mu=ys, alpha=1/alpha, observed=data)
+
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(100, tune=100, chains=2, init='jitter+adapt_diag', cores=1, progressbar=True) #, initvals=[{'alpha': 0.05}, {'beta': 0.15}])
+    trace = pm.sample(100, tune=100, chains=2, init='jitter+adapt_diag', cores=1, progressbar=True, initvals=2*[{'alpha': 0.10, 'beta': 0.25, 'rho_h': 0.004, 'f_I': 1E-4, 'f_R': 0.25},])
 
 # Generate traces
-arviz.plot_trace(trace, var_names=['alpha', 'beta', 'delta_beta']) 
+arviz.plot_trace(trace, var_names=['alpha', 'beta', 'delta_beta', 'rho_h', 'f_I', 'f_R']) 
 plt.show()
 plt.close()
 
