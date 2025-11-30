@@ -405,7 +405,7 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(5, tune=5, chains=1, init='adapt_diag', cores=1, progressbar=True, initvals=[{'alpha': 0.001, 'beta': beta_opt, 'delta_beta': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(100, tune=100, chains=1, init='adapt_diag', cores=1, target_accept=0.9, progressbar=True, initvals=[{'alpha': 0.001, 'beta': beta_opt, 'delta_beta': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
@@ -443,6 +443,10 @@ for i in range(len(seasons)):
     ax[i].fill_between(ts[i, :],
                     posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.025).values[i,:],
                     posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.975).values[i,:],
+                    color='green', alpha=0.1)
+    ax[i].fill_between(ts[i, :],
+                    posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.25).values[i,:],
+                    posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.75).values[i,:],
                     color='green', alpha=0.2)
     ax[i].scatter(ts[i, :], posterior_predictive.observed_data['data'].values[i,:], marker='o', color='black')
     ax[i].set_title(seasons[i])
