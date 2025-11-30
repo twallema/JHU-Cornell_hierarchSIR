@@ -407,8 +407,6 @@ plt.close()
 with model:
     posterior_predictive = pm.sample_posterior_predictive(trace)
 
-print(ts[i, :])
-print(posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values[i,:])
 
 # Visualise
 fig,ax=plt.subplots(nrows=len(seasons), sharex=True, figsize=(8.3, 11.7/5*len(seasons)))
