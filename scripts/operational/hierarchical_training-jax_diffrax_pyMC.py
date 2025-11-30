@@ -31,6 +31,7 @@ n_modifiers = 12
 modifier_length = 15
 population = 11E6
 seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']        # script works with only one season
+n_seasons = len(seasons)
 n_observations = 31
 start_calibration_month = 10    # (year X)
 end_calibration_month = 5       # (year X+1)
@@ -297,10 +298,10 @@ args_diff = jnp.concatenate([
                 jnp.array([jnp.log(jnp.exp(beta) - 1), jnp.log(jnp.exp(rho_h) - 1), jnp.log(jnp.exp(f_I) - 1), jnp.log(f_R / (1 - f_R))]),
                 jnp.arctanh(delta_beta_vals / 0.25)
             ])
-args_diff = jnp.expand_dims(args_diff, 0).repeat(len(seasons), axis=0)
+args_diff = jnp.expand_dims(args_diff, 0).repeat(n_seasons, axis=0)
 
 # stack args_nodiff per season
-args_nodiff = [jnp.concatenate([jnp.array([1/3.5,]), jnp.array(ts[i,:])]) for i in range(len(seasons))]
+args_nodiff = [jnp.concatenate([jnp.array([1/3.5,]), jnp.array(ts[i,:])]) for i in range(n_seasons)]
 args_nodiff = np.array(jnp.stack(args_nodiff))
 
 
@@ -341,11 +342,11 @@ args_diff = jnp.concatenate([block_1, block_2, block_3], axis=1)
 out = jitted_sol_op_multi(args_diff, args_nodiff, args_static)
 
 # inspect result
-fig,ax=plt.subplots(nrows=len(seasons))
-for i in range(len(seasons)):
+fig,ax=plt.subplots(nrows=n_seasons)
+for i in range(n_seasons):
     ax[i].plot(ts[i,:], 7*out[i,:], color='red')
     ax[i].scatter(ts[i,:], 7*data[i,:], marker='o', color='black')
-plt.show()
+plt.savefig(f'trace/initial-optim.pdf')
 plt.close()
 
 # store 1D vector per variable so we can start the chains easily
@@ -363,15 +364,14 @@ delta_beta_opt = np.array(args_diff[:,4:])
 sol_op = SolOp(args_static)
 vjp_sol_op = VJPSolOp(args_static)
 
-
 # Build pyMC probablistic model
 with pm.Model() as model:
 
     # Hyperparameters
     beta_mu = pm.Normal("beta_mu", mu=0.455, sigma=0.055)
     beta_sigma = pm.HalfNormal('beta_sigma', sigma=0.055)
-    delta_beta_mu = pm.Normal('delta_beta_mu', mu=0, sigma=0.1, shape=n_modifiers)
-    delta_beta_sigma = pm.HalfNormal('delta_beta_sigma', sigma=0.1, shape=n_modifiers)
+    #delta_beta_mu = pm.Normal('delta_beta_mu', mu=0, sigma=0.1, shape=n_modifiers)
+    #delta_beta_sigma = pm.HalfNormal('delta_beta_sigma', sigma=0.1, shape=n_modifiers)
     rho_h_mu = pm.Uniform('rho_h_mu', lower=0, upper=1e-2)
     rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
     f_I_mu = pm.Uniform('f_I_mu', lower=0, upper=1e-3)
@@ -380,15 +380,80 @@ with pm.Model() as model:
     f_R_b = pm.HalfNormal('f_R_b', sigma=5)
 
     # Differentiable parameters (those we wish to calibrate)
-    beta = pm.Truncated("beta", pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), lower=0, upper=1, size=(len(seasons), 1)) # E[X] = 0.46, SD[X] = 0.04
-    delta_beta = pm.Truncated("delta_beta", pm.Normal.dist(mu=delta_beta_mu, sigma=delta_beta_sigma), lower=-0.5, upper=0.5, size=(len(seasons), n_modifiers))
-    rho_h = pm.LogNormal("rho_h", mu=np.log(rho_h_mu), sigma=rho_h_sigma, size=(len(seasons), 1))
-    f_I = pm.LogNormal("f_I", mu=np.log(f_I_mu), sigma=f_I_sigma, size=(len(seasons), 1))
-    f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(len(seasons), 1))
+    beta = pm.Truncated("beta", pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), lower=0, upper=1, size=(n_seasons, 1)) # E[X] = 0.46, SD[X] = 0.04
+    #delta_beta = pm.Truncated("delta_beta", pm.Normal.dist(mu=delta_beta_mu, sigma=delta_beta_sigma), lower=-0.5, upper=0.5, size=(n_seasons, n_modifiers))
+    rho_h = pm.LogNormal("rho_h", mu=np.log(rho_h_mu), sigma=rho_h_sigma, size=(n_seasons, 1))
+    f_I = pm.LogNormal("f_I", mu=np.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, 1))
+    f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(n_seasons, 1))
+
+
+    # ------- AR-GARCH modifiers -------
+
+    # baseline variance (positive)
+    omega = pm.HalfNormal("omega", sigma=0.02)
+
+    # AR shock persistance psi constrained to [0,1]
+    psi = pm.Beta("psi", alpha=2.0, beta=2.0)
+    # GARCH alpha + beta < 1 (otherwise variance explosion)
+    a_raw = pm.Beta("a_raw", 2, 2)  # reactive shock weight
+    b_raw = pm.Beta("b_raw", 2, 2)  # volatility persistence
+    a_garch = pm.Deterministic("a_garch", 0.5 * a_raw)
+    b_garch  = pm.Deterministic("b_garch", 0.5 * b_raw)
+
+    # initial states (you can make these priors instead)
+    delta0 = pm.Deterministic("delta0", pt.zeros(n_seasons))               # initial Δβ; assume model starts from 0
+    eps0 = pm.Deterministic("eps0", pt.zeros(n_seasons))                   # assume no prior shock
+    sigma20 = pm.HalfNormal("sigma20", sigma=0.02, shape=n_seasons)        # initial variance
+
+    # sample iid standard normals ----------
+    # eta_t ~ Normal(0,1) independent; we'll map to eps_t = eta_t * sqrt(sigma2_t)
+    eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers, n_seasons))
+
+    # Hyperparameter for delta_beta_temporal
+    mu_t = pm.Normal("mu_t", mu=0, sigma=0.1, shape=n_modifiers)
+    # For passing mu_prev into the scan we create mu_prev (shifted right)
+    mu_vec = pt.as_tensor_variable(mu_t)
+    mu_prev = pt.concatenate([[mu_t[0]], mu_vec[:-1]])
+
+    # scan step: inputs: eta_t, mu_t, mu_prev; states: prev_delta, prev_sigma2, prev_eps
+    def step(eta_t, mu_t, mu_prev_t,
+            prev_delta, prev_sigma2, prev_eps,
+            psi, omega, alpha, beta):
+        
+        # 1) compute current conditional variance (uses prev_eps and prev_sigma2)
+        sigma2_t = omega + alpha * (prev_eps ** 2) + beta * prev_sigma2
+
+        # numerical safety: ensure non-negativity
+        sigma2_t = pt.maximum(sigma2_t, 0)
+
+        # 2) map iid standard-normal innovation to heteroskedastic shock
+        eps_t = eta_t * pt.sqrt(sigma2_t)
+
+        # 3) AR(1)-style deviation around mu
+        delta_t = mu_t + psi * (prev_delta - mu_prev_t) + eps_t
+
+        return delta_t, sigma2_t, eps_t
+
+    # Provide initial states as a list (must match order of returned states)
+    outputs_info = [delta0, sigma20, eps0]
+
+    # Run scan over T steps
+    (delta_seq, sigma2_seq, eps_seq), updates = pytensor.scan(
+        fn=step,
+        sequences=[eta, mu_vec, mu_prev],
+        outputs_info=outputs_info,
+        non_sequences=[psi, omega, a_garch, b_garch],
+        n_steps=n_modifiers
+    )
+
+    # Register deterministic variables to inspect later
+    delta_path = pm.Deterministic("delta_path", pt.transpose(delta_seq))    # Δβ_t for t=0..T-1
+    sigma2_path = pm.Deterministic("sigma2_path", pt.transpose(sigma2_seq))
+    eps_path = pm.Deterministic("eps_path", pt.transpose(eps_seq))
 
     # Build forward simulation arguments
     args_diff = pt.concatenate(
-        [beta, rho_h, f_I, f_R, delta_beta],
+        [beta, rho_h, f_I, f_R, delta_path],
         axis=1
     )
 
@@ -404,15 +469,16 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(10, tune=10, chains=1, init='adapt_diag', cores=1, target_accept=0.9, progressbar=True, initvals=[{'beta': beta_opt, 'delta_beta': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(25, tune=25, chains=1, init='adapt_diag', cores=1, target_accept=0.9, progressbar=True, initvals=[{'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
-                'rho_h_mu', 'rho_h_sigma', 'rho_h',     # rho_h
-                'f_R_a', 'f_R_b', 'f_R',                # f_R
-                'f_I_mu', 'f_I_sigma', 'f_I',           # f_I
-                'beta_mu', 'beta_sigma', 'beta',        # beta
-                'delta_beta_mu', 'delta_beta_sigma',    # delta_beta
+                'rho_h_mu', 'rho_h_sigma', 'rho_h',                 # rho_h
+                'f_R_a', 'f_R_b', 'f_R',                            # f_R
+                'f_I_mu', 'f_I_sigma', 'f_I',                       # f_I
+                'beta_mu', 'beta_sigma', 'beta',                    # beta
+                'omega', 'a_garch', 'b_garch', 'psi', 'sigma20',    # AR-GARCH
+                'mu_t'
                 ]
 plt.show()
 plt.close()
@@ -435,8 +501,8 @@ with model:
 
 
 # Visualise
-fig,ax=plt.subplots(nrows=len(seasons), sharex=True, figsize=(8.3, 11.7/5*len(seasons)))
-for i in range(len(seasons)):
+fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
+for i in range(n_seasons):
     ax[i].plot(ts[i, :], posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values[i,:], linewidth=1, color='green')
     ax[i].fill_between(ts[i, :],
                     posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.025).values[i,:],
