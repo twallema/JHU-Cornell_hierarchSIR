@@ -443,7 +443,7 @@ for i in range(len(seasons)):
     ax[i].fill_between(ts[i, :],
                     posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.025).values[i,:],
                     posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.975).values[i,:],
-                    color='green', alpha=0.1)
+                    color='green', alpha=0.2)
     ax[i].scatter(ts[i, :], posterior_predictive.observed_data['data'].values[i,:], marker='o', color='black')
     ax[i].set_title(seasons[i])
 plt.savefig(f'trace/plot-fit.pdf')
