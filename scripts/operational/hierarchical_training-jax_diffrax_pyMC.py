@@ -29,7 +29,7 @@ from hierarchSIR.utils import get_NC_influenza_data
 n_modifiers = 12
 modifier_length = 15
 population = 11E6
-seasons = ['2023-2024', '2024-2025']        # script works with only one season
+seasons = ['2019-2020', '2023-2024', '2024-2025']        # script works with only one season
 n_observations = 31
 start_calibration_month = 10    # (year X)
 end_calibration_month = 5       # (year X+1)
@@ -204,42 +204,22 @@ sol_op_multi = jax.vmap(sol_op_single,
 # jit it
 jitted_sol_op_multi = jax.jit(sol_op_multi, static_argnums=2)
 
-# stack per season args_diff
-args_diff = jnp.stack([
-                jnp.concatenate([jnp.array([0.45, 0.0025, 1E-4, 0.3]), jnp.zeros(n_modifiers)]),
-                jnp.concatenate([jnp.array([0.48, 0.0025, 1E-4, 0.3]), jnp.zeros(n_modifiers)])
-            ])
-# stack per season argsnodiff
-args_nodiff = jnp.stack([
-                jnp.concatenate([jnp.array([1/3.5,]), jnp.array(ts[0,:])]),
-                jnp.concatenate([jnp.array([1/3.5,]), jnp.array(ts[1,:])]),
-            ])
-# static arguments
-args_static = (start_simulation, max(ts[:,-1]), modifier_length, population)
-
-# simulate model
-out = jitted_sol_op_multi(args_diff, args_nodiff, args_static)
-
-# visualise
-fig,ax=plt.subplots(nrows=2)
-ax[0].plot(ts[0,:], out[0,:], color='red')
-ax[1].plot(ts[1,:], out[1,:], color='red')
-plt.show()
-plt.close()
-
-print(out)
-
-import sys
-sys.exit()
 
 # Define jax VJP (gradient computation) function
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def vjp_sol_op_jax(args_diff, gz, args_nodiff, args_static):
-    _, vjp_fn = jax.vjp(lambda th: sol_op_jax(th, args_nodiff, args_static), args_diff)
-    return vjp_fn(gz)[0]
+def vjp_sol_op_multi(args_diff, gz, args_nodiff, args_static):
+    # vectorize the single-season VJP
+    single_vjp = lambda ad, g, an: jax.vjp(
+        lambda th: sol_op_jax(th, an, args_static),
+        ad
+    )[1](g)[0]  # take only gradient w.r.t args_diff
 
-jitted_vjp_sol_op_jax = jax.jit(vjp_sol_op_jax, static_argnums=3)
+    # vmap over the season dimension
+    return jax.vmap(single_vjp, in_axes=(0,0,0))(args_diff, gz, args_nodiff)
+
+# jit it
+jitted_vjp_sol_op_multi = jax.jit(vjp_sol_op_multi, static_argnums=3)
 
 
 # Define the Op and VJPOp classes for the ODE problem
@@ -256,25 +236,18 @@ class SolOp(Op):
 
     def perform(self, node, inputs, outputs):
         args_diff, args_nodiff = inputs
-        ys = jitted_sol_op_jax(args_diff, args_nodiff, self.args_static)
+        ys = jitted_sol_op_multi(args_diff, args_nodiff, self.args_static)
         outputs[0][0] = np.asarray(ys)
 
     def grad(self, inputs, output_grads):
-        """
-        Return symbolic gradients for the inputs of this Op.
-        The return list must have the same length as `inputs`.
-        """
         args_diff, args_nodiff = inputs
         (gz,) = output_grads
 
-        # vjp_sol_op is the VJPSolOp instance you created at module scope
-        # It builds an Apply node that computes the gradient w.r.t. args_diff.
-        grad_wrt_args_diff = vjp_sol_op(args_diff, gz, args_nodiff)
-
-        # We block gradients through args_nodiff: return a zero tensor of the same shape.
-        grad_wrt_args_nodiff = pt.zeros_like(args_nodiff)
+        grad_wrt_args_diff = jitted_vjp_sol_op_multi(args_diff, gz, args_nodiff, self.args_static)
+        grad_wrt_args_nodiff = pt.zeros_like(args_nodiff)  # block gradients
 
         return [grad_wrt_args_diff, grad_wrt_args_nodiff]
+
 
 class VJPSolOp(Op):
     def __init__(self, args_static):
@@ -282,126 +255,128 @@ class VJPSolOp(Op):
 
     def make_node(self, args_diff, gz, args_nodiff):
         return Apply(self, [
-            pt.as_tensor_variable(args_diff),
-            pt.as_tensor_variable(gz),
-            pt.as_tensor_variable(args_nodiff)
-        ], [pt.vector()])
+            pt.as_tensor_variable(args_diff),   
+            pt.as_tensor_variable(gz),         
+            pt.as_tensor_variable(args_nodiff)  
+        ], [pt.vector()])                      
 
     def perform(self, node, inputs, outputs):
         args_diff, gz, args_nodiff = inputs
-        grad = jitted_vjp_sol_op_jax(args_diff, gz, args_nodiff, self.args_static)
-        outputs[0][0] = np.asarray(grad)
 
+        # Use the new batched VJP
+        grad = jitted_vjp_sol_op_multi(args_diff, gz, args_nodiff, self.args_static)
+
+        # Convert to NumPy array for Theano
+        outputs[0][0] = np.asarray(grad)
 
 # Register with jax
 # ~~~~~~~~~~~~~~~~~
 
 @jax_funcify.register(SolOp)
 def sol_op_jax_funcify(op, **kwargs):
-    return lambda args_diff, args_nodiff: sol_op_jax(args_diff, args_nodiff, op.args_static)
+    return lambda args_diff, args_nodiff: jitted_sol_op_multi(args_diff, args_nodiff, op.args_static)
 
 @jax_funcify.register(VJPSolOp)
 def vjp_sol_op_jax_funcify(op, **kwargs):
-    return lambda args_diff, gz, args_nodiff: vjp_sol_op_jax(args_diff, gz, args_nodiff, op.args_static)
+    return lambda args_diff, gz, args_nodiff: jitted_vjp_sol_op_multi(args_diff, gz, args_nodiff, op.args_static)
 
 
 # Pre-optimize the forward simulation model's parameters
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# args diff (ballpark estimates)
+# args diff initial guesses (ballpark estimates)
 beta = 0.46
 rho_h = 0.0025
 f_I = 1e-4
 f_R = 0.4
 delta_beta_vals = jnp.zeros(n_modifiers)
 
-# args nodiff
-args_nodiff = jnp.array([1/3.5])    # gamma
+# compute gradient-safe transformations
+args_diff = jnp.concatenate([
+                jnp.array([jnp.log(jnp.exp(beta) - 1), jnp.log(jnp.exp(rho_h) - 1), jnp.log(jnp.exp(f_I) - 1), jnp.log(f_R / (1 - f_R))]),
+                jnp.arctanh(delta_beta_vals / 0.25)
+            ])
+args_diff = jnp.expand_dims(args_diff, 0).repeat(len(seasons), axis=0)
 
-# args static
-t0 = start_simulation
-t1 = ts[-1]
-args_static = (t0, t1, tuple(ts), modifier_length, population)
+# stack args_nodiff per season
+args_nodiff = [jnp.concatenate([jnp.array([1/3.5,]), jnp.array(ts[i,:])]) for i in range(len(seasons))]
+args_nodiff = np.array(jnp.stack(args_nodiff))
+
+
+# static arguments
+args_static = (start_simulation, max(ts[:,-1]), modifier_length, population)
 
 # define SSE likelihood
-def neg_log_likelihood(theta_raw):
-    # 1. Transform raw params -> constrained params
-    beta     = jax.nn.softplus(theta_raw[0])        # > 0
-    rho_h    = jax.nn.softplus(theta_raw[1])        # > 0
-    f_I      = jax.nn.softplus(theta_raw[2])        # > 0
-    f_R      = jax.nn.sigmoid(theta_raw[3])         # (0, 1)
-    delta_beta = 0.25 * jnp.tanh(theta_raw[4:])     # bounded (-0.25, 0.25)
-    # 2. Pack args_diff
-    args_diff_new = jnp.concatenate([
-        jnp.array([beta, rho_h, f_I, f_R]),
-        delta_beta
-    ])
-    # 3. Run simulation
-    pred = jitted_sol_op_jax(args_diff_new, args_nodiff, args_static)
-    # 4. Compute SSE loss
-    return jnp.sum((data.squeeze() - pred)**2)
+def neg_log_likelihood(args_diff):
+    # 1. convert back to untransformed values
+    block_1 = jax.nn.softplus(args_diff[:, 0:3])  # beta, rho_h, f_I
+    block_2 = jnp.expand_dims(jax.nn.sigmoid(args_diff[:, 3]), axis=1)       # f_R
+    block_3 = 0.25 * jnp.tanh(args_diff[:, 4:])    # delta_beta
+    # 2. pack blocks into args_diff
+    args_diff = jnp.concatenate([block_1, block_2, block_3], axis=1)
+    # 3. run simulation
+    pred = jitted_sol_op_multi(args_diff, args_nodiff, args_static)
+    # 3. compute SSE loss
+    return jnp.sum((data - pred)**2)
 
 
 # optimize
-params = jnp.concatenate([
-    jnp.array([jnp.log(jnp.exp(beta) - 1), jnp.log(jnp.exp(rho_h) - 1), jnp.log(jnp.exp(f_I) - 1), jnp.log(f_R / (1 - f_R))]),
-    jnp.arctanh(delta_beta_vals / 0.25)
-])
 optimizer = optax.adam(1e-2)
-opt_state = optimizer.init(params)
+opt_state = optimizer.init(args_diff)
 for i in range(1000):
-    loss, grads = jax.value_and_grad(neg_log_likelihood)(params)
+    loss, grads = jax.value_and_grad(neg_log_likelihood)(args_diff)
     updates, opt_state = optimizer.update(grads, opt_state)
-    params = optax.apply_updates(params, updates)
+    args_diff = optax.apply_updates(args_diff, updates)
     if i % 100 == 0:
         print(i, float(loss))
 
-# assign to variables
-beta_opt     = jax.nn.softplus(params[0]).item()
-rho_h_opt    = jax.nn.softplus(params[1]).item()
-f_I_opt      = jax.nn.softplus(params[2]).item()
-f_R_opt      = jax.nn.sigmoid(params[3]).item()
-delta_beta_opt    = np.array(0.25 * jnp.tanh(params[4:]))
-params = jnp.concatenate([jnp.array([beta_opt, rho_h_opt, f_I_opt, f_R_opt]), delta_beta_opt])
+# convert back to untransformed values
+block_1 = jax.nn.softplus(args_diff[:, 0:3])  # beta, rho_h, f_I
+block_2 = jnp.expand_dims(jax.nn.sigmoid(args_diff[:, 3]), axis=1)       # f_R
+block_3 = 0.25 * jnp.tanh(args_diff[:, 4:])    # delta_beta
+args_diff = jnp.concatenate([block_1, block_2, block_3], axis=1)
 
 # run simulation
-out = jitted_sol_op_jax(params, args_nodiff, args_static)
+out = jitted_sol_op_multi(args_diff, args_nodiff, args_static)
 
 # inspect result
-fig,ax=plt.subplots()
-ax.plot(ts, 7*out, color='red')
-ax.scatter(ts, 7*data.squeeze(), marker='o', color='black')
-ax.set_title("Pre-sampling goodness-of-fit")
+fig,ax=plt.subplots(nrows=len(seasons))
+for i in range(len(seasons)):
+    ax[i].plot(ts[i,:], 7*out[i,:], color='red')
+    ax[i].scatter(ts[i,:], 7*data[i,:], marker='o', color='black')
 plt.show()
 plt.close()
 
+# store 1D vector per variable so we can start the chains easily
+beta_opt = args_diff[:,0]
+rho_h_opt = args_diff[:,1]
+f_I_opt = args_diff[:,2]
+f_R_opt = args_diff[:,3]
+delta_beta_opt = args_diff[:,4:]
 
 # Build pyMC model
 # ~~~~~~~~~~~~~~~~
-
-# Define static forward simulation model parameters
-args_static = (start_simulation, ts[-1], tuple(ts), modifier_length, population)
 
 # Compile forward simulation model
 sol_op = SolOp(args_static)
 vjp_sol_op = VJPSolOp(args_static)
 
+
 # Build pyMC probablistic model
 with pm.Model() as model:
 
     # Differentiable parameters (those we wish to calibrate)
-    beta = pm.Truncated("beta", pm.LogNormal.dist(mu=-0.75, sigma=0.05), lower=0, upper=1) # E[X] = 0.46, SD[X] = 0.04
-    delta_beta = pm.Truncated("delta_beta", pm.Normal.dist(mu=0, sigma=0.1), size=n_modifiers, lower=-0.5, upper=0.5)
-    rho_h = pm.LogNormal("rho_h", mu=-6, sigma=0.5)
-    f_I = pm.LogNormal("f_I", mu=-10, sigma=1)
-    f_R = pm.Beta("f_R", alpha=5, beta=5)
+    beta = pm.Truncated("beta", pm.LogNormal.dist(mu=-0.75, sigma=0.05), lower=0, upper=1, size=(len(seasons), 1)) # E[X] = 0.46, SD[X] = 0.04
+    delta_beta = pm.Truncated("delta_beta", pm.Normal.dist(mu=0, sigma=0.1), lower=-0.5, upper=0.5, size=(len(seasons), n_modifiers))
+    rho_h = pm.LogNormal("rho_h", mu=-6, sigma=0.5, size=(len(seasons), 1))
+    f_I = pm.LogNormal("f_I", mu=-10, sigma=1, size=(len(seasons), 1))
+    f_R = pm.Beta("f_R", alpha=5, beta=5, size=(len(seasons), 1))
 
-    # Non-Differentiable parameters (those we do not wish to calibrate) 
-    gamma = pt.as_tensor_variable([1/3.5,])
-    
     # Build forward simulation arguments
-    args_diff = pt.concatenate([beta.reshape((1,)), rho_h.reshape((1,)), f_I.reshape((1,)), f_R.reshape((1,)), delta_beta]) # flatten all inputs
-    args_nodiff = gamma
+    args_diff = pt.concatenate(
+        [beta, rho_h, f_I, f_R, delta_beta],
+        axis=1
+    )
 
     # Run model
     ys = 7*sol_op(args_diff, args_nodiff)
@@ -416,7 +391,7 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(100, tune=100, chains=2, init='adapt_diag', cores=1, progressbar=True, initvals=2*[{'alpha': 0.001, 'beta': beta_opt, 'delta_beta': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(100, tune=100, chains=2, init='adapt_diag', cores=1, progressbar=True) #, initvals=2*[{'alpha': 0.001, 'beta': beta_opt, 'delta_beta': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 arviz.plot_trace(trace, var_names=['alpha', 'beta', 'delta_beta', 'rho_h', 'f_I', 'f_R']) 
