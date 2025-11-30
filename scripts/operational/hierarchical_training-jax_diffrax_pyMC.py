@@ -325,7 +325,7 @@ def neg_log_likelihood(args_diff):
 # optimize
 optimizer = optax.adam(1e-2)
 opt_state = optimizer.init(args_diff)
-for i in range(1000):
+for i in range(1200):
     loss, grads = jax.value_and_grad(neg_log_likelihood)(args_diff)
     updates, opt_state = optimizer.update(grads, opt_state)
     args_diff = optax.apply_updates(args_diff, updates)
@@ -355,7 +355,8 @@ rho_h_opt = np.expand_dims(np.array(args_diff[:,1]), axis=1)
 f_I_opt = np.expand_dims(np.array(args_diff[:,2]), axis=1)
 f_R_opt = np.expand_dims(np.array(args_diff[:,3]), axis=1)
 delta_beta_opt = np.array(args_diff[:,4:])
-
+mu_t_opt = np.mean(delta_beta_opt, axis=0)
+eta_opt = np.transpose(delta_beta_opt - mu_t_opt[None, :]) / np.sqrt(0.05)
 
 # Build pyMC model
 # ~~~~~~~~~~~~~~~~
@@ -368,8 +369,8 @@ vjp_sol_op = VJPSolOp(args_static)
 with pm.Model() as model:
 
     # Hyperparameters
-    beta_mu = pm.Normal("beta_mu", mu=0.455, sigma=0.055)
-    beta_sigma = pm.HalfNormal('beta_sigma', sigma=0.055)
+    beta_mu = pm.Normal("beta_mu", mu=0.455, sigma=0.055/2)
+    beta_sigma = pm.HalfNormal('beta_sigma', sigma=0.055/2)
     rho_h_mu = pm.Uniform('rho_h_mu', lower=0, upper=1e-2)
     rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
     f_I_mu = pm.Uniform('f_I_mu', lower=0, upper=1e-3)
@@ -387,28 +388,31 @@ with pm.Model() as model:
     # ------- AR-GARCH modifiers -------
 
     # baseline variance (positive)
-    omega = pm.HalfNormal("omega", sigma=0.02)
+    omega = pm.HalfNormal("omega", sigma=0.05)
 
     # AR shock persistance psi constrained to [0,1]
     psi = pm.Beta("psi", alpha=2.0, beta=2.0)
     # GARCH alpha + beta < 1 (otherwise variance explosion)
-    a_raw = pm.Beta("a_raw", 2, 2)  # reactive shock weight
-    b_raw = pm.Beta("b_raw", 2, 2)  # volatility persistence
-    a_garch = pm.Deterministic("a_garch", 0.5 * a_raw)
-    b_garch  = pm.Deterministic("b_garch", 0.5 * b_raw)
+    # total persistence s = alpha + beta
+    s = pm.Beta("s", alpha=2.0, beta=2.0)
+    # how alpha vs beta share s
+    rho = pm.Beta("rho", alpha=2.0, beta=2.0)         
+    # recover a_garch and b_garch
+    a_garch = pm.Deterministic("a_garch", s * rho)
+    b_garch  = pm.Deterministic("b_garch", s * (1.0 - rho))
 
     # initial states (you can make these priors instead)
-    delta0 = pm.Deterministic("delta0", pt.zeros(n_seasons))               # initial Δβ; assume model starts from 0
-    eps0 = pm.Deterministic("eps0", pt.zeros(n_seasons))                   # assume no prior shock
-    sigma20 = pm.HalfNormal("sigma20", sigma=0.02, shape=n_seasons)        # initial variance
+    delta0 = pm.Normal("delta0", mu=0, sigma=0.05, size=n_seasons)              # initial Δβ; assume model starts from 0
+    eps0 = pm.Deterministic("eps0", pt.zeros(n_seasons))                        # assume no prior shock
+    sigma20 = pm.HalfNormal("sigma20", sigma=0.05, shape=n_seasons)             # initial variance
 
     # sample iid standard normals ----------
-    # eta_t ~ Normal(0,1) independent; we'll map to eps_t = eta_t * sqrt(sigma2_t)
     eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers, n_seasons))
 
     # Hyperparameter for delta_beta_temporal
     mu_t = pm.Normal("mu_t", mu=0, sigma=0.1, shape=n_modifiers)
-    # For passing mu_prev into the scan we create mu_prev (shifted right)
+
+    # For passing mu_prev into the scan we create a hypothetical mu_prev (shifted right)
     mu_vec = pt.as_tensor_variable(mu_t)
     mu_prev = pt.concatenate([[mu_t[0]], mu_vec[:-1]])
 
@@ -459,27 +463,26 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Likelihood
-    data = pm.Poisson("data", mu=ys, observed=7*data)
+    alpha = pm.HalfNormal("alpha", sigma=0.01/3)
+    data = pm.NegativeBinomial("data", mu=ys, alpha=1/alpha, observed=7*data)
 
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(25, tune=25, chains=1, init='adapt_diag', cores=1, target_accept=0.9, progressbar=True, initvals=[{'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(15, tune=15, chains=1, init='adapt_diag', cores=1, progressbar=True, initvals=[{'alpha': 0.01, 'eta': eta_opt, 'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
+                'alpha',
                 'rho_h_mu', 'rho_h_sigma', 'rho_h',                 # rho_h
                 'f_R_a', 'f_R_b', 'f_R',                            # f_R
                 'f_I_mu', 'f_I_sigma', 'f_I',                       # f_I
                 'beta_mu', 'beta_sigma', 'beta',                    # beta
                 'omega', 'a_garch', 'b_garch', 'psi', 'sigma20',    # AR-GARCH
-                'mu_t'
+                'mu_t', 'delta0'
                 ]
-plt.show()
-plt.close()
-
 
 # Save traces
 os.makedirs('trace', exist_ok=True)
@@ -497,7 +500,22 @@ with model:
     posterior_predictive = pm.sample_posterior_predictive(trace)
 
 
-# Visualise
+# Visualise modifier trajectories
+fig,ax=plt.subplots(figsize=(8.3, 11.7/5))
+# average trend
+ax.plot(range(n_modifiers), trace.posterior['mu_t'].median(dim=['chain', 'draw']).values, color='green')
+ax.fill_between(range(n_modifiers),
+                trace.posterior['mu_t'].quantile(dim=['chain', 'draw'], q=0.025).values,
+                trace.posterior['mu_t'].quantile(dim=['chain', 'draw'], q=0.975).values,
+                color='green', alpha=0.15)
+# individual seasons
+for i in range(n_seasons):
+    ax.plot(range(n_modifiers), trace.posterior['delta_path'].median(dim=['chain', 'draw']).values[i,:], color='black', alpha=0.3, linewidth=0.5)
+plt.savefig(f'trace/modifiers.pdf')
+plt.close()
+
+
+# Visualise goodnes-of-fit
 fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
 for i in range(n_seasons):
     ax[i].plot(ts[i, :], posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values[i,:], linewidth=1, color='green')
