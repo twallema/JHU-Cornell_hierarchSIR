@@ -1,4 +1,5 @@
 # standard python libraries
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
@@ -29,7 +30,7 @@ from hierarchSIR.utils import get_NC_influenza_data
 n_modifiers = 12
 modifier_length = 15
 population = 11E6
-seasons = ['2019-2020', '2023-2024', '2024-2025']        # script works with only one season
+seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']        # script works with only one season
 n_observations = 31
 start_calibration_month = 10    # (year X)
 end_calibration_month = 5       # (year X+1)
@@ -366,12 +367,24 @@ vjp_sol_op = VJPSolOp(args_static)
 # Build pyMC probablistic model
 with pm.Model() as model:
 
+    # Hyperparameters
+    beta_mu = pm.Normal("beta_mu", mu=0.455, sigma=0.055)
+    beta_sigma = pm.HalfNormal('beta_sigma', sigma=0.055)
+    delta_beta_mu = pm.Normal('delta_beta_mu', mu=0, sigma=0.1, shape=n_modifiers)
+    delta_beta_sigma = pm.HalfNormal('delta_beta_sigma', sigma=0.1, shape=n_modifiers)
+    rho_h_mu = pm.Uniform('rho_h_mu', lower=0, upper=1e-2)
+    rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
+    f_I_mu = pm.Uniform('f_I_mu', lower=0, upper=1e-3)
+    f_I_sigma = pm.HalfNormal('f_I_sigma', sigma=1/3)
+    f_R_mu = pm.Normal('f_R_mu', mu=0.4, sigma=0.1)
+    f_R_sigma = pm.HalfNormal('f_R_sigma', sigma=0.1)
+
     # Differentiable parameters (those we wish to calibrate)
-    beta = pm.Truncated("beta", pm.LogNormal.dist(mu=-0.75, sigma=0.05), lower=0, upper=1, size=(len(seasons), 1)) # E[X] = 0.46, SD[X] = 0.04
-    delta_beta = pm.Truncated("delta_beta", pm.Normal.dist(mu=0, sigma=0.1), lower=-0.5, upper=0.5, size=(len(seasons), n_modifiers))
-    rho_h = pm.LogNormal("rho_h", mu=-6, sigma=0.5, size=(len(seasons), 1))
-    f_I = pm.LogNormal("f_I", mu=-10, sigma=1, size=(len(seasons), 1))
-    f_R = pm.Beta("f_R", alpha=5, beta=5, size=(len(seasons), 1))
+    beta = pm.Truncated("beta", pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), lower=0, upper=1, size=(len(seasons), 1)) # E[X] = 0.46, SD[X] = 0.04
+    delta_beta = pm.Truncated("delta_beta", pm.Normal.dist(mu=delta_beta_mu, sigma=delta_beta_sigma), lower=-0.5, upper=0.5, size=(len(seasons), n_modifiers))
+    rho_h = pm.LogNormal("rho_h", mu=np.log(rho_h_mu), sigma=rho_h_sigma, size=(len(seasons), 1))
+    f_I = pm.LogNormal("f_I", mu=np.log(f_I_mu), sigma=f_I_sigma, size=(len(seasons), 1))
+    f_R = pm.Truncated("f_R", pm.Normal.dist(mu=f_R_mu, sigma=f_R_sigma), size=(len(seasons), 1), lower=0, upper=1)
 
     # Build forward simulation arguments
     args_diff = pt.concatenate(
@@ -384,7 +397,7 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Likelihood
-    alpha = pm.HalfNormal("alpha", sigma=0.005)
+    alpha = pm.HalfNormal("alpha", sigma=0.01)
     data = pm.NegativeBinomial("data", mu=ys, alpha=1/alpha, observed=7*data)
 
 
@@ -395,9 +408,24 @@ with model:
     trace = pm.sample(5, tune=5, chains=1, init='adapt_diag', cores=1, progressbar=True, initvals=[{'alpha': 0.001, 'beta': beta_opt, 'delta_beta': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
-arviz.plot_trace(trace, var_names=['alpha', 'beta', 'delta_beta', 'rho_h', 'f_I', 'f_R'])
+variables2plot = [
+                'alpha',
+                'rho_h_mu', 'rho_h_sigma', 'rho_h',     # rho_h
+                'f_R_mu', 'f_R_sigma', 'f_R',           # f_R
+                'f_I_mu', 'f_I_sigma', 'f_I',           # f_I
+                'beta_mu', 'beta_sigma', 'beta',        # beta
+                'delta_beta_mu', 'delta_beta_sigma',    # delta_beta
+                ]
 plt.show()
 plt.close()
+
+
+# Save traces
+os.makedirs('trace', exist_ok=True)
+for var in variables2plot:
+    arviz.plot_trace(trace, var_names=[var]) 
+    plt.savefig(f'trace/trace-{var}.pdf')
+    plt.close()
 
 
 # Make posterior predictive
@@ -411,12 +439,12 @@ with model:
 # Visualise
 fig,ax=plt.subplots(nrows=len(seasons), sharex=True, figsize=(8.3, 11.7/5*len(seasons)))
 for i in range(len(seasons)):
-    ax[i].plot(ts[i, :], posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values[i,:], linewidth=1, color='red')
+    ax[i].plot(ts[i, :], posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values[i,:], linewidth=1, color='green')
     ax[i].fill_between(ts[i, :],
                     posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.025).values[i,:],
                     posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.975).values[i,:],
-                    color='red', alpha=0.1)
+                    color='green', alpha=0.1)
     ax[i].scatter(ts[i, :], posterior_predictive.observed_data['data'].values[i,:], marker='o', color='black')
     ax[i].set_title(seasons[i])
-plt.show()
+plt.savefig(f'trace/plot-fit.pdf')
 plt.close()
