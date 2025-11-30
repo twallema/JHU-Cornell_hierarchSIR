@@ -232,7 +232,7 @@ class SolOp(Op):
     def make_node(self, args_diff, args_nodiff):
         args_diff = pt.as_tensor_variable(args_diff)
         args_nodiff = pt.as_tensor_variable(args_nodiff)
-        return Apply(self, [args_diff, args_nodiff], [pt.vector()])
+        return Apply(self, [args_diff, args_nodiff], [pt.matrix()])
 
     def perform(self, node, inputs, outputs):
         args_diff, args_nodiff = inputs
@@ -243,7 +243,7 @@ class SolOp(Op):
         args_diff, args_nodiff = inputs
         (gz,) = output_grads
 
-        grad_wrt_args_diff = jitted_vjp_sol_op_multi(args_diff, gz, args_nodiff, self.args_static)
+        grad_wrt_args_diff = vjp_sol_op(args_diff, gz, args_nodiff)
         grad_wrt_args_nodiff = pt.zeros_like(args_nodiff)  # block gradients
 
         return [grad_wrt_args_diff, grad_wrt_args_nodiff]
@@ -258,13 +258,13 @@ class VJPSolOp(Op):
             pt.as_tensor_variable(args_diff),   
             pt.as_tensor_variable(gz),         
             pt.as_tensor_variable(args_nodiff)  
-        ], [pt.vector()])                      
+        ], [pt.matrix()])                      
 
     def perform(self, node, inputs, outputs):
         args_diff, gz, args_nodiff = inputs
 
         # Use the new batched VJP
-        grad = jitted_vjp_sol_op_multi(args_diff, gz, args_nodiff, self.args_static)
+        grad = vjp_sol_op_multi(args_diff, gz, args_nodiff, self.args_static)
 
         # Convert to NumPy array for Theano
         outputs[0][0] = np.asarray(grad)
@@ -348,11 +348,12 @@ plt.show()
 plt.close()
 
 # store 1D vector per variable so we can start the chains easily
-beta_opt = args_diff[:,0]
-rho_h_opt = args_diff[:,1]
-f_I_opt = args_diff[:,2]
-f_R_opt = args_diff[:,3]
-delta_beta_opt = args_diff[:,4:]
+beta_opt = np.expand_dims(np.array(args_diff[:,0]), axis=1)
+rho_h_opt = np.expand_dims(np.array(args_diff[:,1]), axis=1)
+f_I_opt = np.expand_dims(np.array(args_diff[:,2]), axis=1)
+f_R_opt = np.expand_dims(np.array(args_diff[:,3]), axis=1)
+delta_beta_opt = np.array(args_diff[:,4:])
+
 
 # Build pyMC model
 # ~~~~~~~~~~~~~~~~
@@ -378,7 +379,7 @@ with pm.Model() as model:
         axis=1
     )
 
-    # Run model
+    # Run forward simulation model model
     ys = 7*sol_op(args_diff, args_nodiff)
     ys = pt.math.softplus(ys)
 
@@ -391,10 +392,10 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(100, tune=100, chains=2, init='adapt_diag', cores=1, progressbar=True) #, initvals=2*[{'alpha': 0.001, 'beta': beta_opt, 'delta_beta': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(5, tune=5, chains=1, init='adapt_diag', cores=1, progressbar=True, initvals=[{'alpha': 0.001, 'beta': beta_opt, 'delta_beta': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
-arviz.plot_trace(trace, var_names=['alpha', 'beta', 'delta_beta', 'rho_h', 'f_I', 'f_R']) 
+arviz.plot_trace(trace, var_names=['alpha', 'beta', 'delta_beta', 'rho_h', 'f_I', 'f_R'])
 plt.show()
 plt.close()
 
@@ -406,14 +407,18 @@ plt.close()
 with model:
     posterior_predictive = pm.sample_posterior_predictive(trace)
 
+print(ts[i, :])
+print(posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values[i,:])
 
 # Visualise
-fig,ax=plt.subplots()
-ax.plot(ts, posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values, linewidth=1, color='red')
-ax.fill_between(ts,
-                posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.025),
-                posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.975),
-                color='red', alpha=0.1)
-ax.scatter(ts, posterior_predictive.observed_data['data'].values, marker='o', color='black')
+fig,ax=plt.subplots(nrows=len(seasons), sharex=True, figsize=(8.3, 11.7/5*len(seasons)))
+for i in range(len(seasons)):
+    ax[i].plot(ts[i, :], posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values[i,:], linewidth=1, color='red')
+    ax[i].fill_between(ts[i, :],
+                    posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.025).values[i,:],
+                    posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.975).values[i,:],
+                    color='red', alpha=0.1)
+    ax[i].scatter(ts[i, :], posterior_predictive.observed_data['data'].values[i,:], marker='o', color='black')
+    ax[i].set_title(seasons[i])
 plt.show()
 plt.close()
