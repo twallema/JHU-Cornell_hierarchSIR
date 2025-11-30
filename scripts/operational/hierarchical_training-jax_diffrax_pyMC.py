@@ -376,15 +376,15 @@ with pm.Model() as model:
     rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
     f_I_mu = pm.Uniform('f_I_mu', lower=0, upper=1e-3)
     f_I_sigma = pm.HalfNormal('f_I_sigma', sigma=1/3)
-    f_R_mu = pm.Normal('f_R_mu', mu=0.4, sigma=0.1)
-    f_R_sigma = pm.HalfNormal('f_R_sigma', sigma=0.1)
+    f_R_a = pm.HalfNormal('f_R_a', sigma=5)
+    f_R_b = pm.HalfNormal('f_R_b', sigma=5)
 
     # Differentiable parameters (those we wish to calibrate)
     beta = pm.Truncated("beta", pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), lower=0, upper=1, size=(len(seasons), 1)) # E[X] = 0.46, SD[X] = 0.04
     delta_beta = pm.Truncated("delta_beta", pm.Normal.dist(mu=delta_beta_mu, sigma=delta_beta_sigma), lower=-0.5, upper=0.5, size=(len(seasons), n_modifiers))
     rho_h = pm.LogNormal("rho_h", mu=np.log(rho_h_mu), sigma=rho_h_sigma, size=(len(seasons), 1))
     f_I = pm.LogNormal("f_I", mu=np.log(f_I_mu), sigma=f_I_sigma, size=(len(seasons), 1))
-    f_R = pm.Truncated("f_R", pm.Normal.dist(mu=f_R_mu, sigma=f_R_sigma), size=(len(seasons), 1), lower=0, upper=1)
+    f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(len(seasons), 1))
 
     # Build forward simulation arguments
     args_diff = pt.concatenate(
@@ -397,21 +397,19 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Likelihood
-    alpha = pm.HalfNormal("alpha", sigma=0.01)
-    data = pm.NegativeBinomial("data", mu=ys, alpha=1/alpha, observed=7*data)
+    data = pm.Poisson("data", mu=ys, observed=7*data)
 
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(100, tune=100, chains=1, init='adapt_diag', cores=1, target_accept=0.9, progressbar=True, initvals=[{'alpha': 0.001, 'beta': beta_opt, 'delta_beta': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(10, tune=10, chains=1, init='adapt_diag', cores=1, target_accept=0.9, progressbar=True, initvals=[{'beta': beta_opt, 'delta_beta': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
-                'alpha',
                 'rho_h_mu', 'rho_h_sigma', 'rho_h',     # rho_h
-                'f_R_mu', 'f_R_sigma', 'f_R',           # f_R
+                'f_R_a', 'f_R_b', 'f_R',                # f_R
                 'f_I_mu', 'f_I_sigma', 'f_I',           # f_I
                 'beta_mu', 'beta_sigma', 'beta',        # beta
                 'delta_beta_mu', 'delta_beta_sigma',    # delta_beta
