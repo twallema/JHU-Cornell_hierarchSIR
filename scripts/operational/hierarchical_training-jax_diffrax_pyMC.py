@@ -287,10 +287,10 @@ def vjp_sol_op_jax_funcify(op, **kwargs):
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # args diff initial guesses (ballpark estimates)
-beta = 0.46
+beta = 0.455
 rho_h = 0.0025
 f_I = 1e-4
-f_R = 0.4
+f_R = 0.25
 delta_beta_vals = jnp.zeros(n_modifiers)
 
 # compute gradient-safe transformations
@@ -370,8 +370,6 @@ with pm.Model() as model:
     # Hyperparameters
     beta_mu = pm.Normal("beta_mu", mu=0.455, sigma=0.055)
     beta_sigma = pm.HalfNormal('beta_sigma', sigma=0.055)
-    #delta_beta_mu = pm.Normal('delta_beta_mu', mu=0, sigma=0.1, shape=n_modifiers)
-    #delta_beta_sigma = pm.HalfNormal('delta_beta_sigma', sigma=0.1, shape=n_modifiers)
     rho_h_mu = pm.Uniform('rho_h_mu', lower=0, upper=1e-2)
     rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
     f_I_mu = pm.Uniform('f_I_mu', lower=0, upper=1e-3)
@@ -381,7 +379,6 @@ with pm.Model() as model:
 
     # Differentiable parameters (those we wish to calibrate)
     beta = pm.Truncated("beta", pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), lower=0, upper=1, size=(n_seasons, 1)) # E[X] = 0.46, SD[X] = 0.04
-    #delta_beta = pm.Truncated("delta_beta", pm.Normal.dist(mu=delta_beta_mu, sigma=delta_beta_sigma), lower=-0.5, upper=0.5, size=(n_seasons, n_modifiers))
     rho_h = pm.LogNormal("rho_h", mu=np.log(rho_h_mu), sigma=rho_h_sigma, size=(n_seasons, 1))
     f_I = pm.LogNormal("f_I", mu=np.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, 1))
     f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(n_seasons, 1))
