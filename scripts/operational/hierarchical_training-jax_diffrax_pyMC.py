@@ -471,7 +471,7 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(15, tune=15, chains=1, init='adapt_diag', cores=1, progressbar=True, initvals=[{'alpha': 0.01, 'eta': eta_opt, 'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(100, tune=100, chains=2, init='adapt_diag', target_accept=0.9, cores=1, progressbar=True, initvals=2*[{'alpha': 0.01, 'eta': eta_opt, 'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
@@ -511,6 +511,7 @@ ax.fill_between(range(n_modifiers),
 # individual seasons
 for i in range(n_seasons):
     ax.plot(range(n_modifiers), trace.posterior['delta_path'].median(dim=['chain', 'draw']).values[i,:], color='black', alpha=0.3, linewidth=0.5)
+ax.axhline(y=0, color='red', linewidth=0.5)
 plt.savefig(f'trace/modifiers.pdf')
 plt.close()
 
