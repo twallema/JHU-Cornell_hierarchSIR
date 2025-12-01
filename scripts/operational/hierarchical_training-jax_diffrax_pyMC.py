@@ -371,15 +371,15 @@ with pm.Model() as model:
     # Hyperparameters
     beta_mu = pm.Normal("beta_mu", mu=0.455, sigma=0.055/2)
     beta_sigma = pm.HalfNormal('beta_sigma', sigma=0.055/2)
-    rho_h_mu = pm.Uniform('rho_h_mu', lower=0, upper=1e-2)
+    rho_h_mu = pm.HalfNormal('rho_h_mu', sigma=1e-2)
     rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
-    f_I_mu = pm.Uniform('f_I_mu', lower=0, upper=1e-3)
+    f_I_mu = pm.HalfNormal('f_I_mu', sigma=1e-3)
     f_I_sigma = pm.HalfNormal('f_I_sigma', sigma=1/3)
     f_R_a = pm.HalfNormal('f_R_a', sigma=5)
     f_R_b = pm.HalfNormal('f_R_b', sigma=5)
 
     # Differentiable parameters (those we wish to calibrate)
-    beta = pm.Truncated("beta", pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), lower=0, upper=1, size=(n_seasons, 1)) # E[X] = 0.46, SD[X] = 0.04
+    beta = pm.Truncated("beta", pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), lower=0, upper=1, size=(n_seasons, 1))
     rho_h = pm.LogNormal("rho_h", mu=np.log(rho_h_mu), sigma=rho_h_sigma, size=(n_seasons, 1))
     f_I = pm.LogNormal("f_I", mu=np.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, 1))
     f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(n_seasons, 1))
@@ -390,16 +390,17 @@ with pm.Model() as model:
     # baseline variance (positive)
     omega = pm.HalfNormal("omega", sigma=0.05)
 
-    # AR shock persistance psi constrained to [0,1]
-    psi = pm.Beta("psi", alpha=2.0, beta=2.0)
-    # GARCH alpha + beta < 1 (otherwise variance explosion)
-    # total persistence s = alpha + beta
-    s = pm.Beta("s", alpha=2.0, beta=2.0)
-    # how alpha vs beta share s
-    rho = pm.Beta("rho", alpha=2.0, beta=2.0)         
-    # recover a_garch and b_garch
+    # Reparameterize constrained (0,1) params on unconstrained real line
+    psi_raw = pm.Normal("psi_raw", mu=0.0, sigma=1.0)
+    psi = pm.Deterministic("psi", pm.math.sigmoid(psi_raw))
+    s_raw   = pm.Normal("s_raw", mu=0.0, sigma=1.0)   # persistence raw
+    rho_raw = pm.Normal("rho_raw", mu=0.0, sigma=1.0) # split raw
+    s   = pm.Deterministic("s", pm.math.sigmoid(s_raw))
+    rho = pm.Deterministic("rho", pm.math.sigmoid(rho_raw))
+
+    # GARCH coefficients in (0,1) and a_garch + b_garch = s (total persistence)
     a_garch = pm.Deterministic("a_garch", s * rho)
-    b_garch  = pm.Deterministic("b_garch", s * (1.0 - rho))
+    b_garch = pm.Deterministic("b_garch", s * (1.0 - rho))
 
     # initial states (you can make these priors instead)
     delta0 = pm.Normal("delta0", mu=0, sigma=0.05, size=n_seasons)              # initial Δβ; assume model starts from 0
@@ -471,7 +472,7 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(100, tune=100, chains=2, init='adapt_diag', target_accept=0.9, cores=1, progressbar=True, initvals=2*[{'alpha': 0.01, 'eta': eta_opt, 'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(25, tune=25, chains=1, init='adapt_diag', cores=1, progressbar=True, initvals=1*[{'alpha': 0.01, 'eta': eta_opt, 'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
@@ -481,7 +482,7 @@ variables2plot = [
                 'f_I_mu', 'f_I_sigma', 'f_I',                       # f_I
                 'beta_mu', 'beta_sigma', 'beta',                    # beta
                 'omega', 'a_garch', 'b_garch', 'psi', 'sigma20',    # AR-GARCH
-                'mu_t', 'delta0'
+                'mu_t', 'delta0', 's', 'rho'
                 ]
 
 # Save traces
@@ -492,7 +493,7 @@ for var in variables2plot:
     plt.close()
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "psi"])
+arviz.plot_pair(trace, var_names=["s", "rho", "psi"])
 plt.savefig('trace/pairplot-ARGARCH.pdf')
 plt.close()
 
