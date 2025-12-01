@@ -491,6 +491,11 @@ for var in variables2plot:
     plt.savefig(f'trace/trace-{var}.pdf')
     plt.close()
 
+# Build pair plots
+arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "psi"])
+plt.savefig('trace/pairplot-ARGARCH.pdf')
+plt.close()
+
 
 # Make posterior predictive
 # ~~~~~~~~~~~~~~~~~~~~~~~~~
