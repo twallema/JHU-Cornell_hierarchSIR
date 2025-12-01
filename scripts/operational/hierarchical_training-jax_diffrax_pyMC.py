@@ -371,7 +371,7 @@ with pm.Model() as model:
     # Hyperparameters
     beta_mu = pm.Normal("beta_mu", mu=0.455, sigma=0.055/2)
     beta_sigma = pm.HalfNormal('beta_sigma', sigma=0.055/2)
-    rho_h_mu = pm.HalfNormal('rho_h_mu', sigma=1e-2)
+    rho_h_mu = pm.HalfNormal('rho_h_mu', sigma=1e-2/3)
     rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
     f_I_mu = pm.HalfNormal('f_I_mu', sigma=1e-3)
     f_I_sigma = pm.HalfNormal('f_I_sigma', sigma=1/3)
