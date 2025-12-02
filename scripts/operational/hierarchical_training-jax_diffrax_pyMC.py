@@ -139,10 +139,10 @@ def SIR_vector_field(t, y, args):
     S, I, R, H = y
     beta, delta_beta_daily, gamma, rho_h = args
     # prevent negative state values due to rounding errors
-    S = jnp.clip(S, 0.0, None)
-    I = jnp.clip(I, 0.0, None)
-    R = jnp.clip(R, 0.0, None)
-    H = jnp.clip(H, 0.0, None)
+    S = jax.nn.softplus(S)
+    I = jax.nn.softplus(I)
+    R = jax.nn.softplus(R)
+    H = jax.nn.softplus(H)
     # compute total population
     N = S + I + R
     # get modifier
@@ -187,7 +187,7 @@ def sol_op_jax(args_diff, args_nodiff, args_static):
         y0=population * jnp.array([1-f_I-f_R, f_I, f_R, 0]),
         args = (beta, delta_beta_daily, gamma, rho_h),
         saveat=diffrax.SaveAt(ts=list(ts)),
-        stepsize_controller=diffrax.PIDController(rtol=1e-4, atol=1e-4)
+        stepsize_controller=diffrax.PIDController(rtol=1e-5, atol=1e-5)
     )
     return sol.ys[:,-1] # return observed state only
 
@@ -488,8 +488,8 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(250, tune=50, chains=4, init='adapt_diag', target_accept=0.9, cores=1, progressbar=True,
-                      initvals=4*[{'alpha': 0.01, 'eta': eta_opt, 'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(250, tune=50, chains=3, init='adapt_diag', cores=1, progressbar=True,
+                      initvals=3*[{'alpha': 0.01, 'eta': eta_opt, 'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
