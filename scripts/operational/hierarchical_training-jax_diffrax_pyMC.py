@@ -488,8 +488,8 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(250, tune=50, chains=3, init='adapt_diag', cores=1, progressbar=True,
-                      initvals=3*[{'alpha': 0.01, 'eta': eta_opt, 'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(250, tune=50, chains=4, init='adapt_full', cores=1, progressbar=True,
+                      initvals=4*[{'alpha': 0.01, 'eta': eta_opt, 'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
