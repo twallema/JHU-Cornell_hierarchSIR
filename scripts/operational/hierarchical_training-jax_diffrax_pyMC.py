@@ -187,7 +187,7 @@ def sol_op_jax(args_diff, args_nodiff, args_static):
         y0=population * jnp.array([1-f_I-f_R, f_I, f_R, 0]),
         args = (beta, delta_beta_daily, gamma, rho_h),
         saveat=diffrax.SaveAt(ts=list(ts)),
-        stepsize_controller=diffrax.PIDController(rtol=1e-5, atol=1e-5)
+        stepsize_controller=diffrax.PIDController(rtol=1e-4, atol=1e-4)
     )
     return sol.ys[:,-1] # return observed state only
 
@@ -369,8 +369,6 @@ vjp_sol_op = VJPSolOp(args_static)
 with pm.Model() as model:
 
     # Hyperparameters
-    beta_mu = pm.Normal("beta_mu", mu=0.455, sigma=0.01)
-    beta_sigma = pm.HalfNormal('beta_sigma', sigma=0.01)
     rho_h_mu = pm.HalfNormal('rho_h_mu', sigma=1e-2/3)
     rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
     f_I_mu = pm.HalfNormal('f_I_mu', sigma=1e-3)
@@ -379,7 +377,7 @@ with pm.Model() as model:
     f_R_b = pm.HalfNormal('f_R_b', sigma=5)
 
     # Differentiable parameters (those we wish to calibrate)
-    beta = pm.Truncated("beta", pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), lower=0, upper=1, size=(n_seasons, 1))
+    beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons,1))) #pm.Truncated("beta", pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), lower=0, upper=1, size=(n_seasons, 1))
     rho_h = pm.LogNormal("rho_h", mu=np.log(rho_h_mu), sigma=rho_h_sigma, size=(n_seasons, 1))
     f_I = pm.LogNormal("f_I", mu=np.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, 1))
     f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(n_seasons, 1))
@@ -391,37 +389,33 @@ with pm.Model() as model:
     omega = pm.HalfNormal("omega", sigma=0.05)
 
     # partially pooled psi
-    psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1.0)
-    psi_sigma_raw = pm.HalfNormal("psi_sigma_raw", sigma=1/3)
+    psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
+    psi_sigma_raw = pm.HalfNormal("psi_sigma_raw", sigma=1)
     psi_raw_season = pm.Normal("psi_raw_season", mu=psi_mu_raw, sigma=psi_sigma_raw, shape=n_seasons)
     psi = pm.Deterministic("psi", pm.math.sigmoid(psi_raw_season))
     psi_mu = pm.Deterministic("psi_mu", pm.math.sigmoid(psi_mu_raw))
     psi_sigma = pm.Deterministic("psi_sigma", pm.math.sigmoid(psi_sigma_raw))
 
     # partially pooled s
-    s_mu_raw = pm.Normal("s_mu_raw", mu=0.0, sigma=1.0)
-    s_sigma_raw = pm.HalfNormal("s_sigma_raw", sigma=1/3)
+    s_mu_raw = pm.Normal("s_mu_raw", mu=0.0, sigma=1)
+    s_sigma_raw = pm.HalfNormal("s_sigma_raw", sigma=1)
     s_raw_season = pm.Normal("s_raw_season", mu=s_mu_raw, sigma=s_sigma_raw, shape=n_seasons)
     s = pm.Deterministic("s", pm.math.sigmoid(s_raw_season))
     s_mu = pm.Deterministic("s_mu", pm.math.sigmoid(s_mu_raw))
     s_sigma = pm.Deterministic("s_sigma", pm.math.sigmoid(s_sigma_raw))
 
-    # partially pooled rho
-    rho_mu_raw = pm.Normal("rho_mu_raw", mu=0.0, sigma=1.0)
-    rho_sigma_raw = pm.HalfNormal("rho_sigma_raw", sigma=1/3)
-    rho_raw_season = pm.Normal("rho_raw_season", mu=rho_mu_raw, sigma=rho_sigma_raw, shape=n_seasons)
-    rho = pm.Deterministic("rho", pm.math.sigmoid(rho_raw_season))
-    rho_mu = pm.Deterministic("rho_mu", pm.math.sigmoid(rho_mu_raw))
-    rho_sigma = pm.Deterministic("rho_sigma", pm.math.sigmoid(rho_sigma_raw))
-
+    # pooled rho
+    #rho_raw = pm.Normal("rho_raw", mu=0.0, sigma=1)
+    #rho = pm.Deterministic("rho", pm.math.sigmoid(rho_raw))
+    rho = 0.5
     # GARCH coefficients in (0,1) and a_garch + b_garch = s (total persistence)
     a_garch = pm.Deterministic("a_garch", s * rho)
     b_garch = pm.Deterministic("b_garch", s * (1.0 - rho))
 
     # initial states (you can make these priors instead)
-    delta0 = pm.Normal("delta0", mu=0, sigma=0.05, size=n_seasons)              # initial Δβ; assume model starts from 0
+    delta0 = pm.Normal("delta0", mu=0, sigma=0.01, size=n_seasons)              # initial Δβ; assume model starts from 0
     eps0 = pm.Deterministic("eps0", pt.zeros(n_seasons))                        # assume no prior shock
-    sigma20 = pm.HalfNormal("sigma20", sigma=0.05, shape=n_seasons)             # initial variance
+    sigma20 = pm.HalfNormal("sigma20", sigma=0.01, shape=n_seasons)             # initial variance
 
     # sample iid standard normals ----------
     eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers, n_seasons))
@@ -488,8 +482,8 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(250, tune=50, chains=4, init='adapt_full', cores=1, progressbar=True,
-                      initvals=4*[{'alpha': 0.01, 'eta': eta_opt, 'beta': beta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(100, tune=150, chains=2, init='adapt_full', cores=1, progressbar=True, max_treedepth=8,
+                      initvals=2*[{'alpha': 0.01, 'eta': eta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
@@ -497,9 +491,8 @@ variables2plot = [
                 'rho_h_mu', 'rho_h_sigma', 'rho_h',                 # rho_h
                 'f_R_a', 'f_R_b', 'f_R',                            # f_R
                 'f_I_mu', 'f_I_sigma', 'f_I',                       # f_I
-                'beta_mu', 'beta_sigma', 'beta',                    # beta
                 'omega', 'a_garch', 'b_garch', 'sigma20', 'delta0', # AR-GARCH
-                's', 's_mu', 's_sigma', 'rho', 'rho_mu', 'rho_sigma', 'psi', 'psi_mu', 'psi_sigma',
+                's', 's_mu', 's_sigma',  'psi', 'psi_mu', 'psi_sigma',
                 'mu_t', 
                 ]
 
@@ -511,7 +504,7 @@ for var in variables2plot:
     plt.close()
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["s_mu", "rho_mu", "psi_mu"], divergences=True)
+arviz.plot_pair(trace, var_names=["s_mu", "psi_mu"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.pdf')
 plt.close()
 
