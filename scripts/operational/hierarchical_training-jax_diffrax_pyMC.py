@@ -23,6 +23,7 @@ import optax
 from hierarchSIR.utils import get_NC_influenza_data
 
 
+
 # Get North Carolina dataset
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -325,7 +326,7 @@ def neg_log_likelihood(args_diff):
 # optimize
 optimizer = optax.adam(1e-2)
 opt_state = optimizer.init(args_diff)
-for i in range(1200):
+for i in range(100):
     loss, grads = jax.value_and_grad(neg_log_likelihood)(args_diff)
     updates, opt_state = optimizer.update(grads, opt_state)
     args_diff = optax.apply_updates(args_diff, updates)
@@ -355,8 +356,8 @@ rho_h_opt = np.expand_dims(np.array(args_diff[:,1]), axis=1)
 f_I_opt = np.expand_dims(np.array(args_diff[:,2]), axis=1)
 f_R_opt = np.expand_dims(np.array(args_diff[:,3]), axis=1)
 delta_beta_opt = np.array(args_diff[:,4:])
-mu_t_opt = np.mean(delta_beta_opt, axis=0)
-eta_opt = np.transpose(delta_beta_opt - mu_t_opt[None, :]) / np.sqrt(0.05)
+delta_beta_mu_opt = np.mean(delta_beta_opt, axis=0)
+eta_opt = np.transpose(delta_beta_opt - delta_beta_mu_opt[None, :]) / np.sqrt(0.05)
 
 # Build pyMC model
 # ~~~~~~~~~~~~~~~~
@@ -390,82 +391,80 @@ with pm.Model() as model:
 
     # partially pooled psi
     psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
-    psi_sigma_raw = pm.HalfNormal("psi_sigma_raw", sigma=1)
-    psi_raw_season = pm.Normal("psi_raw_season", mu=psi_mu_raw, sigma=psi_sigma_raw, shape=n_seasons)
+    psi_sigma = pm.HalfNormal("psi_sigma", sigma=1/3)
+    psi_raw_season = pm.Normal("psi_raw_season", mu=psi_mu_raw, sigma=psi_sigma, shape=n_seasons)
     psi = pm.Deterministic("psi", pm.math.sigmoid(psi_raw_season))
     psi_mu = pm.Deterministic("psi_mu", pm.math.sigmoid(psi_mu_raw))
-    psi_sigma = pm.Deterministic("psi_sigma", pm.math.sigmoid(psi_sigma_raw))
 
     # partially pooled s
     s_mu_raw = pm.Normal("s_mu_raw", mu=0.0, sigma=1)
-    s_sigma_raw = pm.HalfNormal("s_sigma_raw", sigma=1)
-    s_raw_season = pm.Normal("s_raw_season", mu=s_mu_raw, sigma=s_sigma_raw, shape=n_seasons)
+    s_sigma = pm.HalfNormal("s_sigma", sigma=1/3)
+    s_raw_season = pm.Normal("s_raw_season", mu=s_mu_raw, sigma=s_sigma, shape=n_seasons)
     s = pm.Deterministic("s", pm.math.sigmoid(s_raw_season))
     s_mu = pm.Deterministic("s_mu", pm.math.sigmoid(s_mu_raw))
-    s_sigma = pm.Deterministic("s_sigma", pm.math.sigmoid(s_sigma_raw))
 
-    # pooled rho
-    #rho_raw = pm.Normal("rho_raw", mu=0.0, sigma=1)
-    #rho = pm.Deterministic("rho", pm.math.sigmoid(rho_raw))
-    rho = 0.5
+    # partially pooled rho
+    rho_mu_raw = pm.Normal("rho_mu_raw", mu=0.0, sigma=1)
+    rho_sigma = pm.HalfNormal("rho_sigma", sigma=1/3)
+    rho_raw_season = pm.Normal("rho_raw_season", mu=rho_mu_raw, sigma=rho_sigma, shape=n_seasons)
+    rho = pm.Deterministic("rho", pm.math.sigmoid(rho_raw_season))
+    rho_mu = pm.Deterministic("rho_mu", pm.math.sigmoid(s_mu_raw))
+
     # GARCH coefficients in (0,1) and a_garch + b_garch = s (total persistence)
     a_garch = pm.Deterministic("a_garch", s * rho)
     b_garch = pm.Deterministic("b_garch", s * (1.0 - rho))
 
     # initial states (you can make these priors instead)
-    delta0 = pm.Normal("delta0", mu=0, sigma=0.01, size=n_seasons)              # initial Δβ; assume model starts from 0
-    eps0 = pm.Deterministic("eps0", pt.zeros(n_seasons))                        # assume no prior shock
-    sigma20 = pm.HalfNormal("sigma20", sigma=0.01, shape=n_seasons)             # initial variance
+    z_0 = pm.Normal("z_0", mu=0, sigma=0.01, size=n_seasons)                        # z_t = delta_beta - delta_beta_mu (deviation of current season beta modifier from historical trend)
+    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons)               # initial variance    
+    eps_0 = pm.Deterministic("eps_0", pt.zeros(n_seasons))                          # assume no prior shock
 
     # sample iid standard normals ----------
-    eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers, n_seasons))
+    eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers-1, n_seasons))
 
     # Hyperparameter for delta_beta_temporal
-    mu_t = pm.Normal("mu_t", mu=0, sigma=0.1, shape=n_modifiers)
+    delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
 
-    # For passing mu_prev into the scan we create a hypothetical mu_prev (shifted right)
-    mu_vec = pt.as_tensor_variable(mu_t)
-    mu_prev = pt.concatenate([[mu_t[0]], mu_vec[:-1]])
-
-    # scan step: inputs: eta_t, mu_t, mu_prev; states: prev_delta, prev_sigma2, prev_eps
-    def step(eta_t, mu_t, mu_prev_t,
-            prev_delta, prev_sigma2, prev_eps,
+    # scan step: inputs: eta_t, delta_beta_mu, mu_prev; states: prev_delta, prev_sigma2, prev_eps
+    def step(eta_t,
+            prev_z, prev_sigma2, prev_eps,
             psi, omega, alpha, beta):
         
-        # 1) compute current conditional variance (uses prev_eps and prev_sigma2)
-        sigma2_t = omega + alpha * (prev_eps ** 2) + beta * prev_sigma2
+        # 1) Compute current conditional variance using GARCH recursion
+        sigma2 = pt.maximum(omega + alpha * (prev_eps ** 2) + beta * prev_sigma2, 0)
 
-        # numerical safety: ensure non-negativity
-        sigma2_t = pt.maximum(sigma2_t, 0)
+        # 2) Map iid standard-normal shocks to heteroskedastic GARCH shock
+        eps = eta_t * pt.sqrt(sigma2)
 
-        # 2) map iid standard-normal innovation to heteroskedastic shock
-        eps_t = eta_t * pt.sqrt(sigma2_t)
+        # 3) AR(1)-style deviation from seasonal mean
+        z = psi * prev_z + eps
 
-        # 3) AR(1)-style deviation around mu
-        delta_t = mu_t + psi * (prev_delta - mu_prev_t) + eps_t
-
-        return delta_t, sigma2_t, eps_t
+        return z, sigma2, eps
 
     # Provide initial states as a list (must match order of returned states)
-    outputs_info = [delta0, sigma20, eps0]
+    outputs_info = [z_0, sigma2_0, eps_0]
 
     # Run scan over T steps
-    (delta_seq, sigma2_seq, eps_seq), updates = pytensor.scan(
+    (z_seq, sigma2_seq, eps_seq), updates = pytensor.scan(
         fn=step,
-        sequences=[eta, mu_vec, mu_prev],
+        sequences=[eta,],
         outputs_info=outputs_info,
         non_sequences=[psi, omega, a_garch, b_garch],
-        n_steps=n_modifiers
     )
 
+    # Prepend the initial states z_0, sigma2_0, eps_0
+    z_seq = pt.concatenate([z_0.dimshuffle('x', 0), z_seq])
+    sigma2_seq = pt.concatenate([sigma2_0.dimshuffle('x', 0), sigma2_seq])
+    eps_seq = pt.concatenate([eps_0.dimshuffle('x', 0), eps_seq])
+
     # Register deterministic variables to inspect later
-    delta_path = pm.Deterministic("delta_path", pt.transpose(delta_seq))    # Δβ_t for t=0..T-1
+    delta_beta = pm.Deterministic("delta_beta", pt.transpose(z_seq) + delta_beta_mu)
     sigma2_path = pm.Deterministic("sigma2_path", pt.transpose(sigma2_seq))
     eps_path = pm.Deterministic("eps_path", pt.transpose(eps_seq))
 
     # Build forward simulation arguments
     args_diff = pt.concatenate(
-        [beta, rho_h, f_I, f_R, delta_path],
+        [beta, rho_h, f_I, f_R, delta_beta],
         axis=1
     )
 
@@ -482,8 +481,16 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(100, tune=150, chains=2, init='adapt_full', cores=1, progressbar=True, max_treedepth=8,
-                      initvals=2*[{'alpha': 0.01, 'eta': eta_opt, 'mu_t': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    # NUTS
+    #trace = pm.sample(200, tune=200, chains=4, init='adapt_full', cores=1, progressbar=True, target_accept=0.5, max_treedepth=8,
+    #                 initvals=4*[{'alpha': 0.01, 'eta': eta_opt, 'delta_beta_mu': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    # SMC
+    #trace = pm.smc.sample_smc(draws=500, chains=12, cores=12, progressbar=True)
+    # DEMetroplisZ
+    trace = pm.sample(50000, tune=200000, chains=40, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
+                       initvals=40*[{'alpha': 0.01, 'eta': eta_opt, 'delta_beta_mu': np.mean(delta_beta_mu_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    
+
 
 # Generate traces
 variables2plot = [
@@ -493,7 +500,7 @@ variables2plot = [
                 'f_I_mu', 'f_I_sigma', 'f_I',                       # f_I
                 'omega', 'a_garch', 'b_garch', 'sigma20', 'delta0', # AR-GARCH
                 's', 's_mu', 's_sigma',  'psi', 'psi_mu', 'psi_sigma',
-                'mu_t', 
+                'delta_beta_mu', 'rho', 'rho_mu', 'rho_sigma'
                 ]
 
 # Save traces
@@ -504,7 +511,7 @@ for var in variables2plot:
     plt.close()
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["s_mu", "psi_mu"], divergences=True)
+arviz.plot_pair(trace, var_names=["s_mu", "psi_mu", "rho_mu"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.pdf')
 plt.close()
 
@@ -523,10 +530,10 @@ arviz.to_netcdf(posterior_predictive, "trace/posterior_predictive.nc")
 # Visualise modifier trajectories
 fig,ax=plt.subplots(figsize=(8.3, 11.7/5))
 # average trend
-ax.plot(range(n_modifiers), trace.posterior['mu_t'].median(dim=['chain', 'draw']).values, color='green')
+ax.plot(range(n_modifiers), trace.posterior['delta_beta_mu'].median(dim=['chain', 'draw']).values, color='green')
 ax.fill_between(range(n_modifiers),
-                trace.posterior['mu_t'].quantile(dim=['chain', 'draw'], q=0.025).values,
-                trace.posterior['mu_t'].quantile(dim=['chain', 'draw'], q=0.975).values,
+                trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.025).values,
+                trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.975).values,
                 color='green', alpha=0.15)
 # individual seasons
 for i in range(n_seasons):
