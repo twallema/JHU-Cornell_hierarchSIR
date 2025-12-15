@@ -389,14 +389,17 @@ with pm.Model() as model:
     # baseline variance (positive)
     omega = pm.HalfNormal("omega", sigma=0.05)
 
-    # partially pooled psi
+    # partially pooled psi AR(1)
     psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
     psi_sigma = pm.HalfNormal("psi_sigma", sigma=1/3)
     psi_raw_season = pm.Normal("psi_raw_season", mu=psi_mu_raw, sigma=psi_sigma, shape=n_seasons)
     psi = pm.Deterministic("psi", pm.math.sigmoid(psi_raw_season))
     psi_mu = pm.Deterministic("psi_mu", pm.math.sigmoid(psi_mu_raw))
 
-    # partially pooled s
+    # eliminate theta MA(1)
+    theta = 0
+
+    # partially pooled s (s = a_garch + b_garch)
     s_mu_raw = pm.Normal("s_mu_raw", mu=0.0, sigma=1)
     s_sigma = pm.HalfNormal("s_sigma", sigma=1/3)
     s_raw_season = pm.Normal("s_raw_season", mu=s_mu_raw, sigma=s_sigma, shape=n_seasons)
@@ -428,16 +431,16 @@ with pm.Model() as model:
     # scan step: inputs: eta_t, delta_beta_mu, mu_prev; states: prev_delta, prev_sigma2, prev_eps
     def step(eta_t,
             prev_z, prev_sigma2, prev_eps,
-            psi, omega, alpha, beta):
+            psi, theta, omega, alpha, beta):
         
-        # 1) Compute current conditional variance using GARCH recursion
+        # 1) Compute current conditional variance using GARCH(1,1) recursion
         sigma2 = pt.maximum(omega + alpha * (prev_eps ** 2) + beta * prev_sigma2, 0)
 
         # 2) Map iid standard-normal shocks to heteroskedastic GARCH shock
         eps = eta_t * pt.sqrt(sigma2)
 
-        # 3) AR(1)-style deviation from seasonal mean
-        z = psi * prev_z + eps
+        # 3) ARMA(1,1)-style deviation from seasonal mean
+        z = psi * prev_z + theta * prev_eps + eps
 
         return z, sigma2, eps
 
@@ -449,7 +452,7 @@ with pm.Model() as model:
         fn=step,
         sequences=[eta,],
         outputs_info=outputs_info,
-        non_sequences=[psi, omega, a_garch, b_garch],
+        non_sequences=[psi, theta, omega, a_garch, b_garch],
     )
 
     # Prepend the initial states z_0, sigma2_0, eps_0
@@ -487,20 +490,21 @@ with model:
     # SMC
     #trace = pm.smc.sample_smc(draws=500, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
-    trace = pm.sample(50000, tune=200000, chains=40, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
-                       initvals=40*[{'alpha': 0.01, 'eta': eta_opt, 'delta_beta_mu': np.mean(delta_beta_mu_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(5000, tune=20000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
+                       initvals=1*[{'alpha': 0.01, 'eta': eta_opt, 'delta_beta_mu': np.mean(delta_beta_mu_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     
 
 
 # Generate traces
 variables2plot = [
-                'alpha',
-                'rho_h_mu', 'rho_h_sigma', 'rho_h',                 # rho_h
-                'f_R_a', 'f_R_b', 'f_R',                            # f_R
-                'f_I_mu', 'f_I_sigma', 'f_I',                       # f_I
-                'omega', 'a_garch', 'b_garch', 'sigma20', 'delta0', # AR-GARCH
-                's', 's_mu', 's_sigma',  'psi', 'psi_mu', 'psi_sigma',
-                'delta_beta_mu', 'rho', 'rho_mu', 'rho_sigma'
+                'alpha',                                                # overdispersion
+                'rho_h_mu', 'rho_h_sigma', 'rho_h',                     # rho_h
+                'f_R_a', 'f_R_b', 'f_R',                                # f_R
+                'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
+                'delta_beta_mu',                                        # delta_beta_mu
+                'sigma2_0', 'z_0',                                      # ARMA-GARCH initial condition
+                'psi', 'psi_mu', 'psi_sigma',                           # ARMA parameters
+                'omega', 'a_garch', 'b_garch', 's', 's_mu', 's_sigma', 'rho', 'rho_mu', 'rho_sigma'      # GARCH parameters
                 ]
 
 # Save traces
