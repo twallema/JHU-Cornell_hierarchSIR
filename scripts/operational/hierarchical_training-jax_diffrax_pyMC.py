@@ -326,7 +326,7 @@ def neg_log_likelihood(args_diff):
 # optimize
 optimizer = optax.adam(1e-2)
 opt_state = optimizer.init(args_diff)
-for i in range(100):
+for i in range(500):
     loss, grads = jax.value_and_grad(neg_log_likelihood)(args_diff)
     updates, opt_state = optimizer.update(grads, opt_state)
     args_diff = optax.apply_updates(args_diff, updates)
@@ -357,7 +357,8 @@ f_I_opt = np.expand_dims(np.array(args_diff[:,2]), axis=1)
 f_R_opt = np.expand_dims(np.array(args_diff[:,3]), axis=1)
 delta_beta_opt = np.array(args_diff[:,4:])
 delta_beta_mu_opt = np.mean(delta_beta_opt, axis=0)
-eta_opt = np.transpose(delta_beta_opt - delta_beta_mu_opt[None, :]) / np.sqrt(0.05)
+eta_opt = np.transpose(delta_beta_opt - delta_beta_mu_opt[None, :]) / np.sqrt(0.01)
+eta_opt = eta_opt[1:,:]
 
 # Build pyMC model
 # ~~~~~~~~~~~~~~~~
@@ -396,8 +397,13 @@ with pm.Model() as model:
     psi = pm.Deterministic("psi", pm.math.sigmoid(psi_raw_season))
     psi_mu = pm.Deterministic("psi_mu", pm.math.sigmoid(psi_mu_raw))
 
-    # eliminate theta MA(1)
+    # partially pooled theta MA(1)
     theta = 0
+    #theta_mu_raw = pm.Normal("theta_mu_raw", mu=0.0, sigma=1)
+    #theta_sigma = pm.HalfNormal("theta_sigma", sigma=1/3)
+    #theta_raw_season = pm.Normal("theta_raw_season", mu=theta_mu_raw, sigma=theta_sigma, shape=n_seasons)
+    #theta = pm.Deterministic("theta", pm.math.sigmoid(theta_raw_season))
+    #theta_mu = pm.Deterministic("theta_mu", pm.math.sigmoid(theta_mu_raw))
 
     # partially pooled s (s = a_garch + b_garch)
     s_mu_raw = pm.Normal("s_mu_raw", mu=0.0, sigma=1)
@@ -406,12 +412,8 @@ with pm.Model() as model:
     s = pm.Deterministic("s", pm.math.sigmoid(s_raw_season))
     s_mu = pm.Deterministic("s_mu", pm.math.sigmoid(s_mu_raw))
 
-    # partially pooled rho
-    rho_mu_raw = pm.Normal("rho_mu_raw", mu=0.0, sigma=1)
-    rho_sigma = pm.HalfNormal("rho_sigma", sigma=1/3)
-    rho_raw_season = pm.Normal("rho_raw_season", mu=rho_mu_raw, sigma=rho_sigma, shape=n_seasons)
-    rho = pm.Deterministic("rho", pm.math.sigmoid(rho_raw_season))
-    rho_mu = pm.Deterministic("rho_mu", pm.math.sigmoid(s_mu_raw))
+    # fixed rho --> ARCH(1) model
+    rho = 1
 
     # GARCH coefficients in (0,1) and a_garch + b_garch = s (total persistence)
     a_garch = pm.Deterministic("a_garch", s * rho)
@@ -486,12 +488,12 @@ with pm.Model() as model:
 with model:
     # NUTS
     #trace = pm.sample(200, tune=200, chains=4, init='adapt_full', cores=1, progressbar=True, target_accept=0.5, max_treedepth=8,
-    #                 initvals=4*[{'alpha': 0.01, 'eta': eta_opt, 'delta_beta_mu': np.mean(delta_beta_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    #                 initvals=4*[{'alpha': 0.01, 'eta': eta_opt, 'delta_beta_mu': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
     #trace = pm.smc.sample_smc(draws=500, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
-    trace = pm.sample(5000, tune=20000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
-                       initvals=1*[{'alpha': 0.01, 'eta': eta_opt, 'delta_beta_mu': np.mean(delta_beta_mu_opt, axis=0), 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(10000, tune=10000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
+                       initvals=1*[{'alpha': 0.01, 'eta': eta_opt, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     
 
 
@@ -503,8 +505,8 @@ variables2plot = [
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
                 'sigma2_0', 'z_0',                                      # ARMA-GARCH initial condition
-                'psi', 'psi_mu', 'psi_sigma',                           # ARMA parameters
-                'omega', 'a_garch', 'b_garch', 's', 's_mu', 's_sigma', 'rho', 'rho_mu', 'rho_sigma'      # GARCH parameters
+                'psi', 'psi_mu', 'psi_sigma', 'theta', 'theta_mu', 'theta_sigma', # ARMA parameters
+                'omega', 'a_garch', 'b_garch', 's', 's_mu', 's_sigma',     # GARCH parameters
                 ]
 
 # Save traces
@@ -515,7 +517,7 @@ for var in variables2plot:
     plt.close()
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["s_mu", "psi_mu", "rho_mu"], divergences=True)
+arviz.plot_pair(trace, var_names=["s_mu", "psi_mu", "theta_mu"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.pdf')
 plt.close()
 
@@ -541,7 +543,7 @@ ax.fill_between(range(n_modifiers),
                 color='green', alpha=0.15)
 # individual seasons
 for i in range(n_seasons):
-    ax.plot(range(n_modifiers), trace.posterior['delta_path'].median(dim=['chain', 'draw']).values[i,:], color='black', alpha=0.3, linewidth=0.5)
+    ax.plot(range(n_modifiers), trace.posterior['delta_beta'].median(dim=['chain', 'draw']).values[i,:], color='black', alpha=0.3, linewidth=0.5)
 ax.axhline(y=0, color='red', linewidth=0.5)
 plt.savefig(f'trace/modifiers.pdf')
 plt.close()
