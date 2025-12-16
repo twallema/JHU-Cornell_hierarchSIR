@@ -388,7 +388,7 @@ with pm.Model() as model:
     # ------- AR-GARCH modifiers -------
 
     # baseline variance (positive)
-    omega = pm.HalfNormal("omega", sigma=0.02)
+    omega = pm.HalfNormal("omega", sigma=0.05)
 
     # partially pooled psi AR(1)
     #psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
@@ -405,7 +405,7 @@ with pm.Model() as model:
     #theta = pm.Deterministic("theta", pm.math.sigmoid(theta_raw_season))
     #theta_mu = pm.Deterministic("theta_mu", pm.math.sigmoid(theta_mu_raw))
     theta = pm.Beta("theta", alpha=2, beta=2)
-
+    
     # partially pooled s (s = a_garch + b_garch)
     #s_mu_raw = pm.Normal("s_mu_raw", mu=0.0, sigma=1)
     #s_sigma = pm.HalfNormal("s_sigma", sigma=1/3)
