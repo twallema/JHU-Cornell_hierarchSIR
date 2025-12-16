@@ -22,14 +22,12 @@ import optax
 # hierarchSIR
 from hierarchSIR.utils import get_NC_influenza_data
 
-
-
 # Get North Carolina dataset
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # convert to a list of start and enddates (datetime)
-n_modifiers = 18
-modifier_length = 10
+n_modifiers = 12
+modifier_length = 15
 population = 11E6
 seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']        # script works with only one season
 n_seasons = len(seasons)
@@ -489,12 +487,12 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    #trace = pm.sample(200, tune=200, chains=4, init='adapt_full', cores=1, progressbar=True, target_accept=0.5, max_treedepth=8,
-    #                 initvals=4*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    #trace = pm.sample(200, tune=200, chains=12, init='adapt_full', cores=1, progressbar=True, target_accept=0.6, max_treedepth=9,
+    #                 initvals=12*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
-    #trace = pm.smc.sample_smc(draws=500, chains=1, cores=1, progressbar=True)
+    #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
-    trace = pm.sample(10000, tune=100000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
+    trace = pm.sample(10000, tune=10000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
                        initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     
 
@@ -549,6 +547,8 @@ for i in range(n_seasons):
 ax.axhline(y=0, color='red', linewidth=0.5)
 plt.savefig(f'trace/modifiers.pdf')
 plt.close()
+
+# Visualise sigma2 trajectories
 
 
 # Visualise goodnes-of-fit
