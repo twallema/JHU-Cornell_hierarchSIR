@@ -385,10 +385,10 @@ with pm.Model() as model:
     f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(n_seasons, 1))
 
 
-    # ------- AR-GARCH modifiers -------
+    # ------- ARMA-GARCH modifiers -------
 
     # baseline variance (positive)
-    omega = pm.HalfNormal("omega", sigma=0.05)
+    omega = pm.HalfNormal("omega", sigma=0.10)
 
     # partially pooled psi AR(1)
     #psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
@@ -405,7 +405,7 @@ with pm.Model() as model:
     #theta = pm.Deterministic("theta", pm.math.sigmoid(theta_raw_season))
     #theta_mu = pm.Deterministic("theta_mu", pm.math.sigmoid(theta_mu_raw))
     theta = pm.Beta("theta", alpha=2, beta=2)
-    
+
     # partially pooled s (s = a_garch + b_garch)
     #s_mu_raw = pm.Normal("s_mu_raw", mu=0.0, sigma=1)
     #s_sigma = pm.HalfNormal("s_sigma", sigma=1/3)
@@ -480,7 +480,7 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Likelihood
-    alpha = pm.HalfNormal("alpha", sigma=0.01/3)
+    alpha = pm.HalfNormal("alpha", sigma=0.001)
     data = pm.NegativeBinomial("data", mu=ys, alpha=1/alpha, observed=7*data)
 
 
@@ -490,7 +490,7 @@ with pm.Model() as model:
 with model:
     # NUTS
     #trace = pm.sample(200, tune=200, chains=4, init='adapt_full', cores=1, progressbar=True, target_accept=0.5, max_treedepth=8,
-    #                 initvals=4*[{'alpha': 0.01, 'eta': eta_opt, 'delta_beta_mu': delta_beta_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    #                 initvals=4*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
     #trace = pm.smc.sample_smc(draws=500, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
