@@ -391,25 +391,28 @@ with pm.Model() as model:
     omega = pm.HalfNormal("omega", sigma=0.02)
 
     # partially pooled psi AR(1)
-    psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
-    psi_sigma = pm.HalfNormal("psi_sigma", sigma=1/3)
-    psi_raw_season = pm.Normal("psi_raw_season", mu=psi_mu_raw, sigma=psi_sigma, shape=n_seasons)
-    psi = pm.Deterministic("psi", pm.math.sigmoid(psi_raw_season))
-    psi_mu = pm.Deterministic("psi_mu", pm.math.sigmoid(psi_mu_raw))
+    #psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
+    #psi_sigma = pm.HalfNormal("psi_sigma", sigma=1/3)
+    #psi_raw_season = pm.Normal("psi_raw_season", mu=psi_mu_raw, sigma=psi_sigma, shape=n_seasons)
+    #psi = pm.Deterministic("psi", pm.math.sigmoid(psi_raw_season))
+    #psi_mu = pm.Deterministic("psi_mu", pm.math.sigmoid(psi_mu_raw))
+    psi = pm.Beta("psi", alpha=2, beta=2)
 
     # partially pooled theta MA(1)
-    theta_mu_raw = pm.Normal("theta_mu_raw", mu=0.0, sigma=1)
-    theta_sigma = pm.HalfNormal("theta_sigma", sigma=1/3)
-    theta_raw_season = pm.Normal("theta_raw_season", mu=theta_mu_raw, sigma=theta_sigma, shape=n_seasons)
-    theta = pm.Deterministic("theta", pm.math.sigmoid(theta_raw_season))
-    theta_mu = pm.Deterministic("theta_mu", pm.math.sigmoid(theta_mu_raw))
+    #theta_mu_raw = pm.Normal("theta_mu_raw", mu=0.0, sigma=1)
+    #theta_sigma = pm.HalfNormal("theta_sigma", sigma=1/3)
+    #theta_raw_season = pm.Normal("theta_raw_season", mu=theta_mu_raw, sigma=theta_sigma, shape=n_seasons)
+    #theta = pm.Deterministic("theta", pm.math.sigmoid(theta_raw_season))
+    #theta_mu = pm.Deterministic("theta_mu", pm.math.sigmoid(theta_mu_raw))
+    theta = pm.Beta("theta", alpha=2, beta=2)
 
     # partially pooled s (s = a_garch + b_garch)
-    s_mu_raw = pm.Normal("s_mu_raw", mu=0.0, sigma=1)
-    s_sigma = pm.HalfNormal("s_sigma", sigma=1/3)
-    s_raw_season = pm.Normal("s_raw_season", mu=s_mu_raw, sigma=s_sigma, shape=n_seasons)
-    s = pm.Deterministic("s", pm.math.sigmoid(s_raw_season))
-    s_mu = pm.Deterministic("s_mu", pm.math.sigmoid(s_mu_raw))
+    #s_mu_raw = pm.Normal("s_mu_raw", mu=0.0, sigma=1)
+    #s_sigma = pm.HalfNormal("s_sigma", sigma=1/3)
+    #s_raw_season = pm.Normal("s_raw_season", mu=s_mu_raw, sigma=s_sigma, shape=n_seasons)
+    #s = pm.Deterministic("s", pm.math.sigmoid(s_raw_season))
+    #s_mu = pm.Deterministic("s_mu", pm.math.sigmoid(s_mu_raw))
+    s = pm.Beta("s", alpha=2, beta=2)
 
     # fixed rho --> rho = 1: ARCH(1) model
     rho = 1
@@ -491,7 +494,7 @@ with model:
     # SMC
     #trace = pm.smc.sample_smc(draws=500, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
-    trace = pm.sample(2000, tune=10000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
+    trace = pm.sample(5000, tune=25000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
                        initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     
 
@@ -504,8 +507,8 @@ variables2plot = [
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
                 'sigma2_0', 'z_0',                                      # ARMA-GARCH initial condition
-                'psi', 'psi_mu', 'psi_sigma', 'theta', 'theta_mu', 'theta_sigma', # ARMA parameters
-                'omega', 'a_garch', 'b_garch', 's', 's_mu', 's_sigma',     # GARCH parameters
+                'psi', 'theta', # ARMA parameters
+                'omega', 'a_garch', 'b_garch', 's',   # GARCH parameters
                 ]
 
 # Save traces
@@ -516,7 +519,7 @@ for var in variables2plot:
     plt.close()
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["s_mu", "psi_mu", "theta_mu"], divergences=True)
+arviz.plot_pair(trace, var_names=["s", "psi", "theta"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.pdf')
 plt.close()
 
