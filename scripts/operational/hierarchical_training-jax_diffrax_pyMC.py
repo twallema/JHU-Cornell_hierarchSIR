@@ -28,8 +28,8 @@ from hierarchSIR.utils import get_NC_influenza_data
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # convert to a list of start and enddates (datetime)
-n_modifiers = 12
-modifier_length = 15
+n_modifiers = 18
+modifier_length = 10
 population = 11E6
 seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']        # script works with only one season
 n_seasons = len(seasons)
@@ -388,7 +388,7 @@ with pm.Model() as model:
     # ------- AR-GARCH modifiers -------
 
     # baseline variance (positive)
-    omega = pm.HalfNormal("omega", sigma=0.05)
+    omega = pm.HalfNormal("omega", sigma=0.02)
 
     # partially pooled psi AR(1)
     psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
@@ -398,12 +398,11 @@ with pm.Model() as model:
     psi_mu = pm.Deterministic("psi_mu", pm.math.sigmoid(psi_mu_raw))
 
     # partially pooled theta MA(1)
-    theta = 0
-    #theta_mu_raw = pm.Normal("theta_mu_raw", mu=0.0, sigma=1)
-    #theta_sigma = pm.HalfNormal("theta_sigma", sigma=1/3)
-    #theta_raw_season = pm.Normal("theta_raw_season", mu=theta_mu_raw, sigma=theta_sigma, shape=n_seasons)
-    #theta = pm.Deterministic("theta", pm.math.sigmoid(theta_raw_season))
-    #theta_mu = pm.Deterministic("theta_mu", pm.math.sigmoid(theta_mu_raw))
+    theta_mu_raw = pm.Normal("theta_mu_raw", mu=0.0, sigma=1)
+    theta_sigma = pm.HalfNormal("theta_sigma", sigma=1/3)
+    theta_raw_season = pm.Normal("theta_raw_season", mu=theta_mu_raw, sigma=theta_sigma, shape=n_seasons)
+    theta = pm.Deterministic("theta", pm.math.sigmoid(theta_raw_season))
+    theta_mu = pm.Deterministic("theta_mu", pm.math.sigmoid(theta_mu_raw))
 
     # partially pooled s (s = a_garch + b_garch)
     s_mu_raw = pm.Normal("s_mu_raw", mu=0.0, sigma=1)
@@ -412,7 +411,7 @@ with pm.Model() as model:
     s = pm.Deterministic("s", pm.math.sigmoid(s_raw_season))
     s_mu = pm.Deterministic("s_mu", pm.math.sigmoid(s_mu_raw))
 
-    # fixed rho --> ARCH(1) model
+    # fixed rho --> rho = 1: ARCH(1) model
     rho = 1
 
     # GARCH coefficients in (0,1) and a_garch + b_garch = s (total persistence)
@@ -420,8 +419,8 @@ with pm.Model() as model:
     b_garch = pm.Deterministic("b_garch", s * (1.0 - rho))
 
     # initial states (you can make these priors instead)
-    z_0 = pm.Normal("z_0", mu=0, sigma=0.01, size=n_seasons)                        # z_t = delta_beta - delta_beta_mu (deviation of current season beta modifier from historical trend)
-    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons)               # initial variance    
+    z_0 = pm.Normal("z_0", mu=0, sigma=0.02, size=n_seasons)                        # z_t = delta_beta - delta_beta_mu (deviation of current season beta modifier from historical trend)
+    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.02, shape=n_seasons)               # initial variance    
     eps_0 = pm.Deterministic("eps_0", pt.zeros(n_seasons))                          # assume no prior shock
 
     # sample iid standard normals ----------
@@ -492,8 +491,8 @@ with model:
     # SMC
     #trace = pm.smc.sample_smc(draws=500, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
-    trace = pm.sample(10000, tune=10000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
-                       initvals=1*[{'alpha': 0.01, 'eta': eta_opt, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(2000, tune=10000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
+                       initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     
 
 
