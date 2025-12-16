@@ -415,7 +415,7 @@ with pm.Model() as model:
     s = pm.Beta("s", alpha=2, beta=2)
 
     # fixed rho --> rho = 1: ARCH(1) model
-    rho = 1
+    rho = pm.Beta("rho", alpha=2, beta=2)
 
     # GARCH coefficients in (0,1) and a_garch + b_garch = s (total persistence)
     a_garch = pm.Deterministic("a_garch", s * rho)
@@ -492,9 +492,9 @@ with model:
     #trace = pm.sample(200, tune=200, chains=4, init='adapt_full', cores=1, progressbar=True, target_accept=0.5, max_treedepth=8,
     #                 initvals=4*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
-    #trace = pm.smc.sample_smc(draws=500, chains=12, cores=12, progressbar=True)
+    #trace = pm.smc.sample_smc(draws=500, chains=1, cores=1, progressbar=True)
     # DEMetroplisZ
-    trace = pm.sample(5000, tune=25000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
+    trace = pm.sample(10000, tune=100000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
                        initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     
 
@@ -507,8 +507,8 @@ variables2plot = [
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
                 'sigma2_0', 'z_0',                                      # ARMA-GARCH initial condition
-                'psi', 'theta', # ARMA parameters
-                'omega', 'a_garch', 'b_garch', 's',   # GARCH parameters
+                'psi', 'theta',                                         # ARMA parameters
+                'omega', 'a_garch', 'b_garch', 's', 'rho',              # GARCH parameters
                 ]
 
 # Save traces
@@ -519,7 +519,7 @@ for var in variables2plot:
     plt.close()
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["s", "psi", "theta"], divergences=True)
+arviz.plot_pair(trace, var_names=["s", "psi", "theta", "rho"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.pdf')
 plt.close()
 
