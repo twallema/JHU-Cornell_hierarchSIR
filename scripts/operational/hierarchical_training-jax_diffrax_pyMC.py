@@ -386,7 +386,7 @@ with pm.Model() as model:
     # ------- ARMA-GARCH modifiers -------
 
     # baseline variance (positive)
-    omega = pm.HalfNormal("omega", sigma=0.01)
+    omega = pm.HalfNormal("omega", sigma=0.02)
 
     # partially pooled psi AR(1)
     #psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
@@ -404,20 +404,9 @@ with pm.Model() as model:
     #theta_mu = pm.Deterministic("theta_mu", pm.math.sigmoid(theta_mu_raw))
     theta = pm.Beta("theta", alpha=2, beta=2)
 
-    # partially pooled s (s = a_garch + b_garch)
-    #s_mu_raw = pm.Normal("s_mu_raw", mu=0.0, sigma=1)
-    #s_sigma = pm.HalfNormal("s_sigma", sigma=1/3)
-    #s_raw_season = pm.Normal("s_raw_season", mu=s_mu_raw, sigma=s_sigma, shape=n_seasons)
-    #s = pm.Deterministic("s", pm.math.sigmoid(s_raw_season))
-    #s_mu = pm.Deterministic("s_mu", pm.math.sigmoid(s_mu_raw))
-    s = pm.Beta("s", alpha=2, beta=2)
-
-    # fixed rho --> rho = 1: ARCH(1) model
-    rho = pm.Beta("rho", alpha=2, beta=2)
-
-    # GARCH coefficients in (0,1) and a_garch + b_garch = s (total persistence)
-    a_garch = pm.Deterministic("a_garch", s * rho)
-    b_garch = pm.Deterministic("b_garch", s * (1.0 - rho))
+    # GARCH parameters
+    a_garch = pm.Beta("a_garch", alpha=2, beta=1)
+    b_garch = pm.Beta("b_garch", alpha=2, beta=2)
 
     # initial states (you can make these priors instead)
     z_0 = pm.Normal("z_0", mu=0, sigma=0.02, size=n_seasons)                        # z_t = delta_beta - delta_beta_mu (deviation of current season beta modifier from historical trend)
@@ -488,8 +477,8 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    trace = pm.sample(50, tune=50, chains=3, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=3*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(25, tune=25, chains=1, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
     #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
@@ -510,7 +499,7 @@ variables2plot = [
                 'delta_beta_mu',                                        # delta_beta_mu
                 'sigma2_0', 'z_0',                                      # ARMA-GARCH initial condition
                 'psi', 'theta',                                         # ARMA parameters
-                'omega', 'a_garch', 'b_garch', 's', 'rho',              # GARCH parameters
+                'omega', 'a_garch', 'b_garch',                          # GARCH parameters
                 ]
 
 # Save original traces
