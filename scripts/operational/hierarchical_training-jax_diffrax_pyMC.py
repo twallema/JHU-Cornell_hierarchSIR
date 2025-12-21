@@ -386,7 +386,7 @@ with pm.Model() as model:
     # ------- ARMA-GARCH modifiers -------
 
     # baseline variance (positive)
-    omega = pm.HalfNormal("omega", sigma=0.10)
+    omega = pm.HalfNormal("omega", sigma=0.01)
 
     # partially pooled psi AR(1)
     #psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
@@ -464,8 +464,9 @@ with pm.Model() as model:
 
     # Register deterministic variables to inspect later
     delta_beta = pm.Deterministic("delta_beta", pt.transpose(z_seq) + delta_beta_mu)
-    sigma2_path = pm.Deterministic("sigma2_path", pt.transpose(sigma2_seq))
-    eps_path = pm.Deterministic("eps_path", pt.transpose(eps_seq))
+    z = pm.Deterministic("z", pt.transpose(z_seq))
+    sigma2 = pm.Deterministic("sigma2", pt.transpose(sigma2_seq))
+    eps = pm.Deterministic("eps", pt.transpose(eps_seq))
 
     # Build forward simulation arguments
     args_diff = pt.concatenate(
@@ -487,15 +488,18 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    #trace = pm.sample(200, tune=200, chains=12, init='adapt_full', cores=1, progressbar=True, target_accept=0.6, max_treedepth=9,
-    #                 initvals=12*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(50, tune=50, chains=3, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=3*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
     #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
-    trace = pm.sample(10000, tune=10000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
-                       initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
-    
+    #trace = pm.sample(100000, tune=100000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
+    #                   initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
+# Questions to solve:
+# - DEMetroplisZ: Run for 1 000 000 iterations without burn and 3 chains --> Do chains keep waggling or do they waggle but then settle? And do different chains settle into the same values?
+# - NUTS: Consistency between chains? Short vs. long tuning? Target accept high versus low? If you directly estimate psi, theta, s and rho, does it work better?
+# - Is it possible to parametrize the prior distributions of psi, theta, s and rho? This will make it easier to forecast a new season.
 
 # Generate traces
 variables2plot = [
@@ -509,16 +513,19 @@ variables2plot = [
                 'omega', 'a_garch', 'b_garch', 's', 'rho',              # GARCH parameters
                 ]
 
-# Save traces
+# Save original traces
 os.makedirs('trace', exist_ok=True)
 for var in variables2plot:
     arviz.plot_trace(trace, var_names=[var]) 
     plt.savefig(f'trace/trace-{var}.pdf')
     plt.close()
 
+# Resample 20 samples from each chain at random to construct the posterior
+
+
 # Build pair plots
 arviz.plot_pair(trace, var_names=["s", "psi", "theta", "rho"], divergences=True)
-plt.savefig('trace/pairplot-ARGARCH.pdf')
+plt.savefig('trace/pairplot-ARGARCH.png', dpi=300)
 plt.close()
 
 
@@ -533,7 +540,7 @@ with model:
 arviz.to_netcdf(trace, "trace/trace.nc")
 arviz.to_netcdf(posterior_predictive, "trace/posterior_predictive.nc")
 
-# Visualise modifier trajectories
+# Visualise across-season modifier trend + within-season median
 fig,ax=plt.subplots(figsize=(8.3, 11.7/5))
 # average trend
 ax.plot(range(n_modifiers), trace.posterior['delta_beta_mu'].median(dim=['chain', 'draw']).values, color='green')
@@ -548,8 +555,26 @@ ax.axhline(y=0, color='red', linewidth=0.5)
 plt.savefig(f'trace/modifiers.pdf')
 plt.close()
 
-# Visualise sigma2 trajectories
-
+# Visualise delta_beta, z, sigma2 and eps per season
+for i, season in enumerate(seasons):
+    fig,ax=plt.subplots(nrows=4, figsize=(8.3, 11.7/5*4))
+    # across-season delta_beta trend
+    ax[0].plot(range(n_modifiers), trace.posterior['delta_beta_mu'].median(dim=['chain', 'draw']).values, color='green')
+    ax[0].fill_between(range(n_modifiers),
+                    trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.025).values,
+                    trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.975).values,
+                    color='green', alpha=0.15)
+    # within-season delta_beta, z, sigma2, eps
+    for j, par in enumerate(['delta_beta', 'z', 'sigma2', 'eps']):
+        ax[j].plot(range(n_modifiers), trace.posterior[par].median(dim=['chain', 'draw']).values[i,:], color='black', linewidth=0.5)
+        ax[j].fill_between(range(n_modifiers),
+                trace.posterior[par].quantile(dim=['chain', 'draw'], q=0.025).values[i,:],
+                trace.posterior[par].quantile(dim=['chain', 'draw'], q=0.975).values[i,:],
+                color='black', alpha=0.15)
+        ax[j].set_ylabel(par)
+    ax[0].set_title(season)
+    plt.savefig(f'trace/{season}_ARMA-GARCH_pars.pdf')
+    plt.close()
 
 # Visualise goodnes-of-fit
 fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
