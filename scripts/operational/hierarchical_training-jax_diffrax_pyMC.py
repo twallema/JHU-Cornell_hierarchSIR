@@ -26,8 +26,8 @@ from hierarchSIR.utils import get_NC_influenza_data
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # convert to a list of start and enddates (datetime)
-n_modifiers = 12
-modifier_length = 15
+n_modifiers = 18
+modifier_length = 10
 population = 11E6
 seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']        # script works with only one season
 n_seasons = len(seasons)
@@ -386,7 +386,7 @@ with pm.Model() as model:
     # ------- ARMA-GARCH modifiers -------
 
     # baseline variance (positive)
-    omega = pm.HalfNormal("omega", sigma=0.02)
+    omega = pm.HalfNormal("omega", sigma=0.01)
 
     # partially pooled psi AR(1)
     #psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
@@ -405,12 +405,12 @@ with pm.Model() as model:
     theta = pm.Beta("theta", alpha=2, beta=2)
 
     # GARCH parameters
-    a_garch = pm.Beta("a_garch", alpha=2, beta=1)
+    a_garch = pm.Beta("a_garch", alpha=2, beta=2)
     b_garch = pm.Beta("b_garch", alpha=2, beta=2)
 
     # initial states (you can make these priors instead)
-    z_0 = pm.Normal("z_0", mu=0, sigma=0.02, size=n_seasons)                        # z_t = delta_beta - delta_beta_mu (deviation of current season beta modifier from historical trend)
-    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.02, shape=n_seasons)               # initial variance    
+    z_0 = pm.Normal("z_0", mu=0, sigma=0.01, size=n_seasons)                        # z_t = delta_beta - delta_beta_mu (deviation of current season beta modifier from historical trend)
+    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons)               # initial variance    
     eps_0 = pm.Deterministic("eps_0", pt.zeros(n_seasons))                          # assume no prior shock
 
     # sample iid standard normals ----------
@@ -418,17 +418,20 @@ with pm.Model() as model:
 
     # Hyperparameter for delta_beta_temporal
     delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
+    
+    # Scale shocks (fix scale mismatch)
+    shock_scale = pm.HalfNormal("shock_scale", sigma=1)
 
     # scan step: inputs: eta_t, delta_beta_mu, mu_prev; states: prev_delta, prev_sigma2, prev_eps
     def step(eta_t,
             prev_z, prev_sigma2, prev_eps,
-            psi, theta, omega, alpha, beta):
+            psi, theta, omega, alpha, beta, shock_scale):
         
         # 1) Compute current conditional variance using GARCH(1,1) recursion
-        sigma2 = pt.maximum(omega + alpha * (prev_eps ** 2) + beta * prev_sigma2, 0)
+        sigma2 = omega + alpha * (prev_eps ** 2) + beta * prev_sigma2
 
         # 2) Map iid standard-normal shocks to heteroskedastic GARCH shock
-        eps = eta_t * pt.sqrt(sigma2)
+        eps = (1+shock_scale) * eta_t * pt.sqrt(sigma2)
 
         # 3) ARMA(1,1)-style deviation from seasonal mean
         z = psi * prev_z + theta * prev_eps + eps
@@ -443,7 +446,7 @@ with pm.Model() as model:
         fn=step,
         sequences=[eta,],
         outputs_info=outputs_info,
-        non_sequences=[psi, theta, omega, a_garch, b_garch],
+        non_sequences=[psi, theta, omega, a_garch, b_garch, shock_scale],
     )
 
     # Prepend the initial states z_0, sigma2_0, eps_0
@@ -477,8 +480,8 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    trace = pm.sample(25, tune=25, chains=1, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(50, tune=50, chains=2, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=2*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
     #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
@@ -499,7 +502,7 @@ variables2plot = [
                 'delta_beta_mu',                                        # delta_beta_mu
                 'sigma2_0', 'z_0',                                      # ARMA-GARCH initial condition
                 'psi', 'theta',                                         # ARMA parameters
-                'omega', 'a_garch', 'b_garch',                          # GARCH parameters
+                'omega', 'a_garch', 'b_garch', 'shock_scale',           # GARCH parameters
                 ]
 
 # Save original traces
@@ -513,7 +516,7 @@ for var in variables2plot:
 
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["s", "psi", "theta", "rho"], divergences=True)
+arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "theta", "psi"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.png', dpi=300)
 plt.close()
 
