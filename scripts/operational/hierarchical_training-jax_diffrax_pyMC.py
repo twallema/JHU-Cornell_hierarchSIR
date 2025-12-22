@@ -405,12 +405,12 @@ with pm.Model() as model:
     theta = pm.Beta("theta", alpha=2, beta=2)
 
     # GARCH parameters
-    a_garch = pm.Beta("a_garch", alpha=2, beta=2)
+    a_garch = pm.Beta("a_garch", alpha=2, beta=1)
     b_garch = pm.Beta("b_garch", alpha=2, beta=2)
 
     # initial states (you can make these priors instead)
     z_0 = pm.Normal("z_0", mu=0, sigma=0.01, size=n_seasons)                        # z_t = delta_beta - delta_beta_mu (deviation of current season beta modifier from historical trend)
-    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons)               # initial variance    
+    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons)               # initial variance  pm.Deterministic("sigma2_0", omega * pt.ones(n_seasons))  
     eps_0 = pm.Deterministic("eps_0", pt.zeros(n_seasons))                          # assume no prior shock
 
     # sample iid standard normals ----------
@@ -419,19 +419,16 @@ with pm.Model() as model:
     # Hyperparameter for delta_beta_temporal
     delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
     
-    # Scale shocks (fix scale mismatch)
-    shock_scale = pm.HalfNormal("shock_scale", sigma=1)
-
     # scan step: inputs: eta_t, delta_beta_mu, mu_prev; states: prev_delta, prev_sigma2, prev_eps
     def step(eta_t,
             prev_z, prev_sigma2, prev_eps,
-            psi, theta, omega, alpha, beta, shock_scale):
+            psi, theta, omega, alpha, beta):
         
         # 1) Compute current conditional variance using GARCH(1,1) recursion
         sigma2 = omega + alpha * (prev_eps ** 2) + beta * prev_sigma2
 
         # 2) Map iid standard-normal shocks to heteroskedastic GARCH shock
-        eps = (1+shock_scale) * eta_t * pt.sqrt(sigma2)
+        eps = eta_t * pt.sqrt(sigma2)
 
         # 3) ARMA(1,1)-style deviation from seasonal mean
         z = psi * prev_z + theta * prev_eps + eps
@@ -446,7 +443,7 @@ with pm.Model() as model:
         fn=step,
         sequences=[eta,],
         outputs_info=outputs_info,
-        non_sequences=[psi, theta, omega, a_garch, b_garch, shock_scale],
+        non_sequences=[psi, theta, omega, a_garch, b_garch],
     )
 
     # Prepend the initial states z_0, sigma2_0, eps_0
@@ -480,8 +477,8 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    trace = pm.sample(50, tune=50, chains=2, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=2*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(100, tune=50, chains=3, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=3*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
     #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
@@ -502,7 +499,7 @@ variables2plot = [
                 'delta_beta_mu',                                        # delta_beta_mu
                 'sigma2_0', 'z_0',                                      # ARMA-GARCH initial condition
                 'psi', 'theta',                                         # ARMA parameters
-                'omega', 'a_garch', 'b_garch', 'shock_scale',           # GARCH parameters
+                'omega', 'a_garch', 'b_garch',                          # GARCH parameters
                 ]
 
 # Save original traces
