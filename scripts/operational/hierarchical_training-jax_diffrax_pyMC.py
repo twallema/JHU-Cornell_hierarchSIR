@@ -26,8 +26,8 @@ from hierarchSIR.utils import get_NC_influenza_data
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # convert to a list of start and enddates (datetime)
-n_modifiers = 18
-modifier_length = 10
+n_modifiers = 26
+modifier_length = 7
 population = 11E6
 seasons = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']        # script works with only one season
 n_seasons = len(seasons)
@@ -365,6 +365,9 @@ eta_opt = eta_opt[1:,:]
 sol_op = SolOp(args_static)
 vjp_sol_op = VJPSolOp(args_static)
 
+p = 4
+q = 4
+
 # Build pyMC probablistic model
 with pm.Model() as model:
 
@@ -388,30 +391,34 @@ with pm.Model() as model:
     # baseline variance (positive)
     omega = pm.HalfNormal("omega", sigma=0.01)
 
-    # partially pooled psi AR(1)
-    #psi_mu_raw = pm.Normal("psi_mu_raw", mu=0.0, sigma=1)
-    #psi_sigma = pm.HalfNormal("psi_sigma", sigma=1/3)
-    #psi_raw_season = pm.Normal("psi_raw_season", mu=psi_mu_raw, sigma=psi_sigma, shape=n_seasons)
-    #psi = pm.Deterministic("psi", pm.math.sigmoid(psi_raw_season))
-    #psi_mu = pm.Deterministic("psi_mu", pm.math.sigmoid(psi_mu_raw))
-    psi = pm.Beta("psi", alpha=2, beta=2)
+    # --- Exponentially decaying AR(p) kernel ---
+    # Total AR strength (controls overall magnitude)
+    sum_psi = pm.Beta("sum_psi", alpha=2, beta=2)   # in (0, 1)
+    # Persistence / decay scale
+    ell_psi = pm.HalfNormal("ell_psi", sigma=1.0)   # larger = slower decay
+    # Unnormalized exponential decay
+    psi_raw = pt.exp(-pt.arange(p)/ell_psi)
+    # Normalize so sum(psi) = phi
+    psi = pm.Deterministic("psi", sum_psi * psi_raw / pt.sum(psi_raw))
 
-    # partially pooled theta MA(1)
-    #theta_mu_raw = pm.Normal("theta_mu_raw", mu=0.0, sigma=1)
-    #theta_sigma = pm.HalfNormal("theta_sigma", sigma=1/3)
-    #theta_raw_season = pm.Normal("theta_raw_season", mu=theta_mu_raw, sigma=theta_sigma, shape=n_seasons)
-    #theta = pm.Deterministic("theta", pm.math.sigmoid(theta_raw_season))
-    #theta_mu = pm.Deterministic("theta_mu", pm.math.sigmoid(theta_mu_raw))
-    theta = pm.Beta("theta", alpha=2, beta=2)
+    # --- Exponentially decaying MA(q) kernel ---
+    # Total AR strength (controls overall magnitude)
+    sum_theta = pm.Beta("sum_theta", alpha=2, beta=2)   # in (0, 1)
+    # Persistence / decay scale
+    ell_theta = pm.HalfNormal("ell_theta", sigma=1.0)   # larger = slower decay
+    # Unnormalized exponential decay
+    theta_raw = pt.exp(-pt.arange(q)/ell_theta)
+    # Normalize so sum(psi) = phi
+    theta = pm.Deterministic("theta", sum_theta * theta_raw / pt.sum(theta_raw))
 
     # GARCH parameters
     a_garch = pm.Beta("a_garch", alpha=2, beta=1)
     b_garch = pm.Beta("b_garch", alpha=2, beta=2)
 
     # initial states (you can make these priors instead)
-    z_0 = pm.Normal("z_0", mu=0, sigma=0.01, size=n_seasons)                        # z_t = delta_beta - delta_beta_mu (deviation of current season beta modifier from historical trend)
-    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons)               # initial variance  pm.Deterministic("sigma2_0", omega * pt.ones(n_seasons))  
-    eps_0 = pm.Deterministic("eps_0", pt.zeros(n_seasons))                          # assume no prior shock
+    z_0 = pm.Normal("z_0", mu=0, sigma=0.01, size=(p,n_seasons))                        # z_t = delta_beta - delta_beta_mu (deviation of current season beta modifier from historical trend)
+    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons)                   # initial variance  pm.Deterministic("sigma2_0", omega * pt.ones(n_seasons))  
+    eps_0 = pm.Normal("eps_0", mu=0, sigma=0.01, size=(q,n_seasons))                    # assume no prior shock
 
     # sample iid standard normals ----------
     eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers-1, n_seasons))
@@ -421,25 +428,29 @@ with pm.Model() as model:
     
     # scan step: inputs: eta_t, delta_beta_mu, mu_prev; states: prev_delta, prev_sigma2, prev_eps
     def step(eta_t,
-            prev_z, prev_sigma2, prev_eps,
+            prev_z_stack, prev_sigma2, prev_eps_stack,
             psi, theta, omega, alpha, beta):
         
-        # 1) Compute current conditional variance using GARCH(1,1) recursion
-        sigma2 = omega + alpha * (prev_eps ** 2) + beta * prev_sigma2
-
-        # 2) Map iid standard-normal shocks to heteroskedastic GARCH shock
+        # --- GARCH(1,1) ---
+        sigma2 = omega + alpha * (prev_eps_stack[0] ** 2) + beta * prev_sigma2
         eps = eta_t * pt.sqrt(sigma2)
 
-        # 3) ARMA(1,1)-style deviation from seasonal mean
-        z = psi * prev_z + theta * prev_eps + eps
+        # --- ARMA(p,q) ---
+        AR = pt.sum(psi[:, None] * prev_z_stack, axis=0)
+        MA = pt.sum(theta[:, None] * prev_eps_stack, axis=0)
+        z = AR + MA + eps
 
-        return z, sigma2, eps
+        # --- shift lag stacks ---
+        new_z_stack = pt.concatenate([z[None, :], prev_z_stack[:-1]], axis=0)
+        new_eps_stack = pt.concatenate([eps[None, :], prev_eps_stack[:-1]], axis=0)
+
+        return new_z_stack, sigma2, new_eps_stack
 
     # Provide initial states as a list (must match order of returned states)
     outputs_info = [z_0, sigma2_0, eps_0]
 
     # Run scan over T steps
-    (z_seq, sigma2_seq, eps_seq), updates = pytensor.scan(
+    (z_stack_seq, sigma2_seq, eps_stack_seq), updates = pytensor.scan(
         fn=step,
         sequences=[eta,],
         outputs_info=outputs_info,
@@ -447,9 +458,9 @@ with pm.Model() as model:
     )
 
     # Prepend the initial states z_0, sigma2_0, eps_0
-    z_seq = pt.concatenate([z_0.dimshuffle('x', 0), z_seq])
-    sigma2_seq = pt.concatenate([sigma2_0.dimshuffle('x', 0), sigma2_seq])
-    eps_seq = pt.concatenate([eps_0.dimshuffle('x', 0), eps_seq])
+    z_seq = pt.concatenate([z_0[0][None, :], z_stack_seq[:, 0, :]], axis=0)
+    eps_seq = pt.concatenate([eps_0[0][None, :], eps_stack_seq[:, 0, :]], axis=0)
+    sigma2_seq = pt.concatenate([sigma2_0[None, :], sigma2_seq], axis=0)
 
     # Register deterministic variables to inspect later
     delta_beta = pm.Deterministic("delta_beta", pt.transpose(z_seq) + delta_beta_mu)
@@ -477,8 +488,8 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    trace = pm.sample(100, tune=50, chains=3, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=3*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(150, tune=50, chains=24, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=24*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
     #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
@@ -498,7 +509,7 @@ variables2plot = [
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
                 'sigma2_0', 'z_0',                                      # ARMA-GARCH initial condition
-                'psi', 'theta',                                         # ARMA parameters
+                'sum_psi', 'sum_theta', 'ell_psi', 'ell_theta',         # ARMA parameters
                 'omega', 'a_garch', 'b_garch',                          # GARCH parameters
                 ]
 
@@ -513,7 +524,7 @@ for var in variables2plot:
 
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "theta", "psi"], divergences=True)
+arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "sum_theta", "sum_psi"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.png', dpi=300)
 plt.close()
 
@@ -564,6 +575,34 @@ for i, season in enumerate(seasons):
     ax[0].set_title(season)
     plt.savefig(f'trace/{season}_ARMA-GARCH_pars.pdf')
     plt.close()
+
+# Visualise an autocorrelation plot of 'eps'
+from statsmodels.graphics.tsaplots import plot_acf
+fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
+for i, season in enumerate(seasons):
+    eps = trace.posterior['eps'].median(dim=['chain', 'draw']).values[i,:]
+    plot_acf(eps, lags=5, ax=ax[i], title=season)
+plt.savefig(f'trace/{season}_ACF_shocks.pdf')
+plt.close()
+
+# Visualise a partial autocorrelation plot of 'eps'
+from statsmodels.graphics.tsaplots import plot_pacf
+fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
+for i, season in enumerate(seasons):
+    eps = trace.posterior['eps'].median(dim=['chain', 'draw']).values[i,:]
+    plot_pacf(eps, lags=5, ax=ax[i], title=season)
+plt.savefig(f'trace/{season}_PACF_shocks.pdf')
+plt.close()
+
+
+# Visualise an autocorrelation plot of 'eps**2'
+from statsmodels.graphics.tsaplots import plot_acf
+fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
+for i, season in enumerate(seasons):
+    eps_2 = trace.posterior['eps'].median(dim=['chain', 'draw']).values[i,:]**2
+    plot_acf(eps_2, lags=5, ax=ax[i], title=season)
+plt.savefig(f'trace/{season}_ACF_squaredshocks.pdf')
+plt.close()
 
 # Visualise goodnes-of-fit
 fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
