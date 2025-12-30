@@ -365,8 +365,8 @@ eta_opt = eta_opt[1:,:]
 sol_op = SolOp(args_static)
 vjp_sol_op = VJPSolOp(args_static)
 
-p = 4
-q = 4
+p = 1
+q = 1
 
 # Build pyMC probablistic model
 with pm.Model() as model:
@@ -391,24 +391,26 @@ with pm.Model() as model:
     # baseline variance (positive)
     omega = pm.HalfNormal("omega", sigma=0.01)
 
-    # --- Exponentially decaying AR(p) kernel ---
+    # --- Harmonically decaying AR(p) kernel ---
     # Total AR strength (controls overall magnitude)
-    sum_psi = pm.Beta("sum_psi", alpha=2, beta=2)   # in (0, 1)
-    # Persistence / decay scale
-    ell_psi = pm.HalfNormal("ell_psi", sigma=1.0)   # larger = slower decay
-    # Unnormalized exponential decay
-    psi_raw = pt.exp(-pt.arange(p)/ell_psi)
-    # Normalize so sum(psi) = phi
-    psi = pm.Deterministic("psi", sum_psi * psi_raw / pt.sum(psi_raw))
+    sum_psi = 1 #pm.Beta("sum_psi", alpha=2, beta=2)
+    # Harmonic decay exponent (larger = faster decay)
+    gamma_psi = pm.HalfNormal("gamma_psi", sigma=1.0/3)
+    # Harmonic kernel: 1 / (k+1)^gamma
+    k_psi = pt.arange(p) + 1
+    psi_raw = k_psi ** (-gamma_psi)
+    # Normalize so sum(psi) = sum_psi
+    psi = pm.Deterministic("psi",sum_psi * psi_raw / pt.sum(psi_raw))
 
-    # --- Exponentially decaying MA(q) kernel ---
-    # Total AR strength (controls overall magnitude)
-    sum_theta = pm.Beta("sum_theta", alpha=2, beta=2)   # in (0, 1)
-    # Persistence / decay scale
-    ell_theta = pm.HalfNormal("ell_theta", sigma=1.0)   # larger = slower decay
-    # Unnormalized exponential decay
-    theta_raw = pt.exp(-pt.arange(q)/ell_theta)
-    # Normalize so sum(psi) = phi
+    # --- Harmonically decaying MA(q) kernel ---
+    # Total MA strength (controls overall magnitude)
+    sum_theta = pm.Beta("sum_theta", alpha=2, beta=2)
+    # Harmonic decay exponent
+    gamma_theta = pm.HalfNormal("gamma_theta", sigma=1.0/3)
+    # Harmonic kernel
+    k_theta = pt.arange(q) + 1
+    theta_raw = k_theta ** (-gamma_theta)
+    # Normalize so sum(theta) = sum_theta
     theta = pm.Deterministic("theta", sum_theta * theta_raw / pt.sum(theta_raw))
 
     # GARCH parameters
@@ -488,8 +490,8 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    trace = pm.sample(150, tune=50, chains=24, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=24*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(150, tune=50, chains=18, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=18*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
     #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
@@ -509,7 +511,7 @@ variables2plot = [
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
                 'sigma2_0', 'z_0',                                      # ARMA-GARCH initial condition
-                'sum_psi', 'sum_theta', 'ell_psi', 'ell_theta',         # ARMA parameters
+                'sum_theta', 'gamma_psi', 'gamma_theta',     # ARMA parameters
                 'omega', 'a_garch', 'b_garch',                          # GARCH parameters
                 ]
 
@@ -524,7 +526,7 @@ for var in variables2plot:
 
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "sum_theta", "sum_psi"], divergences=True)
+arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "sum_theta"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.png', dpi=300)
 plt.close()
 
