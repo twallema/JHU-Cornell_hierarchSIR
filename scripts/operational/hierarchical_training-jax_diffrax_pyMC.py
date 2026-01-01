@@ -366,7 +366,6 @@ sol_op = SolOp(args_static)
 vjp_sol_op = VJPSolOp(args_static)
 
 p = 1
-q = 1
 
 # Build pyMC probablistic model
 with pm.Model() as model:
@@ -388,85 +387,64 @@ with pm.Model() as model:
 
     # ------- ARMA-GARCH modifiers -------
 
-    # baseline variance (positive)
-    omega = pm.HalfNormal("omega", sigma=0.01)
-
-    # --- Harmonically decaying AR(p) kernel ---
-    # Total AR strength (controls overall magnitude)
-    sum_psi = 1 #pm.Beta("sum_psi", alpha=2, beta=2)
-    # Harmonic decay exponent (larger = faster decay)
-    gamma_psi = pm.HalfNormal("gamma_psi", sigma=1.0/3)
-    # Harmonic kernel: 1 / (k+1)^gamma
-    k_psi = pt.arange(p) + 1
-    psi_raw = k_psi ** (-gamma_psi)
-    # Normalize so sum(psi) = sum_psi
-    psi = pm.Deterministic("psi",sum_psi * psi_raw / pt.sum(psi_raw))
-
-    # --- Harmonically decaying MA(q) kernel ---
-    # Total MA strength (controls overall magnitude)
-    sum_theta = pm.Beta("sum_theta", alpha=2, beta=2)
-    # Harmonic decay exponent
-    gamma_theta = pm.HalfNormal("gamma_theta", sigma=1.0/3)
-    # Harmonic kernel
-    k_theta = pt.arange(q) + 1
-    theta_raw = k_theta ** (-gamma_theta)
-    # Normalize so sum(theta) = sum_theta
-    theta = pm.Deterministic("theta", sum_theta * theta_raw / pt.sum(theta_raw))
-
-    # GARCH parameters
-    a_garch = pm.Beta("a_garch", alpha=2, beta=1)
-    b_garch = pm.Beta("b_garch", alpha=2, beta=2)
-
-    # initial states (you can make these priors instead)
-    z_0 = pm.Normal("z_0", mu=0, sigma=0.01, size=(p,n_seasons))                        # z_t = delta_beta - delta_beta_mu (deviation of current season beta modifier from historical trend)
-    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons)                   # initial variance  pm.Deterministic("sigma2_0", omega * pt.ones(n_seasons))  
-    eps_0 = pm.Normal("eps_0", mu=0, sigma=0.01, size=(q,n_seasons))                    # assume no prior shock
-
-    # sample iid standard normals ----------
-    eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers-1, n_seasons))
-
     # Hyperparameter for delta_beta_temporal
     delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
     
-    # scan step: inputs: eta_t, delta_beta_mu, mu_prev; states: prev_delta, prev_sigma2, prev_eps
-    def step(eta_t,
-            prev_z_stack, prev_sigma2, prev_eps_stack,
-            psi, theta, omega, alpha, beta):
-        
-        # --- GARCH(1,1) ---
-        sigma2 = omega + alpha * (prev_eps_stack[0] ** 2) + beta * prev_sigma2
+    # GARCH parameters
+    omega = pm.HalfNormal("omega", sigma=0.001) # baseline variance (positive)
+    a_garch = pm.Beta("a_garch", alpha=2, beta=2) # sensitivity to shocks
+    b_garch = pm.Beta("b_garch", alpha=2, beta=2) # shock retention
+    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons) # initial position
+
+    # --- AR(p) for fast component u_t ---
+    phi = pm.Beta("phi", alpha=1, beta=2, shape=p)  # coefficients
+    u_0 = pm.Normal("u_0", mu=0.0, sigma=0.01, size=(p, n_seasons)) # initial position
+    eps_0 = pm.Normal("eps_0", mu=0.0, sigma=0.01, size=n_seasons)
+
+    # --- Random walk (slow drift) ell_t ---
+    tau = pm.HalfNormal("tau", sigma=0.01)  # its variance
+    ell_0 = pm.Normal("ell_0", mu=0.0, sigma=0.01, shape=n_seasons) # initial position
+
+    # sample iid standard normals as shocks ----------
+    eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers-1, n_seasons))
+    nu = pm.Normal("nu", mu=0.0, sigma=1.0, shape=(n_modifiers-1, n_seasons))
+
+    def step(eta_t, nu_t, prev_u_stack, prev_ell, prev_sigma2, prev_eps, phi, omega, a_garch, b_garch, tau):
+        # --- GARCH(1,1) short-term shocks innovation scale ---
+        sigma2 = omega + a_garch * (prev_u_stack[0] ** 2) + b_garch * prev_sigma2
         eps = eta_t * pt.sqrt(sigma2)
+        # --- AR(p) short-term shocks ---
+        AR = pt.sum(phi[:, None] * prev_u_stack, axis=0)
+        u = AR + eps
+        # --- RW(1) long-term drift ---
+        ell = prev_ell + nu_t * tau
+        # --- shift lag stack ---
+        new_u_stack = pt.concatenate([u[None, :], prev_u_stack[:-1]], axis=0)
 
-        # --- ARMA(p,q) ---
-        AR = pt.sum(psi[:, None] * prev_z_stack, axis=0)
-        MA = pt.sum(theta[:, None] * prev_eps_stack, axis=0)
-        z = AR + MA + eps
-
-        # --- shift lag stacks ---
-        new_z_stack = pt.concatenate([z[None, :], prev_z_stack[:-1]], axis=0)
-        new_eps_stack = pt.concatenate([eps[None, :], prev_eps_stack[:-1]], axis=0)
-
-        return new_z_stack, sigma2, new_eps_stack
-
+        return new_u_stack, ell, sigma2, eps
+    
     # Provide initial states as a list (must match order of returned states)
-    outputs_info = [z_0, sigma2_0, eps_0]
+    outputs_info = [u_0, ell_0, sigma2_0, eps_0]
 
     # Run scan over T steps
-    (z_stack_seq, sigma2_seq, eps_stack_seq), updates = pytensor.scan(
+    (u_stack_seq, ell_seq, sigma2_seq, eps_seq), _ = pytensor.scan(
         fn=step,
-        sequences=[eta,],
+        sequences=[eta, nu],
         outputs_info=outputs_info,
-        non_sequences=[psi, theta, omega, a_garch, b_garch],
+        non_sequences=[phi, omega, a_garch, b_garch, tau],
     )
 
-    # Prepend the initial states z_0, sigma2_0, eps_0
-    z_seq = pt.concatenate([z_0[0][None, :], z_stack_seq[:, 0, :]], axis=0)
-    eps_seq = pt.concatenate([eps_0[0][None, :], eps_stack_seq[:, 0, :]], axis=0)
+    # Prepend the initial states u_0, ell_0, sigma2_0
+    u_seq = pt.concatenate([u_0[0][None, :], u_stack_seq[:, 0, :]], axis=0)
+    ell_seq = pt.concatenate([ell_0[None, :], ell_seq], axis=0)
     sigma2_seq = pt.concatenate([sigma2_0[None, :], sigma2_seq], axis=0)
+    eps_seq = pt.concatenate([eps_0[None, :], eps_seq], axis=0)
 
     # Register deterministic variables to inspect later
-    delta_beta = pm.Deterministic("delta_beta", pt.transpose(z_seq) + delta_beta_mu)
-    z = pm.Deterministic("z", pt.transpose(z_seq))
+    delta_beta = pm.Deterministic("delta_beta", pt.transpose(ell_seq + u_seq) + delta_beta_mu)
+    z = pm.Deterministic("z", pt.transpose(ell_seq + u_seq))
+    u = pm.Deterministic("u", pt.transpose(u_seq))
+    ell = pm.Deterministic("ell", pt.transpose(ell_seq))
     sigma2 = pm.Deterministic("sigma2", pt.transpose(sigma2_seq))
     eps = pm.Deterministic("eps", pt.transpose(eps_seq))
 
@@ -510,8 +488,8 @@ variables2plot = [
                 'f_R_a', 'f_R_b', 'f_R',                                # f_R
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
-                'sigma2_0', 'z_0',                                      # ARMA-GARCH initial condition
-                'sum_theta', 'gamma_psi', 'gamma_theta',     # ARMA parameters
+                'sigma2_0', 'u_0', 'ell_0',                             # RW-AR-GARCH initial condition
+                'phi', 'tau',                                           # RW-AR parameters
                 'omega', 'a_garch', 'b_garch',                          # GARCH parameters
                 ]
 
@@ -526,7 +504,7 @@ for var in variables2plot:
 
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "sum_theta"], divergences=True)
+arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "phi", "tau"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.png', dpi=300)
 plt.close()
 
@@ -559,7 +537,7 @@ plt.close()
 
 # Visualise delta_beta, z, sigma2 and eps per season
 for i, season in enumerate(seasons):
-    fig,ax=plt.subplots(nrows=4, figsize=(8.3, 11.7/5*4))
+    fig,ax=plt.subplots(nrows=6, figsize=(8.3, 11.7))
     # across-season delta_beta trend
     ax[0].plot(range(n_modifiers), trace.posterior['delta_beta_mu'].median(dim=['chain', 'draw']).values, color='green')
     ax[0].fill_between(range(n_modifiers),
@@ -567,7 +545,7 @@ for i, season in enumerate(seasons):
                     trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.975).values,
                     color='green', alpha=0.15)
     # within-season delta_beta, z, sigma2, eps
-    for j, par in enumerate(['delta_beta', 'z', 'sigma2', 'eps']):
+    for j, par in enumerate(['delta_beta', 'z', 'u', 'ell', 'sigma2', 'eps']):
         ax[j].plot(range(n_modifiers), trace.posterior[par].median(dim=['chain', 'draw']).values[i,:], color='black', linewidth=0.5)
         ax[j].fill_between(range(n_modifiers),
                 trace.posterior[par].quantile(dim=['chain', 'draw'], q=0.025).values[i,:],
