@@ -402,7 +402,7 @@ with pm.Model() as model:
     eps_0 = pm.Normal("eps_0", mu=0.0, sigma=0.01, size=n_seasons)
 
     # --- Random walk (slow drift) ell_t ---
-    tau = pm.HalfNormal("tau", sigma=0.01)  # its variance
+    tau = pm.Normal("tau", mu=1, sigma=1/3)  # its variance
     ell_0 = pm.Normal("ell_0", mu=0.0, sigma=0.01, shape=n_seasons) # initial position
 
     # sample iid standard normals as shocks ----------
@@ -417,7 +417,7 @@ with pm.Model() as model:
         AR = pt.sum(phi[:, None] * prev_u_stack, axis=0)
         u = AR + eps
         # --- RW(1) long-term drift ---
-        ell = prev_ell + nu_t * tau
+        ell = prev_ell + nu_t * tau * pt.sqrt(sigma2)
         # --- shift lag stack ---
         new_u_stack = pt.concatenate([u[None, :], prev_u_stack[:-1]], axis=0)
 
@@ -468,8 +468,8 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    trace = pm.sample(150, tune=50, chains=18, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=18*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(50, tune=50, chains=4, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=4*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
     #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=12, progressbar=True)
     # DEMetroplisZ
