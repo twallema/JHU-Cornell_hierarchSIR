@@ -365,7 +365,7 @@ eta_opt = eta_opt[1:,:]
 sol_op = SolOp(args_static)
 vjp_sol_op = VJPSolOp(args_static)
 
-p = 1
+p = 2
 
 # Build pyMC probablistic model
 with pm.Model() as model:
@@ -379,7 +379,7 @@ with pm.Model() as model:
     f_R_b = pm.HalfNormal('f_R_b', sigma=5)
 
     # Differentiable parameters (those we wish to calibrate)
-    beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons,1))) #pm.Truncated("beta", pm.Normal.dist(mu=beta_mu, sigma=beta_sigma), lower=0, upper=1, size=(n_seasons, 1))
+    beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons,1)))
     rho_h = pm.LogNormal("rho_h", mu=np.log(rho_h_mu), sigma=rho_h_sigma, size=(n_seasons, 1))
     f_I = pm.LogNormal("f_I", mu=np.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, 1))
     f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(n_seasons, 1))
@@ -396,55 +396,51 @@ with pm.Model() as model:
     b_garch = pm.Beta("b_garch", alpha=2, beta=2) # shock retention
     sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons) # initial position
 
-    # --- AR(p) for fast component u_t ---
-    phi = pm.Beta("phi", alpha=1, beta=5, shape=p)  # coefficients
-    u_0 = pm.Normal("u_0", mu=0.0, sigma=0.01, size=(p, n_seasons)) # initial position
+    # --- Harmonically decaying AR(p) kernel ---
+    # Initial position
+    z_0 = pm.Normal("z_0", mu=0.0, sigma=0.01, size=(p, n_seasons)) 
     eps_0 = pm.Normal("eps_0", mu=0.0, sigma=0.01, size=n_seasons)
-
-    # --- Random walk (slow drift) ell_t ---
-    tau = pm.HalfNormal("tau", sigma=0.03)  # its variance
-    ell_0 = pm.Normal("ell_0", mu=0.0, sigma=0.01, shape=n_seasons) # initial position
+    # Total AR strength (controls overall magnitude)
+    sum_psi = pm.Beta("sum_psi", alpha=5, beta=1)
+    # Harmonic kernel: 1 / (k+1)^gamma (larger = faster decay)
+    decay_psi = pm.Normal("decay_psi", mu=1, sigma=1/3)
+    k_psi = pt.arange(p) + 1
+    psi_raw = k_psi ** (-decay_psi)
+    # Normalize so sum(psi) = sum_psi
+    psi = pm.Deterministic("psi",sum_psi * psi_raw / pt.sum(psi_raw))
 
     # sample iid standard normals as shocks ----------
     eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers-1, n_seasons))
-    nu = pm.Normal("nu", mu=0.0, sigma=1.0, shape=(n_modifiers-1, n_seasons))
 
-    def step(eta_t, nu_t, prev_u_stack, prev_ell, prev_sigma2, prev_eps, phi, omega, a_garch, b_garch, tau):
+    def step(eta_t, prev_z_stack, prev_sigma2, prev_eps, psi, omega, a_garch, b_garch):
         # --- GARCH(1,1) short-term shocks innovation scale ---
         sigma2 = omega + a_garch * (prev_eps ** 2) + b_garch * prev_sigma2
         eps = eta_t * pt.sqrt(sigma2)
         # --- AR(p) short-term shocks ---
-        AR = pt.sum(phi[:, None] * prev_u_stack, axis=0)
-        u = AR + eps
-        # --- RW(1) long-term drift ---
-        ell = prev_ell + nu_t * tau
+        z = pt.sum(psi[:, None] * prev_z_stack, axis=0) + eps
         # --- shift lag stack ---
-        new_u_stack = pt.concatenate([u[None, :], prev_u_stack[:-1]], axis=0)
-
-        return new_u_stack, ell, sigma2, eps
+        new_z_stack = pt.concatenate([z[None, :], prev_z_stack[:-1]], axis=0)
+        return new_z_stack, sigma2, eps
     
     # Provide initial states as a list (must match order of returned states)
-    outputs_info = [u_0, ell_0, sigma2_0, eps_0]
+    outputs_info = [z_0, sigma2_0, eps_0]
 
     # Run scan over T steps
-    (u_stack_seq, ell_seq, sigma2_seq, eps_seq), _ = pytensor.scan(
+    (z_stack_seq, sigma2_seq, eps_seq), _ = pytensor.scan(
         fn=step,
-        sequences=[eta, nu],
+        sequences=[eta,],
         outputs_info=outputs_info,
-        non_sequences=[phi, omega, a_garch, b_garch, tau],
+        non_sequences=[psi, omega, a_garch, b_garch],
     )
 
     # Prepend the initial states u_0, ell_0, sigma2_0
-    u_seq = pt.concatenate([u_0[0][None, :], u_stack_seq[:, 0, :]], axis=0)
-    ell_seq = pt.concatenate([ell_0[None, :], ell_seq], axis=0)
+    z_seq = pt.concatenate([z_0[0][None, :], z_stack_seq[:, 0, :]], axis=0)
     sigma2_seq = pt.concatenate([sigma2_0[None, :], sigma2_seq], axis=0)
     eps_seq = pt.concatenate([eps_0[None, :], eps_seq], axis=0)
 
     # Register deterministic variables to inspect later
-    delta_beta = pm.Deterministic("delta_beta", pt.transpose(ell_seq + u_seq) + delta_beta_mu)
-    z = pm.Deterministic("z", pt.transpose(ell_seq + u_seq))
-    u = pm.Deterministic("u", pt.transpose(u_seq))
-    ell = pm.Deterministic("ell", pt.transpose(ell_seq))
+    delta_beta = pm.Deterministic("delta_beta", pt.transpose(z_seq) + delta_beta_mu)
+    z = pm.Deterministic("z", pt.transpose(z_seq))
     sigma2 = pm.Deterministic("sigma2", pt.transpose(sigma2_seq))
     eps = pm.Deterministic("eps", pt.transpose(eps_seq))
 
@@ -476,11 +472,6 @@ with model:
     #trace = pm.sample(100000, tune=100000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
     #                   initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
-# Questions to solve:
-# - DEMetroplisZ: Run for 1 000 000 iterations without burn and 3 chains --> Do chains keep waggling or do they waggle but then settle? And do different chains settle into the same values?
-# - NUTS: Consistency between chains? Short vs. long tuning? Target accept high versus low? If you directly estimate psi, theta, s and rho, does it work better?
-# - Is it possible to parametrize the prior distributions of psi, theta, s and rho? This will make it easier to forecast a new season.
-
 # Generate traces
 variables2plot = [
                 'alpha',                                                # overdispersion
@@ -488,8 +479,8 @@ variables2plot = [
                 'f_R_a', 'f_R_b', 'f_R',                                # f_R
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
-                'sigma2_0', 'u_0', 'ell_0',                             # RW-AR-GARCH initial condition
-                'phi', 'tau',                                           # RW-AR parameters
+                'sigma2_0', 'z_0', 'eps_0',                             # AR-GARCH initial condition
+                'sum_psi', 'decay_psi',                                 # AR parameters
                 'omega', 'a_garch', 'b_garch',                          # GARCH parameters
                 ]
 
@@ -500,11 +491,8 @@ for var in variables2plot:
     plt.savefig(f'trace/trace-{var}.pdf')
     plt.close()
 
-# Resample 20 samples from each chain at random to construct the posterior
-
-
 # Build pair plots
-arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "phi", "tau"], divergences=True)
+arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "sum_psi", "decay_psi"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.png', dpi=300)
 plt.close()
 
@@ -537,7 +525,7 @@ plt.close()
 
 # Visualise delta_beta, z, sigma2 and eps per season
 for i, season in enumerate(seasons):
-    fig,ax=plt.subplots(nrows=6, figsize=(8.3, 11.7))
+    fig,ax=plt.subplots(nrows=4, figsize=(8.3, 11.7))
     # across-season delta_beta trend
     ax[0].plot(range(n_modifiers), trace.posterior['delta_beta_mu'].median(dim=['chain', 'draw']).values, color='green')
     ax[0].fill_between(range(n_modifiers),
@@ -545,7 +533,7 @@ for i, season in enumerate(seasons):
                     trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.975).values,
                     color='green', alpha=0.15)
     # within-season delta_beta, z, sigma2, eps
-    for j, par in enumerate(['delta_beta', 'z', 'u', 'ell', 'sigma2', 'eps']):
+    for j, par in enumerate(['delta_beta', 'z', 'sigma2', 'eps']):
         ax[j].plot(range(n_modifiers), trace.posterior[par].median(dim=['chain', 'draw']).values[i,:], color='black', linewidth=0.5)
         ax[j].fill_between(range(n_modifiers),
                 trace.posterior[par].quantile(dim=['chain', 'draw'], q=0.025).values[i,:],
@@ -555,34 +543,6 @@ for i, season in enumerate(seasons):
     ax[0].set_title(season)
     plt.savefig(f'trace/{season}_ARMA-GARCH_pars.pdf')
     plt.close()
-
-# Visualise an autocorrelation plot of 'eps'
-from statsmodels.graphics.tsaplots import plot_acf
-fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
-for i, season in enumerate(seasons):
-    eps = trace.posterior['eps'].median(dim=['chain', 'draw']).values[i,:]
-    plot_acf(eps, lags=5, ax=ax[i], title=season)
-plt.savefig(f'trace/{season}_ACF_shocks.pdf')
-plt.close()
-
-# Visualise a partial autocorrelation plot of 'eps'
-from statsmodels.graphics.tsaplots import plot_pacf
-fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
-for i, season in enumerate(seasons):
-    eps = trace.posterior['eps'].median(dim=['chain', 'draw']).values[i,:]
-    plot_pacf(eps, lags=5, ax=ax[i], title=season)
-plt.savefig(f'trace/{season}_PACF_shocks.pdf')
-plt.close()
-
-
-# Visualise an autocorrelation plot of 'eps**2'
-from statsmodels.graphics.tsaplots import plot_acf
-fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
-for i, season in enumerate(seasons):
-    eps_2 = trace.posterior['eps'].median(dim=['chain', 'draw']).values[i,:]**2
-    plot_acf(eps_2, lags=5, ax=ax[i], title=season)
-plt.savefig(f'trace/{season}_ACF_squaredshocks.pdf')
-plt.close()
 
 # Visualise goodnes-of-fit
 fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
