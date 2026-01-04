@@ -1,4 +1,4 @@
-name: TWALLEMA-HIERARCHSIR
+name: tryout-pyMC-env
 channels:
   - conda-forge
   - defaults
@@ -6,13 +6,12 @@ dependencies:
   - python=3.12
   - jupyter
   - matplotlib
-  - xarray
   - numpy
   - pandas
   - scipy
-  - openpyxl
-  - emcee
   - pymc>=5
   - pytensor=2.31.7
   - pytensor-base=2.31.7
   - arviz
+  - diffrax
+  - jax
