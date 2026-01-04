@@ -1,3 +1,12 @@
+"""
+This script calibrates an SIR compartmental model to a synthetic outbreak dataset.
+It illustrates how an ODE simulations can be gradient-coupled to a pyMC probablistic model and samples using Hamiltonian MCMC
+"""
+
+__author__      = "Tijs Alleman"
+__copyright__   = "Copyright (c) 2026 by T.W. Alleman, Bento Lab, Department of Public and Ecosystem Health, Cornell University CVM. All Rights Reserved."
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 
