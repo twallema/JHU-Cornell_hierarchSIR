@@ -168,8 +168,7 @@ def get_historic_drift(focal_season, seasons, date, drift_horizon):
         month, day = (3,1) if ((date.month == 2) & (date.day == 29) & (year % 4 != 0)) else (date.month, date.day)
         #### extract data
         historic_data = 7*get_NC_influenza_data(datetime(year, month, day) - timedelta(days=0),
-                                datetime(year, month, day)+timedelta(weeks=drift_horizon),
-                                historic_season)['H_inc'].to_frame().iloc[-drift_horizon:]
+                                datetime(year, month, day)+timedelta(weeks=drift_horizon))['H_inc'].to_frame().iloc[-drift_horizon:]
         historic_data = historic_data.reset_index()
         historic_data['horizon'] = 7*np.array((range(-drift_horizon, 0)))
         historic_data = historic_data[['horizon', 'H_inc']]

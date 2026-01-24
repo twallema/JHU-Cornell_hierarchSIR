@@ -41,7 +41,7 @@ df_boot <- df %>%
     model = factor(model, levels = c("SIR-1S", "SIR-2S", "SIR-3S")),
     immunity_linking = factor(immunity_linking, levels = c(FALSE, TRUE)),
     ED_visits = factor(ED_visits, levels = c(FALSE, TRUE)),
-    log_rel_wis = log(relative_WIS_nodrift)
+    log_rel_wis = log(relative_WIS_drift)
   )
 
 boot_geom_mean <- function(x, B = 2000) {
@@ -78,7 +78,7 @@ boot_tbl_out <- boot_tbl %>%
 
 write.csv(
   boot_tbl_out,
-  file = file.path(script_dir, "bootstrapped_relative_WIS_GRW.csv"),
+  file = file.path(script_dir, "bootstrapped_relative_WIS_GRWD.csv"),
   row.names = FALSE
 )
 
@@ -92,9 +92,16 @@ p <- ggplot(boot_tbl %>% filter(informed==TRUE), aes(x = model, y = geom_mean_WI
   theme_minimal(base_size = 14) +
   labs(
     y = "Rel. WIS (GRW)",
-    x = "Strain representation",
+    x = "No. Strains Represented",
     color = "ED visits",
   ) +
+  scale_x_discrete(
+    labels = c(
+      "SIR-1S" = "1",
+      "SIR-2S" = "2",
+      "SIR-3S" = "3"
+    )
+  ) + 
   scale_color_brewer(palette = "Set1")
 ggsave(
   filename = file.path(script_dir, "WIS_comparison_GRW.pdf"),
@@ -127,7 +134,7 @@ paired_df <- df %>%
   )
 
 # bootstrap them
-B <- 5000
+B <- 10000
 boot_log_diff <- replicate(
   B,
   {
@@ -178,7 +185,7 @@ paired_immune <- df %>%
   )
 
 # perform paired bootstrap
-B <- 5000
+B <- 10000
 boot_log_diff <- replicate(
   B,
   {
@@ -214,7 +221,7 @@ paired_ED_visits <- df %>%
   ) %>%
   group_by(reference_date, ED_visits) %>%
   summarise(
-    log_gm_WIS = mean(log(relative_WIS_nodrift), na.rm = TRUE),
+    log_gm_WIS = mean(log(relative_WIS_drift), na.rm = TRUE),
     .groups = "drop"
   ) %>%
   pivot_wider(
@@ -228,7 +235,7 @@ paired_ED_visits <- df %>%
   )
 
 # perform paired bootstrap
-B <- 5000
+B <- 10000
 boot_log_diff <- replicate(
   B,
   {
@@ -323,9 +330,9 @@ pvals <- tibble(
 left_join(results, pvals, by = "contrast")
 
 
-#####################################
-## Prepare the data for LMER model ##
-#####################################
+########################################
+## Prepare the data for an LMER model ##
+########################################
 
 # model log transform of relative WIS
 df$log_relative_WIS_drift <- log(df$relative_WIS_drift)
@@ -350,6 +357,31 @@ df <- df %>%
   ) %>%
   droplevels()
 
+##################################
+## Build an additive LMER model ##
+##################################
+
+# Keep only informed
+df_filtered <- df %>% filter(informed == TRUE)
+
+# build linear mixed effects model
+m_additive <- lmer(
+  log_relative_WIS_nodrift ~ 
+    model +
+    immunity_linking + 
+    ED_visits + 
+    (1 | reference_date), 
+  data = df_filtered,
+  REML = TRUE
+)
+
+# print coefficients (of m1)
+summary(m_additive)
+
+# validate LMER noise assumption
+plot(fitted(m_additive), resid(m_additive))
+
+
 #####################
 ## Build the model ##
 #####################
@@ -361,22 +393,19 @@ m_full <- lmer(
     model +
     immunity_linking + 
     ED_visits + 
-    month +
-    informed * month +
     informed * model + 
     informed * immunity_linking + 
     informed * ED_visits +    
-    model * month + 
     model * ED_visits +
     model * immunity_linking + 
-    (1 | reference_date) + 
-    (1 | season),
+    (1 | reference_date) +
+    (1 | season) +
   data = df,
   REML = TRUE
 )
 
 # stepwise selection
-model_selection <- step(m_full, keep=c('informed', 'model', 'immunity_linking', 'ED_visits', 'month'))
+model_selection <- step(m_full, keep=c('informed', 'model', 'immunity_linking', 'ED_visits'))
 m1 <- get_model(model_selection)
 
 # print coefficients (of m1)
