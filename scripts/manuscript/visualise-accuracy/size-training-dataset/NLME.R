@@ -51,28 +51,34 @@ nlme_formula <- log_rel_wis ~
   mu +
   Delta * exp(-kappa * training_horizon)
 
+# Consider adding ED to Delta too
 fixed_effects <- list(
-  mu    ~ 1 + season + model + ED,  # linear baseline
-  Delta ~ 0 + model,         # total training gain
-  kappa ~ 0 + model                 # learning speed
+  mu    ~ 1 + season + model + ED,
+  Delta ~ 0 + model:season,   # season-specific asymptote
+  kappa ~ 0 + model           # shared learning rate per model
 )
 
 random_effects <- pdDiag(mu ~ 1)
 
 start_vals <- c(
-  rep(-0.3, nlevels(df$season)),
-  rep(0.0,  nlevels(df$model) - 1),     
-  -0.05,
-  rep(0.2,  nlevels(df$model)),
-  rep(0.2,  nlevels(df$model))       
+  -0.3,                                  # mu.(Intercept)
+  rep(0.0, nlevels(df$season) - 1),      # mu.season*
+  rep(0.0, nlevels(df$model)  - 1),      # mu.model*
+  -0.05,                                 # mu.ED
+  rep(0.2, nlevels(df$model) * nlevels(df$season)),  # Delta
+  rep(0.2, nlevels(df$model))            # kappa
 )
 
 names(start_vals) <- c(
-  paste0("mu.season", levels(df$season)),
+  "mu.(Intercept)",
+  paste0("mu.season", levels(df$season)[-1]),
   paste0("mu.model",  levels(df$model)[-1]),
   "mu.ED",
-  paste0("Delta.", levels(df$model)),
-  paste0("kappa.", levels(df$model))
+  paste0(
+    "Delta.model", rep(levels(df$model), each = nlevels(df$season)),
+    ":season",     rep(levels(df$season), times = nlevels(df$model))
+  ),
+  paste0("kappa.model", levels(df$model))
 )
 
 ###################
@@ -88,149 +94,121 @@ m1 <- nlme(
   start  = start_vals,
   na.action = na.exclude,
   control = nlmeControl(
-    maxIter = 1000,
-    pnlsMaxIter = 500,
-    tolerance = 1e-9,
-    msVerbose = TRUE
+    maxIter = 200,
+    pnlsMaxIter = 50,
+    tolerance = 1e-6
   )
 )
 
+# parameters
 summary(m1)
 
+# residual
 plot(fitted(m1), resid(m1))
 
+# save fixed effects
 beta <- fixef(m1)
+
+# compute average 'Delta' over seasons
+season_weights <- prop.table(table(df$season))
+Delta_bar <- sapply(levels(df$model), function(m) {
+  sum(season_weights * c(
+    beta[paste0("Delta.model", m, ":season2023-2024")],
+    beta[paste0("Delta.model", m, ":season2024-2025")]
+  ))
+})
 
 #####################
 ## Goodness-of-fit ##
 #####################
 
-# define grid levels
-ED_levels    <- c(0, 1)
-ED_labels    <- c("No ED visits", "ED visits")
-model_levels <- c("SIR-1S", "SIR-2S", "SIR-3S")
+# levels
+ED_levels     <- c(0, 1)
+ED_labels     <- c("No ED visits", "ED visits")
+model_levels  <- c("SIR-1S", "SIR-2S", "SIR-3S")
 season_levels <- levels(factor(df$season))
 
-# create a prediction grid
+# prediction grid
 pred_grid <- expand.grid(
   training_horizon = sort(unique(df$training_horizon)),
-  model            = model_levels,
-  ED               = ED_levels,
-  season           = season_levels,
-  KEEP.OUT.ATTRS   = FALSE,
-  stringsAsFactors = FALSE
-)
-pred_grid <- pred_grid %>%
+  model  = model_levels,
+  ED     = ED_levels,
+  season = season_levels,
+  KEEP.OUT.ATTRS = FALSE
+) %>%
   mutate(
-    ED_num = ED,  # numeric 0/1 for linear predictor
+    ED_num = ED,
     ED     = factor(ED, levels = ED_levels, labels = ED_labels),
-    season = factor(season, levels = season_levels),
-    model  = factor(model, levels = model_levels)
+    model  = factor(model, levels = model_levels),
+    season = factor(season, levels = season_levels)
   )
 
-# reconstruct mean prediction
+# reconstruct model prediction
 pred_grid <- pred_grid %>%
   mutate(
-    ## Baseline mean (mu)
+    ## baseline mean
     mu =
       beta["mu.(Intercept)"] +
-      ifelse(season == "2024-2025",
-             beta["mu.season2024-2025"], 0) +
-      ifelse(model == "SIR-2S",
-             beta["mu.modelSIR-2S"], 0) +
-      ifelse(model == "SIR-3S",
-             beta["mu.modelSIR-3S"], 0) +
+      ifelse(season == "2024-2025", beta["mu.season2024-2025"], 0) +
+      ifelse(model == "SIR-2S", beta["mu.modelSIR-2S"], 0) +
+      ifelse(model == "SIR-3S", beta["mu.modelSIR-3S"], 0) +
       beta["mu.ED"] * ED_num,
     
-    ## Model-specific learning amplitude
+    ## season × model learning amplitude
     Delta = case_when(
-      model == "SIR-1S" ~ beta["Delta.modelSIR-1S"],
-      model == "SIR-2S" ~ beta["Delta.modelSIR-2S"],
-      model == "SIR-3S" ~ beta["Delta.modelSIR-3S"]
+      model == "SIR-1S" & season == "2023-2024" ~ beta["Delta.modelSIR-1S:season2023-2024"],
+      model == "SIR-2S" & season == "2023-2024" ~ beta["Delta.modelSIR-2S:season2023-2024"],
+      model == "SIR-3S" & season == "2023-2024" ~ beta["Delta.modelSIR-3S:season2023-2024"],
+      model == "SIR-1S" & season == "2024-2025" ~ beta["Delta.modelSIR-1S:season2024-2025"],
+      model == "SIR-2S" & season == "2024-2025" ~ beta["Delta.modelSIR-2S:season2024-2025"],
+      model == "SIR-3S" & season == "2024-2025" ~ beta["Delta.modelSIR-3S:season2024-2025"]
     ),
     
-    ## Model-specific learning rate
+    ## model-specific learning rate
     kappa = case_when(
       model == "SIR-1S" ~ beta["kappa.modelSIR-1S"],
       model == "SIR-2S" ~ beta["kappa.modelSIR-2S"],
       model == "SIR-3S" ~ beta["kappa.modelSIR-3S"]
     ),
     
-    ## Predicted outcome
     log_rel_wis_hat = mu + Delta * exp(-kappa * training_horizon),
     rel_wis_hat     = exp(log_rel_wis_hat)
   )
 
-
-# build dataframe for visualisation
-ED_levels <- c(0, 1)
-ED_labels <- c("No ED visits", "ED visits")
-plot_df <- df %>%
+# observed geometric means
+obs_gm <- df %>%
   mutate(
-    rel_wis = relative_WIS_nodrift,
-    ED = factor(ED, levels = ED_levels, labels = ED_labels),
-    season = factor(season)
-  )
-
-# compute the geometric mean of the data and model
-obs_gm <- plot_df %>%
-  group_by(
-    training_horizon,
-    model,
-    season,
-    ED
+    ED = factor(ED, levels = ED_levels, labels = ED_labels)
   ) %>%
+  group_by(training_horizon, model, season, ED) %>%
   summarise(
-    gm_rel_wis = exp(mean(log(rel_wis), na.rm = TRUE)),
+    gm_rel_wis = exp(mean(log(relative_WIS_nodrift), na.rm = TRUE)),
     .groups = "drop"
   )
+
+# predicted geometric means (already deterministic, but kept symmetric)
 pred_gm <- pred_grid %>%
-  group_by(
-    training_horizon,
-    model,
-    season,
-    ED
-  ) %>%
+  group_by(training_horizon, model, season, ED) %>%
   summarise(
     gm_rel_wis_hat = exp(mean(log(rel_wis_hat))),
     .groups = "drop"
   )
 
-# force levels to be the same
-ED_levels    <- levels(obs_gm$ED)
-season_levels <- levels(obs_gm$season)
-pred_gm <- pred_gm %>%
-  mutate(
-    ED = factor(ED, levels = ED_levels),
-    season = factor(season, levels = season_levels)
-  )
-
-
-# visualise
+# plot
 ggplot() +
   geom_point(
     data = obs_gm,
-    aes(
-      x = training_horizon,
-      y = gm_rel_wis,
-      color = model
-    ),
+    aes(x = training_horizon, y = gm_rel_wis, color = model),
     size = 2,
     alpha = 0.8
   ) +
   geom_line(
     data = pred_gm,
-    aes(
-      x = training_horizon,
-      y = gm_rel_wis_hat,
-      color = model
-    ),
-    linewidth = 0.5,
-    alpha=1
+    aes(x = training_horizon, y = gm_rel_wis_hat, color = model),
+    linewidth = 0.6,
+    alpha = 0.7
   ) +
-  facet_grid(
-    ED ~ season
-  ) +
+  facet_grid(ED ~ season) +
   scale_y_continuous(
     name = "Geometric mean relative WIS",
     limits = c(0, NA)
@@ -244,3 +222,4 @@ ggplot() +
     strip.background = element_rect(fill = "grey95"),
     panel.grid.minor = element_blank()
   )
+
