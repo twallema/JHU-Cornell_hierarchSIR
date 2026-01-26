@@ -211,7 +211,7 @@ ggplot() +
   facet_grid(ED ~ season) +
   scale_y_continuous(
     name = "Geometric mean relative WIS",
-    limits = c(0, NA)
+    limits = c(0.3, 0.7)
   ) +
   scale_x_continuous(
     name = "Number of training seasons"
