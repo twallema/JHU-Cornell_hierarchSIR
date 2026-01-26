@@ -36,7 +36,7 @@ data <- read_csv(file.path(script_dir, "accuracy.csv"))
 df <- data %>%
   mutate(
     training_horizon = as.integer(str_sub(hyperparameters, -1)),
-    log_rel_wis = log(relative_WIS_drift),
+    log_rel_wis = log(relative_WIS_nodrift),
     ED = as.numeric(ED_visits == TRUE),
     model = factor(model),
     season = factor(season),
@@ -53,35 +53,48 @@ nlme_formula <- log_rel_wis ~
 
 # Consider adding ED to Delta too
 fixed_effects <- list(
-  mu    ~ 1 + season + ED, # why not model? --> doing so pushes kappa.SIR1S to zero (quasi-linear learning) with a way too low asymptote --> unrealistic
-  Delta ~ 0 + model:season,   # season-specific asymptote
+  mu    ~ 1 + model + season + ED, # why not model? --> doing so pushes kappa.SIR1S to zero (quasi-linear learning) with a way too low asymptote --> unrealistic
+  Delta ~ 0 + model + season + ED, # season-specific asymptote
   kappa ~ 0 + model + ED           # shared learning rate per model
 )
 
 random_effects <- pdDiag(mu ~ 1)
 
 start_vals <- c(
-  -0.3,                                  # mu.(Intercept)
-  rep(0.0, nlevels(df$season) - 1),      # mu.season*
-  #rep(0.0, nlevels(df$model)  - 1),      # mu.model*
-  -0.05,                                 # mu.ED
-  rep(0.2, nlevels(df$model) * nlevels(df$season)),  # Delta
-  rep(0.2, nlevels(df$model)),            # kappa.model
-  -0.05 # kappa.ED
+  ## ---- mu ----
+  -0.5,                                  # mu.(Intercept)
+  rep(0.1, nlevels(df$season) - 1),      # mu.season*
+  rep(0.1, nlevels(df$model) - 1),       # mu.model*
+  -0.1,                                  # mu.ED
+  
+  ## ---- Delta ----
+  rep(0.2, nlevels(df$model)),           # Delta.model*
+  rep(0.2, nlevels(df$season)-1),        # Delta.season*
+  -0.1,                                  # Delta.ED
+  
+  ## ---- kappa ----
+  rep(0.2, nlevels(df$model)),           # kappa.model*
+  -0.1                                   # kappa.ED
 )
 
+
 names(start_vals) <- c(
+  ## ---- mu ----
   "mu.(Intercept)",
   paste0("mu.season", levels(df$season)[-1]),
-  #paste0("mu.model",  levels(df$model)[-1]),
+  paste0("mu.model", levels(df$model)[-1]),
   "mu.ED",
-  paste0(
-    "Delta.model", rep(levels(df$model), each = nlevels(df$season)),
-    ":season",     rep(levels(df$season), times = nlevels(df$model))
-  ),
+  
+  ## ---- Delta ----
+  paste0("Delta.model", levels(df$model)),
+  paste0("Delta.season", levels(df$season)[-1]),
+  "Delta.ED",
+  
+  ## ---- kappa ----
   paste0("kappa.model", levels(df$model)),
   "kappa.ED"
 )
+
 
 ###################
 ## Fit the model ##
@@ -96,9 +109,9 @@ m1 <- nlme(
   start  = start_vals,
   na.action = na.exclude,
   control = nlmeControl(
-    maxIter = 200,
-    pnlsMaxIter = 50,
-    tolerance = 1e-6
+    maxIter = 1000,
+    pnlsMaxIter = 1000,
+    tolerance = 1e-9
   )
 )
 
@@ -152,19 +165,16 @@ pred_grid <- pred_grid %>%
     mu =
       beta["mu.(Intercept)"] +
       ifelse(season == "2024-2025", beta["mu.season2024-2025"], 0) +
-      #ifelse(model == "SIR-2S", beta["mu.modelSIR-2S"], 0) +
-      #ifelse(model == "SIR-3S", beta["mu.modelSIR-3S"], 0) +
+      ifelse(model == "SIR-2S", beta["mu.modelSIR-2S"], 0) +
+      ifelse(model == "SIR-3S", beta["mu.modelSIR-3S"], 0) +
       beta["mu.ED"] * ED_num,
     
     ## season × model learning amplitude
-    Delta = case_when(
-      model == "SIR-1S" & season == "2023-2024" ~ beta["Delta.modelSIR-1S:season2023-2024"],
-      model == "SIR-2S" & season == "2023-2024" ~ beta["Delta.modelSIR-2S:season2023-2024"],
-      model == "SIR-3S" & season == "2023-2024" ~ beta["Delta.modelSIR-3S:season2023-2024"],
-      model == "SIR-1S" & season == "2024-2025" ~ beta["Delta.modelSIR-1S:season2024-2025"],
-      model == "SIR-2S" & season == "2024-2025" ~ beta["Delta.modelSIR-2S:season2024-2025"],
-      model == "SIR-3S" & season == "2024-2025" ~ beta["Delta.modelSIR-3S:season2024-2025"]
-    ),
+    Delta =
+      ifelse(season == "2024-2025", beta["Delta.season2024-2025"], 0) +
+      ifelse(model == "SIR-2S", beta["Delta.modelSIR-2S"], 0) +
+      ifelse(model == "SIR-3S", beta["Delta.modelSIR-3S"], 0) +
+      beta["Delta.ED"] * ED_num,
     
     ## model-specific learning rate + ED shift
     kappa =
@@ -186,7 +196,7 @@ obs_gm <- df %>%
   ) %>%
   group_by(training_horizon, model, season, ED) %>%
   summarise(
-    gm_rel_wis = exp(mean(log(relative_WIS_drift), na.rm = TRUE)),
+    gm_rel_wis = exp(mean(log(relative_WIS_nodrift), na.rm = TRUE)),
     .groups = "drop"
   )
 
@@ -199,7 +209,7 @@ pred_gm <- pred_grid %>%
   )
 
 # plot
-ggplot() +
+p <- ggplot() +
   geom_point(
     data = obs_gm,
     aes(x = training_horizon, y = gm_rel_wis, color = model),
@@ -214,8 +224,8 @@ ggplot() +
   ) +
   facet_grid(ED ~ season) +
   scale_y_continuous(
-    name = "Geometric mean relative WIS",
-    limits = c(0.3, 1.2)
+    name = "Rel. WIS (GRW)",
+    limits = c(0.3, 0.7)
   ) +
   scale_x_continuous(
     name = "Number of training seasons"
@@ -226,4 +236,10 @@ ggplot() +
     strip.background = element_rect(fill = "grey95"),
     panel.grid.minor = element_blank()
   )
-
+ggsave(
+  filename = file.path(script_dir, "training_GRW.pdf"),
+  plot = p,
+  width = 8.3,
+  height = 11.7/3,
+  units = "in"
+)
