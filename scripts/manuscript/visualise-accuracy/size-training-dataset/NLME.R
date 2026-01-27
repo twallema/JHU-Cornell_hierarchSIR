@@ -4,6 +4,7 @@ library(tidyr)
 library(stringr)
 library(nlme)
 library(ggplot2)
+library(performance)
 
 ##################################################
 ## Set working directory and load accuracy data ##
@@ -36,7 +37,7 @@ data <- read_csv(file.path(script_dir, "accuracy.csv"))
 df <- data %>%
   mutate(
     training_horizon = as.integer(str_sub(hyperparameters, -1)),
-    log_rel_wis = log(relative_WIS_nodrift),
+    log_rel_wis = log( relative_WIS_nodrift),
     ED = as.numeric(ED_visits == TRUE),
     model = factor(model),
     season = factor(season),
@@ -118,8 +119,20 @@ m1 <- nlme(
 # parameters
 summary(m1)
 
-# residual
+# plot residual (lacks structure/correlation?)
 plot(fitted(m1), resid(m1))
+
+# verify normality of residuals
+qqnorm(resid(m1))
+qqline(resid(m1))
+
+# does residual depend on training horizon?
+boxplot(resid(m1) ~ df$training_horizon)
+
+# do the random effects satisfy the assumption of normality?
+re <- ranef(m1)
+qqnorm(re[, 1], main = "QQ plot of reference_date random intercepts")
+qqline(re[, 1])
 
 # save fixed effects
 beta <- fixef(m1)
@@ -196,7 +209,7 @@ obs_gm <- df %>%
   ) %>%
   group_by(training_horizon, model, season, ED) %>%
   summarise(
-    gm_rel_wis = exp(mean(log(relative_WIS_nodrift), na.rm = TRUE)),
+    gm_rel_wis = exp(mean(log( relative_WIS_nodrift), na.rm = TRUE)),
     .groups = "drop"
   )
 
@@ -212,14 +225,14 @@ pred_gm <- pred_grid %>%
 p <- ggplot() +
   geom_point(
     data = obs_gm,
-    aes(x = training_horizon, y = gm_rel_wis, color = model),
+    aes(x = training_horizon, y = gm_rel_wis, color = model, shape = model),
     size = 2,
-    alpha = 0.8
+    alpha = 1,
   ) +
   geom_line(
     data = pred_gm,
     aes(x = training_horizon, y = gm_rel_wis_hat, color = model),
-    linewidth = 0.6,
+    linewidth = 0.5,
     alpha = 0.7
   ) +
   facet_grid(ED ~ season) +

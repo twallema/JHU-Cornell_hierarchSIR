@@ -5,6 +5,7 @@ library(emmeans)
 library(lmerTest)
 library(purrr)
 library(tidyr)
+library(performance)
 
 ##################################################
 ## Set working directory and load accuracy data ##
@@ -370,16 +371,28 @@ m_additive <- lmer(
     model +
     immunity_linking + 
     ED_visits + 
-    (1 | reference_date), 
+    (1 | reference_date) + 
   data = df_filtered,
   REML = TRUE
 )
 
+# Conditional and marginal R2
+r2_nakagawa(m_additive)
+
 # print coefficients (of m1)
 summary(m_additive)
 
-# validate LMER noise assumption
+# plot residual (lacks structure/correlation?)
 plot(fitted(m_additive), resid(m_additive))
+
+# verify normality of residuals
+qqnorm(resid(m_additive))
+qqline(resid(m_additive))
+
+# do the random effects satisfy the assumption of normality?
+re <- ranef(m_additive)$reference_date
+qqnorm(re[, 1], main = "QQ plot of reference_date random intercepts")
+qqline(re[, 1])
 
 
 #####################
@@ -399,7 +412,7 @@ m_full <- lmer(
     model * ED_visits +
     model * immunity_linking + 
     (1 | reference_date) +
-    (1 | season) +
+    (1 | season),
   data = df,
   REML = TRUE
 )
@@ -411,8 +424,10 @@ m1 <- get_model(model_selection)
 # print coefficients (of m1)
 summary(m1)
 
-# validate LMER noise assumption
-plot(fitted(m1), resid(m1))
+
+
+# Conditional and marginal R2
+r2_nakagawa(m1)
 
 ####################
 ## Export results ##
