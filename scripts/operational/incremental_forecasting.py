@@ -36,7 +36,7 @@ quantiles = False           # save quantiles vs. individual trajectories
 
 # optimization parameters
 ## frequentist optimization
-n_nm = 2000                                                     # Number of NM search iterations
+n_nm = 1000                                                     # Number of NM search iterations
 ## bayesian inference
 n_mcmc = 8000                                                   # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
