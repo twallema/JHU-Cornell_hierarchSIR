@@ -8,12 +8,7 @@ jobs:
       matrix:
         os: ['ubuntu-latest',]
     steps:
-    - uses: actions/checkout@v2
-
-    - name: Set up Python
-      uses: actions/setup-python@v1
-      with:
-        python-version: '3.12'
+    - uses: actions/checkout@v4
 
     - name: Set up conda environment
       uses: conda-incubator/setup-miniconda@v3
