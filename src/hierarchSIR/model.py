@@ -100,6 +100,8 @@ class imsSIR():
             for par, _ in self.parameter_shapes.items():
                 if par in ['beta', 'rho_h', 'rho_i']:
                     self.parameters[par] = np.atleast_1d(self.parameters[par])
+                elif par == 'T_h':
+                    self.parameters[par] = np.asarray(self.parameters[par]).item()
             # build initial condition
             self.initial_condition = self.ICF(*[self.parameters[par] for par in self.ICF_args_names])
             # remove ICF arguments from the parameters
