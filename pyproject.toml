@@ -6,19 +6,20 @@ build-backend = "setuptools.build_meta"
 name = "hierarchSIR"
 version = "0.0"
 description = "A multi-strain SIR seasonal influenza model"
-authors = [{name = "Dr. Tijs W. Alleman", email = "your-email@example.com"}]
-license = {text = "CC-BY-NC-SA"}
+authors = [{name = "Dr. Tijs W. Alleman", email = "twa27@cornell.edu"}]
+license = "CC-BY-NC-SA-4.0"
+license-files = ["LICENSE-CC-BY-NC-SA.txt"]
 readme = "README.md"
-requires-python = ">=3.12.0"
+requires-python = ">=3.13, <3.14"
 dependencies = [
     "matplotlib",
-    "xarray",
-    "numpy",
+    "xarray>=2025.11.0",
+    "numpy>=2.4",
     "pandas",
     "scipy",
     "openpyxl",
     "pytest",
-    "pySODM>=0.2.8"
+    "pySODM>=0.2.9"
 ]
 
 [project.optional-dependencies]
