@@ -7,7 +7,7 @@ name = "hierarchSIR"
 version = "0.0"
 description = "A multi-strain SIR seasonal influenza model"
 authors = [{name = "Dr. Tijs W. Alleman", email = "twa27@cornell.edu"}]
-license = ["LICENSE-CC-BY-NC-SA"]
+license = ["LICENSE-CC-BY-NC-SA.txt"]
 readme = "README.md"
 requires-python = ">=3.13, <3.14"
 dependencies = [
