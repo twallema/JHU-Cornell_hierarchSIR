@@ -37,12 +37,16 @@ data <- read_csv(file.path(script_dir, "accuracy.csv"))
 df <- data %>%
   mutate(
     training_horizon = as.integer(str_sub(hyperparameters, -1)),
-    log_rel_wis = log( relative_WIS_nodrift),
+    log_rel_wis = log( relative_WIS_drift),
     ED = as.numeric(ED_visits == TRUE),
     model = factor(model),
     season = factor(season),
     reference_date = factor(reference_date)
   )
+
+# exclude no training
+#df <- df %>%
+#  filter(training_horizon != 0)
 
 ######################
 ## Define the model ##
@@ -50,7 +54,7 @@ df <- data %>%
 
 nlme_formula <- log_rel_wis ~
   mu +
-  Delta * exp(-kappa * training_horizon)
+  exp(Delta) * exp(-exp(kappa) * training_horizon)
 
 # Consider adding ED to Delta too
 fixed_effects <- list(
@@ -64,18 +68,18 @@ random_effects <- pdDiag(mu ~ 1)
 start_vals <- c(
   ## ---- mu ----
   -0.5,                                  # mu.(Intercept)
-  rep(0.1, nlevels(df$season) - 1),      # mu.season*
-  rep(0.1, nlevels(df$model) - 1),       # mu.model*
+  rep(-0.1, nlevels(df$season) - 1),      # mu.season*
+  rep(-0.1, nlevels(df$model) - 1),       # mu.model*
   -0.1,                                  # mu.ED
   
   ## ---- Delta ----
-  rep(0.2, nlevels(df$model)),           # Delta.model*
-  rep(0.2, nlevels(df$season)-1),        # Delta.season*
+  rep(-0.1, nlevels(df$model)),           # Delta.model*
+  rep(-0.1, nlevels(df$season)-1),        # Delta.season*
   -0.1,                                  # Delta.ED
   
   ## ---- kappa ----
-  rep(0.2, nlevels(df$model)),           # kappa.model*
-  -0.1                                   # kappa.ED
+  rep(-1, nlevels(df$model)),           # kappa.model*
+  -1                                   # kappa.ED
 )
 
 
@@ -110,8 +114,8 @@ m1 <- nlme(
   start  = start_vals,
   na.action = na.exclude,
   control = nlmeControl(
-    maxIter = 1000,
-    pnlsMaxIter = 1000,
+    maxIter = 10000,
+    pnlsMaxIter = 10000,
     tolerance = 1e-9
   )
 )
@@ -177,6 +181,7 @@ pred_grid <- pred_grid %>%
     ## baseline mean
     mu =
       beta["mu.(Intercept)"] +
+      ifelse(season == "2023-2024", beta["mu.season2023-2024"], 0) +
       ifelse(season == "2024-2025", beta["mu.season2024-2025"], 0) +
       ifelse(model == "SIR-2S", beta["mu.modelSIR-2S"], 0) +
       ifelse(model == "SIR-3S", beta["mu.modelSIR-3S"], 0) +
@@ -184,7 +189,9 @@ pred_grid <- pred_grid %>%
     
     ## season × model learning amplitude
     Delta =
+      ifelse(season == "2023-2024", beta["Delta.season2023-2024"], 0) +
       ifelse(season == "2024-2025", beta["Delta.season2024-2025"], 0) +
+      ifelse(model == "SIR-1S", beta["Delta.modelSIR-1S"], 0) +
       ifelse(model == "SIR-2S", beta["Delta.modelSIR-2S"], 0) +
       ifelse(model == "SIR-3S", beta["Delta.modelSIR-3S"], 0) +
       beta["Delta.ED"] * ED_num,
@@ -198,7 +205,7 @@ pred_grid <- pred_grid %>%
       ) +
       beta["kappa.ED"] * ED_num,
     
-    log_rel_wis_hat = mu + Delta * exp(-kappa * training_horizon),
+    log_rel_wis_hat = mu + exp(Delta) * exp(-exp(kappa) * training_horizon),
     rel_wis_hat     = exp(log_rel_wis_hat)
   )
 
@@ -209,7 +216,7 @@ obs_gm <- df %>%
   ) %>%
   group_by(training_horizon, model, season, ED) %>%
   summarise(
-    gm_rel_wis = exp(mean(log( relative_WIS_nodrift), na.rm = TRUE)),
+    gm_rel_wis = exp(mean(log( relative_WIS_drift), na.rm = TRUE)),
     .groups = "drop"
   )
 
@@ -222,7 +229,7 @@ pred_gm <- pred_grid %>%
   )
 
 # plot
-p <- ggplot() +
+ggplot() +
   geom_point(
     data = obs_gm,
     aes(x = training_horizon, y = gm_rel_wis, color = model, shape = model),
@@ -238,7 +245,7 @@ p <- ggplot() +
   facet_grid(ED ~ season) +
   scale_y_continuous(
     name = "Rel. WIS (GRW)",
-    limits = c(0.3, 0.7)
+    limits = c(0.3, 1.35)
   ) +
   scale_x_continuous(
     name = "Number of training seasons"
@@ -249,10 +256,10 @@ p <- ggplot() +
     strip.background = element_rect(fill = "grey95"),
     panel.grid.minor = element_blank()
   )
-ggsave(
-  filename = file.path(script_dir, "training_GRW.pdf"),
-  plot = p,
-  width = 8.3,
-  height = 11.7/3,
-  units = "in"
-)
+#ggsave(
+#  filename = file.path(script_dir, "training_GRW.pdf"),
+#  plot = p,
+#  width = 8.3,
+#  height = 11.7/3,
+#  units = "in"
+#)
