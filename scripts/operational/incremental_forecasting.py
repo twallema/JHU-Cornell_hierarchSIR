@@ -27,8 +27,8 @@ from hierarchSIR.utils import initialise_model, simout_to_hubverse, plot_fit, ma
 ##############
 
 # define seasons and hyperparameter combo's to loop over
-season_lst = ['2014-2015', '2015-2016', '2016-2017', '2017-2018', '2018-2019', '2019-2020', '2023-2024', '2024-2025']
-hyperparameters_lst = [None, None, None, None, None, None, None, None]
+season_lst = ['2019-2020', '2019-2020', '2019-2020', '2019-2020', '2019-2020']
+hyperparameters_lst = ['2019-2020_training_1', '2019-2020_training_2', '2019-2020_training_3', '2019-2020_training_4', '2019-2020_training_5']
 
 # model settings/ save settings
 fips_state = 37             # NC
@@ -36,7 +36,7 @@ quantiles = False           # save quantiles vs. individual trajectories
 
 # optimization parameters
 ## frequentist optimization
-n_nm = 2000                                                     # Number of NM search iterations
+n_nm = 1000                                                     # Number of NM search iterations
 ## bayesian inference
 n_mcmc = 8000                                                   # Number of MCMC iterations
 multiplier_mcmc = 3                                             # Total number of Markov chains = number of parameters * multiplier_mcmc
