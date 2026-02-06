@@ -60,7 +60,7 @@ nlme_formula <- log_rel_wis ~
 fixed_effects <- list(
   mu    ~ 1 + model + season + ED, # why not model? --> doing so pushes kappa.SIR1S to zero (quasi-linear learning) with a way too low asymptote --> unrealistic
   Delta ~ 0 + model + season + ED, # season-specific asymptote
-  kappa ~ 0 + model + ED           # shared learning rate per model
+  kappa ~ 0 + model + season + ED  # shared learning rate per model
 )
 
 random_effects <- pdDiag(mu ~ 1)
@@ -79,6 +79,7 @@ start_vals <- c(
   
   ## ---- kappa ----
   rep(-1, nlevels(df$model)),           # kappa.model*
+  rep(-1, nlevels(df$season)-1),       # kappa.model*
   -1                                   # kappa.ED
 )
 
@@ -97,6 +98,7 @@ names(start_vals) <- c(
   
   ## ---- kappa ----
   paste0("kappa.model", levels(df$model)),
+  paste0("kappa.season", levels(df$season)[-1]),
   "kappa.ED"
 )
 
@@ -203,6 +205,8 @@ pred_grid <- pred_grid %>%
         model == "SIR-2S" ~ beta["kappa.modelSIR-2S"],
         model == "SIR-3S" ~ beta["kappa.modelSIR-3S"]
       ) +
+      ifelse(season == "2023-2024", beta["kappa.season2023-2024"], 0) +
+      ifelse(season == "2024-2025", beta["kappa.season2024-2025"], 0) +
       beta["kappa.ED"] * ED_num,
     
     log_rel_wis_hat = mu + exp(Delta) * exp(-exp(kappa) * training_horizon),
