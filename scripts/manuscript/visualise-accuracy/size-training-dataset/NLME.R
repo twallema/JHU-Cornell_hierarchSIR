@@ -44,10 +44,6 @@ df <- data %>%
     reference_date = factor(reference_date)
   )
 
-# exclude no training
-#df <- df %>%
-#  filter(training_horizon != 0)
-
 ######################
 ## Define the model ##
 ######################
