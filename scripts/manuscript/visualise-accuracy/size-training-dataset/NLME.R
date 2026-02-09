@@ -5,6 +5,7 @@ library(stringr)
 library(nlme)
 library(ggplot2)
 library(performance)
+library(purrr)
 
 ##################################################
 ## Set working directory and load accuracy data ##
@@ -37,12 +38,117 @@ data <- read_csv(file.path(script_dir, "accuracy.csv"))
 df <- data %>%
   mutate(
     training_horizon = as.integer(str_sub(hyperparameters, -1)),
-    log_rel_wis = log( relative_WIS_drift),
+    log_rel_wis = log( relative_WIS_nodrift),
     ED = as.numeric(ED_visits == TRUE),
     model = factor(model),
     season = factor(season),
     reference_date = factor(reference_date)
   )
+
+########################################
+## Paired bootstrap of geometric mean ##
+########################################
+
+# compute geometric mean
+gmean <- function(x) {
+  exp(mean(log(x), na.rm = TRUE))
+}
+
+# take one paired bootstrap sample
+bootstrap_gm_once <- function(df) {
+  # sample reference_date clusters with replacement
+  ref_dates <- unique(df$reference_date)
+  sampled_refs <- sample(ref_dates, size = length(ref_dates), replace = TRUE)
+  # rebuild bootstrap dataset
+  boot_df <- purrr::map_dfr(sampled_refs, ~ df[df$reference_date == .x, ])
+  # compute geometric means
+  boot_df %>%
+    group_by(model, ED, season, training_horizon) %>%
+    summarise(
+      gm_rel_wis = gmean(relative_WIS_nodrift),
+      .groups = "drop"
+    )
+}
+
+# run the bootstrap
+set.seed(123)
+B <- 1000
+boot_results <- purrr::map_dfr(
+  1:B,
+  ~ bootstrap_gm_once(df),
+  .id = "replicate"
+) %>%
+  mutate(replicate = as.integer(replicate))
+
+# summarise bootstrap
+boot_summary <- boot_results %>%
+  group_by(model, ED, season, training_horizon) %>%
+  summarise(
+    gm_median = median(gm_rel_wis, na.rm = TRUE),
+    gm_lower  = quantile(gm_rel_wis, 0.025, na.rm = TRUE),
+    gm_upper  = quantile(gm_rel_wis, 0.975, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Make ED a factor
+boot_summary <- boot_summary %>%
+  mutate(
+    ED = factor(
+      ED,
+      levels = c(0, 1),
+      labels = c("No ED visits", "ED visits")
+    )
+  )
+
+# visualise
+p <- ggplot(boot_summary) +
+  ## connected medians
+  geom_line(
+    aes(
+      x = training_horizon,
+      y = gm_median,
+      color = model,
+      group = model
+    ),
+    linewidth = 0.4
+  ) +
+  ## median marker
+  geom_point(
+    aes(
+      x = training_horizon,
+      y = gm_median,
+      color = model,
+      shape = model,
+    ),
+    size = 1.5
+  ) +
+  facet_grid(ED ~ season) +
+  
+  scale_y_continuous(
+    name = "Rel. WIS (nsGRW)",
+    limits = c(0.45, 1.35)
+  ) +
+  
+  scale_x_continuous(
+    name = "Number of training seasons"
+  ) +
+  
+  theme_bw() +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    legend.position = "bottom",
+    strip.background = element_rect(fill = "grey95")
+  )
+ggsave(
+  filename = file.path(script_dir, "training_nsGRW.pdf"),
+  plot = p,
+  width = 8.3,
+  height = 11.7/3,
+  units = "in"
+)
 
 ######################
 ## Define the model ##
@@ -74,11 +180,10 @@ start_vals <- c(
   -0.1,                                  # Delta.ED
   
   ## ---- kappa ----
-  rep(-1, nlevels(df$model)),           # kappa.model*
+  rep(-10, nlevels(df$model)),           # kappa.model*
   rep(-1, nlevels(df$season)-1),       # kappa.model*
   -1                                   # kappa.ED
 )
-
 
 names(start_vals) <- c(
   ## ---- mu ----
@@ -107,7 +212,7 @@ m1 <- nlme(
   model  = nlme_formula,
   data   = df,
   fixed  = fixed_effects,
-  random = random_effects,
+  #random = random_effects,
   groups = ~ reference_date,
   start  = start_vals,
   na.action = na.exclude,
@@ -229,37 +334,39 @@ pred_gm <- pred_grid %>%
   )
 
 # plot
-ggplot() +
+p <- ggplot() +
   geom_point(
     data = obs_gm,
     aes(x = training_horizon, y = gm_rel_wis, color = model, shape = model),
-    size = 2,
-    alpha = 1,
+    size = 1.5,
   ) +
   geom_line(
     data = pred_gm,
     aes(x = training_horizon, y = gm_rel_wis_hat, color = model),
-    linewidth = 0.5,
-    alpha = 0.7
+    linewidth = 0.4,
   ) +
   facet_grid(ED ~ season) +
   scale_y_continuous(
-    name = "Rel. WIS (GRW)",
-    limits = c(0.3, 1.35)
+    name = "Rel. WIS (nsGRW)",
+    limits = c(0.45, 1.4)
   ) +
   scale_x_continuous(
     name = "Number of training seasons"
   ) +
   theme_bw() +
   theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank(),
     legend.position = "bottom",
     strip.background = element_rect(fill = "grey95"),
     panel.grid.minor = element_blank()
   )
-#ggsave(
-#  filename = file.path(script_dir, "training_GRW.pdf"),
-#  plot = p,
-#  width = 8.3,
-#  height = 11.7/3,
-#  units = "in"
-#)
+ggsave(
+  filename = file.path(script_dir, "training_model_nsGRW.pdf"),
+  plot = p,
+  width = 8.3,
+  height = 11.7/3,
+  units = "in"
+)
