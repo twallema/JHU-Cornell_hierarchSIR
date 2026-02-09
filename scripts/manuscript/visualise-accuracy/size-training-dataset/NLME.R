@@ -162,7 +162,7 @@ nlme_formula <- log_rel_wis ~
 fixed_effects <- list(
   mu    ~ 1 + model + season + ED, # why not model? --> doing so pushes kappa.SIR1S to zero (quasi-linear learning) with a way too low asymptote --> unrealistic
   Delta ~ 0 + model + season + ED, # season-specific asymptote
-  kappa ~ 0 + model + season + ED  # shared learning rate per model
+  kappa ~ 0 + model + ED  # shared learning rate per model
 )
 
 random_effects <- pdDiag(mu ~ 1)
@@ -180,8 +180,8 @@ start_vals <- c(
   -0.1,                                  # Delta.ED
   
   ## ---- kappa ----
-  rep(-10, nlevels(df$model)),           # kappa.model*
-  rep(-1, nlevels(df$season)-1),       # kappa.model*
+  rep(-1, nlevels(df$model)),           # kappa.model*
+  #rep(-1, nlevels(df$season)-1),       # kappa.model*
   -1                                   # kappa.ED
 )
 
@@ -198,7 +198,7 @@ names(start_vals) <- c(
   "Delta.ED",
   
   ## ---- kappa ----
-  paste0("kappa.model", levels(df$model)),
+  #paste0("kappa.model", levels(df$model)),
   paste0("kappa.season", levels(df$season)[-1]),
   "kappa.ED"
 )
@@ -212,7 +212,7 @@ m1 <- nlme(
   model  = nlme_formula,
   data   = df,
   fixed  = fixed_effects,
-  #random = random_effects,
+  random = random_effects,
   groups = ~ reference_date,
   start  = start_vals,
   na.action = na.exclude,
@@ -306,8 +306,8 @@ pred_grid <- pred_grid %>%
         model == "SIR-2S" ~ beta["kappa.modelSIR-2S"],
         model == "SIR-3S" ~ beta["kappa.modelSIR-3S"]
       ) +
-      ifelse(season == "2023-2024", beta["kappa.season2023-2024"], 0) +
-      ifelse(season == "2024-2025", beta["kappa.season2024-2025"], 0) +
+      #ifelse(season == "2023-2024", beta["kappa.season2023-2024"], 0) +
+      #ifelse(season == "2024-2025", beta["kappa.season2024-2025"], 0) +
       beta["kappa.ED"] * ED_num,
     
     log_rel_wis_hat = mu + exp(Delta) * exp(-exp(kappa) * training_horizon),
@@ -321,7 +321,7 @@ obs_gm <- df %>%
   ) %>%
   group_by(training_horizon, model, season, ED) %>%
   summarise(
-    gm_rel_wis = exp(mean(log( relative_WIS_drift), na.rm = TRUE)),
+    gm_rel_wis = exp(mean(log( relative_WIS_nodrift), na.rm = TRUE)),
     .groups = "drop"
   )
 
@@ -334,7 +334,7 @@ pred_gm <- pred_grid %>%
   )
 
 # plot
-p <- ggplot() +
+ggplot() +
   geom_point(
     data = obs_gm,
     aes(x = training_horizon, y = gm_rel_wis, color = model, shape = model),
@@ -348,7 +348,7 @@ p <- ggplot() +
   facet_grid(ED ~ season) +
   scale_y_continuous(
     name = "Rel. WIS (nsGRW)",
-    limits = c(0.45, 1.4)
+    limits = c(0.3, 1.0)
   ) +
   scale_x_continuous(
     name = "Number of training seasons"
@@ -363,10 +363,10 @@ p <- ggplot() +
     strip.background = element_rect(fill = "grey95"),
     panel.grid.minor = element_blank()
   )
-ggsave(
-  filename = file.path(script_dir, "training_model_nsGRW.pdf"),
-  plot = p,
-  width = 8.3,
-  height = 11.7/3,
-  units = "in"
-)
+#ggsave(
+#  filename = file.path(script_dir, "training_model_nsGRW.pdf"),
+#  plot = p,
+#  width = 8.3,
+#  height = 11.7/3,
+#  units = "in"
+#)
