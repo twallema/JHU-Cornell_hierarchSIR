@@ -6,6 +6,10 @@ library(nlme)
 library(ggplot2)
 library(performance)
 library(purrr)
+library(glue)
+
+baseline <- 'nodrift'
+if (baseline == 'nodrift') {baseline_label <- 'sGRW'} else {baseline_label <- 'nsGRW'}
 
 ##################################################
 ## Set working directory and load accuracy data ##
@@ -38,7 +42,7 @@ data <- read_csv(file.path(script_dir, "accuracy.csv"))
 df <- data %>%
   mutate(
     training_horizon = as.integer(str_sub(hyperparameters, -1)),
-    log_rel_wis = log( relative_WIS_nodrift),
+    log_rel_wis = log(.data[[paste0("relative_WIS_", baseline)]]),
     ED = as.numeric(ED_visits == TRUE),
     model = factor(model),
     season = factor(season),
@@ -65,7 +69,7 @@ bootstrap_gm_once <- function(df) {
   boot_df %>%
     group_by(model, ED, season, training_horizon) %>%
     summarise(
-      gm_rel_wis = gmean(relative_WIS_nodrift),
+      gm_rel_wis = gmean(.data[[paste0("relative_WIS_",baseline)]]),
       .groups = "drop"
     )
 }
@@ -125,8 +129,8 @@ p <- ggplot(boot_summary) +
   facet_grid(ED ~ season) +
   
   scale_y_continuous(
-    name = "Rel. WIS (nsGRW)",
-    limits = c(0.45, 1.35)
+    name = glue("Rel. WIS ({baseline_label})"),
+    limits = c(0.3, 0.9)
   ) +
   
   scale_x_continuous(
@@ -143,7 +147,7 @@ p <- ggplot(boot_summary) +
     strip.background = element_rect(fill = "grey95")
   )
 ggsave(
-  filename = file.path(script_dir, "training_nsGRW.pdf"),
+  filename = file.path(script_dir, glue("training_{baseline_label}.pdf")),
   plot = p,
   width = 8.3,
   height = 11.7/3,
@@ -161,7 +165,7 @@ nlme_formula <- log_rel_wis ~
 # Consider adding ED to Delta too
 fixed_effects <- list(
   mu    ~ 1 + model + season + ED, # why not model? --> doing so pushes kappa.SIR1S to zero (quasi-linear learning) with a way too low asymptote --> unrealistic
-  Delta ~ 0 + model + season + ED, # season-specific asymptote
+  Delta ~ 1 + model + season + ED, # season-specific asymptote
   kappa ~ 0 + model + ED  # shared learning rate per model
 )
 
@@ -175,7 +179,8 @@ start_vals <- c(
   -0.1,                                  # mu.ED
   
   ## ---- Delta ----
-  rep(-0.1, nlevels(df$model)),           # Delta.model*
+  -1,                                  # Delta.(Intercept)
+  rep(-0.1, nlevels(df$model)-1),           # Delta.model*
   rep(-0.1, nlevels(df$season)-1),        # Delta.season*
   -0.1,                                  # Delta.ED
   
@@ -193,7 +198,8 @@ names(start_vals) <- c(
   "mu.ED",
   
   ## ---- Delta ----
-  paste0("Delta.model", levels(df$model)),
+  "Delta.(Intercept)",
+  paste0("Delta.model", levels(df$model)[-1]),
   paste0("Delta.season", levels(df$season)[-1]),
   "Delta.ED",
   
@@ -292,9 +298,9 @@ pred_grid <- pred_grid %>%
     
     ## season × model learning amplitude
     Delta =
+      beta["Delta.(Intercept)"] + 
       ifelse(season == "2023-2024", beta["Delta.season2023-2024"], 0) +
       ifelse(season == "2024-2025", beta["Delta.season2024-2025"], 0) +
-      ifelse(model == "SIR-1S", beta["Delta.modelSIR-1S"], 0) +
       ifelse(model == "SIR-2S", beta["Delta.modelSIR-2S"], 0) +
       ifelse(model == "SIR-3S", beta["Delta.modelSIR-3S"], 0) +
       beta["Delta.ED"] * ED_num,
@@ -321,7 +327,7 @@ obs_gm <- df %>%
   ) %>%
   group_by(training_horizon, model, season, ED) %>%
   summarise(
-    gm_rel_wis = exp(mean(log( relative_WIS_nodrift), na.rm = TRUE)),
+    gm_rel_wis = exp(mean(log( .data[[paste0("relative_WIS_", baseline)]]), na.rm = TRUE)),
     .groups = "drop"
   )
 
@@ -347,8 +353,8 @@ p <- ggplot() +
   ) +
   facet_grid(ED ~ season) +
   scale_y_continuous(
-    name = "Rel. WIS (nsGRW)",
-    limits = c(0.4, 1.4)
+    name = glue("Rel. WIS ({baseline_label})"),
+    limits = c(0.3, 0.85)
   ) +
   scale_x_continuous(
     name = "Number of training seasons"
@@ -364,7 +370,7 @@ p <- ggplot() +
     panel.grid.minor = element_blank()
   )
 ggsave(
-  filename = file.path(script_dir, "training_model_nsGRW.pdf"),
+  filename = file.path(script_dir, glue("training_model_{baseline_label}.pdf")),
   plot = p,
   width = 8.3,
   height = 11.7/3,
