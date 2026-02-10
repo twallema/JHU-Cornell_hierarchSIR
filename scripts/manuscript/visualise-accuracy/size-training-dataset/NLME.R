@@ -334,7 +334,7 @@ pred_gm <- pred_grid %>%
   )
 
 # plot
-ggplot() +
+p <- ggplot() +
   geom_point(
     data = obs_gm,
     aes(x = training_horizon, y = gm_rel_wis, color = model, shape = model),
@@ -348,7 +348,7 @@ ggplot() +
   facet_grid(ED ~ season) +
   scale_y_continuous(
     name = "Rel. WIS (nsGRW)",
-    limits = c(0.3, 1.0)
+    limits = c(0.4, 1.4)
   ) +
   scale_x_continuous(
     name = "Number of training seasons"
@@ -363,10 +363,10 @@ ggplot() +
     strip.background = element_rect(fill = "grey95"),
     panel.grid.minor = element_blank()
   )
-#ggsave(
-#  filename = file.path(script_dir, "training_model_nsGRW.pdf"),
-#  plot = p,
-#  width = 8.3,
-#  height = 11.7/3,
-#  units = "in"
-#)
+ggsave(
+  filename = file.path(script_dir, "training_model_nsGRW.pdf"),
+  plot = p,
+  width = 8.3,
+  height = 11.7/3,
+  units = "in"
+)
