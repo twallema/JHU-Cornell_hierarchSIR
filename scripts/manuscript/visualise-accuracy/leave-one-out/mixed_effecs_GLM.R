@@ -436,15 +436,18 @@ summary(m_additive)
 # plot residual (lacks structure/correlation?)
 plot(fitted(m_additive), resid(m_additive))
 
-# verify normality of residuals
-qqnorm(resid(m_additive))
+# open figure
+pdf(file.path(script_dir,"qqplots_lmer_diagnostics.pdf"), width = 10, height = 5)
+par(mfrow = c(1, 2))
+
+qqnorm(resid(m_additive), main = "Residuals")
 qqline(resid(m_additive))
 
-# do the random effects satisfy the assumption of normality?
 re <- ranef(m_additive)$reference_date
-qqnorm(re[, 1], main = "QQ plot of reference_date random intercepts")
+qqnorm(re[, 1], main = "Random Intercepts")
 qqline(re[, 1])
 
+dev.off()
 
 #####################
 ## Build the model ##

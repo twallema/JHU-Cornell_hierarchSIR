@@ -235,17 +235,23 @@ summary(m1)
 # plot residual (lacks structure/correlation?)
 plot(fitted(m1), resid(m1))
 
-# verify normality of residuals
-qqnorm(resid(m1))
-qqline(resid(m1))
+# open figure
+pdf(file.path(script_dir,"qqplots_nlme_diagnostics.pdf"), width = 10, height = 5)
+par(mfrow = c(1, 2))
 
-# does residual depend on training horizon?
-boxplot(resid(m1) ~ df$training_horizon)
+# verify normality of residuals
+qqnorm(resid(m1),  main = "Residuals")
+qqline(resid(m1))
 
 # do the random effects satisfy the assumption of normality?
 re <- ranef(m1)
-qqnorm(re[, 1], main = "QQ plot of reference_date random intercepts")
+qqnorm(re[, 1], main = "Random Intercepts")
 qqline(re[, 1])
+
+dev.off()
+
+# does residual depend on training horizon?
+boxplot(resid(m1) ~ df$training_horizon)
 
 # save fixed effects
 beta <- fixef(m1)
