@@ -8,7 +8,7 @@ library(performance)
 library(purrr)
 library(glue)
 
-baseline <- 'nodrift'
+baseline <- 'drift'
 if (baseline == 'nodrift') {baseline_label <- 'sGRW'} else {baseline_label <- 'nsGRW'}
 
 ##################################################
@@ -130,7 +130,7 @@ p <- ggplot(boot_summary) +
   
   scale_y_continuous(
     name = glue("Rel. WIS ({baseline_label})"),
-    limits = c(0.3, 0.9)
+    limits = c(0.45, 1.4)
   ) +
   
   scale_x_continuous(
@@ -354,7 +354,7 @@ p <- ggplot() +
   facet_grid(ED ~ season) +
   scale_y_continuous(
     name = glue("Rel. WIS ({baseline_label})"),
-    limits = c(0.3, 0.85)
+    limits = c(0.45, 1.4)
   ) +
   scale_x_continuous(
     name = "Number of training seasons"

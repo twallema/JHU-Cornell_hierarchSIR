@@ -4,7 +4,7 @@ library(tidyr)
 library(glue)
 library(ggplot2)
 
-baseline <- 'drift'
+baseline <- 'nodrift'
 if (baseline == 'nodrift') {baseline_label <- 'sGRW'} else {baseline_label <- 'nsGRW'}
 
 ##################################################
@@ -53,7 +53,7 @@ p <- ggplot(data) +
   facet_grid(ED ~ season) +
   scale_y_continuous(
     name = glue("Rel. WIS ({baseline_label})"),
-    limits = c(0.45, 1.35)
+    limits = c(0.3, 0.85)
   ) +
   scale_x_continuous(
     name = "Number of training seasons"
