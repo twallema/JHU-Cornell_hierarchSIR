@@ -260,6 +260,57 @@ result
 # p-value
 p_value <- mean(boot_log_diff >= 0)
 
+###############################################################################
+## Find out if ED_visits works for informed==TRUE and immunity_linking==TRUE ##
+###############################################################################
+
+# compute paired difference between groups (add model == 'SIR-1S' to test model-by-model ED_visits works)
+paired_ED_visits <- df %>%
+  filter(
+    informed == TRUE,
+    immunity_linking == TRUE,
+  ) %>%
+  group_by(reference_date, ED_visits) %>%
+  summarise(
+    log_gm_WIS = mean(log(relative_WIS_drift), na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = ED_visits,
+    values_from = log_gm_WIS,
+    names_prefix = "ED_visits_"
+  ) %>%
+  filter(!is.na(ED_visits_TRUE), !is.na(ED_visits_FALSE)) %>%
+  mutate(
+    log_diff = ED_visits_TRUE - ED_visits_FALSE
+  )
+
+# perform paired bootstrap
+B <- 10000
+boot_log_diff <- replicate(
+  B,
+  {
+    idx <- sample(seq_len(nrow(paired_immune)), replace = TRUE)
+    mean(paired_ED_visits$log_diff[idx])
+  }
+)
+
+# report results
+ci <- quantile(boot_log_diff, c(0.025, 0.975))
+result <- tibble(
+  log_ratio = mean(boot_log_diff),
+  lower_log = ci[1],
+  upper_log = ci[2],
+  ratio = (exp(mean(boot_log_diff))-1)*100,
+  lower = (exp(ci[1])-1)*100,
+  upper = (exp(ci[2])-1)*100
+)
+result
+
+# p-value
+p_value <- mean(boot_log_diff >= 0)
+
+
 ##################################################################################################
 ## Prove SIR-1S < SIR-2S < SIR-3S for informed==TRUE, immunity_linking==FALSE, ED_visits==FALSE ##
 ## Prove SIR-1S < SIR-2S = SIR-3S for informed==TRUE, immunity_linking==FALSE, ED_visits==TRUE  ##
@@ -371,7 +422,7 @@ m_additive <- lmer(
     model +
     immunity_linking + 
     ED_visits + 
-    (1 | reference_date) + 
+    (1 | reference_date), 
   data = df_filtered,
   REML = TRUE
 )
@@ -385,15 +436,18 @@ summary(m_additive)
 # plot residual (lacks structure/correlation?)
 plot(fitted(m_additive), resid(m_additive))
 
-# verify normality of residuals
-qqnorm(resid(m_additive))
+# open figure
+pdf(file.path(script_dir,"qqplots_lmer_diagnostics.pdf"), width = 10, height = 5)
+par(mfrow = c(1, 2))
+
+qqnorm(resid(m_additive), main = "Residuals")
 qqline(resid(m_additive))
 
-# do the random effects satisfy the assumption of normality?
 re <- ranef(m_additive)$reference_date
-qqnorm(re[, 1], main = "QQ plot of reference_date random intercepts")
+qqnorm(re[, 1], main = "Random Intercepts")
 qqline(re[, 1])
 
+dev.off()
 
 #####################
 ## Build the model ##
