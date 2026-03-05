@@ -372,12 +372,14 @@ p = 1
 with pm.Model() as model:
 
     # Hyperparameters
-    rho_h_mu = pm.HalfNormal('rho_h_mu', sigma=1e-2/3)
+    rho_h_mu = pm.Uniform('rho_h_mu', lower=1e-5, upper=1e-2)
     rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
-    f_I_mu = pm.HalfNormal('f_I_mu', sigma=1e-3)
+    f_I_mu = pm.Uniform('f_I_mu', lower=1e-7, upper=1e-2)
     f_I_sigma = pm.HalfNormal('f_I_sigma', sigma=1/3)
-    f_R_a = pm.HalfNormal('f_R_a', sigma=5)
-    f_R_b = pm.HalfNormal('f_R_b', sigma=5)
+    f_R_mu = pm.Beta("f_R_mu", alpha=10, beta=15)
+    f_R_kappa = pm.HalfNormal("f_R_kappa", sigma=20)
+    f_R_a = pm.Deterministic("f_R_a", f_R_mu * f_R_kappa)
+    f_R_b  = pm.Deterministic("f_R_b", (1 - f_R_mu) * f_R_kappa)
 
     # Differentiable parameters (those we wish to calibrate)
     beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons,1)))
@@ -385,17 +387,16 @@ with pm.Model() as model:
     f_I = pm.LogNormal("f_I", mu=np.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, 1))
     f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(n_seasons, 1))
 
-
     # ------- ARMA-GARCH modifiers -------
 
     # Hyperparameter for delta_beta_temporal
     delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
     
-    # GARCH parameters
+    # GARCH parameters                                                                          TO DISABLE:
     omega = pm.HalfNormal("omega", sigma=0.001) # baseline variance (positive)                  (omega = pm.HalfNormal("omega", sigma=0.01))
     a_garch = pm.Beta("a_garch", alpha=2, beta=2) # sensitivity to shocks                       (a_garch = pt.constant(0.0))
     b_garch = pm.Beta("b_garch", alpha=2, beta=2) # shock retention                             (a_garch = pt.constant(0.0))
-    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons) # initial position        (sigma2_0 = omega * pt.ones(n_seasons))
+    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01/3, shape=n_seasons) # initial position      (sigma2_0 = omega * pt.ones(n_seasons))
 
     # --- Harmonically decaying AR(p) kernel ---
     # Initial position
@@ -456,7 +457,7 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Likelihood
-    alpha = pm.HalfNormal("alpha", sigma=0.001)
+    alpha = pm.HalfNormal("alpha", sigma=0.01/3)
     data = pm.NegativeBinomial("data", mu=ys, alpha=1/alpha, observed=7*data)
 
 
@@ -465,8 +466,8 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    trace = pm.sample(25, tune=25, chains=3, init='adapt_diag', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=3*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(10, tune=10, chains=2, init='adapt_diag', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=2*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
     #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=1, progressbar=True)
     # DEMetroplisZ
@@ -477,10 +478,10 @@ with model:
 variables2plot = [
                 'alpha',                                                # overdispersion
                 'rho_h_mu', 'rho_h_sigma', 'rho_h',                     # rho_h
-                'f_R_a', 'f_R_b', 'f_R',                                # f_R
+                'f_R_mu', 'f_R_kappa', 'f_R_a', 'f_R_b', 'f_R',         # f_R
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
-                'sigma2_0', 'z_0', 'eps_0',                             # AR-GARCH initial condition
+                'z_0', 'eps_0',                                         # AR-GARCH initial condition
                 'sum_psi', 'decay_psi',                                 # AR parameters
                 'omega', 'a_garch', 'b_garch',                          # GARCH parameters
                 ]
@@ -493,9 +494,9 @@ for var in variables2plot:
     plt.close()
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "sum_psi", "decay_psi"], divergences=True)
-plt.savefig('trace/pairplot-ARGARCH.png', dpi=300)
-plt.close()
+#arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "sum_psi", "decay_psi"], divergences=True)
+#plt.savefig('trace/pairplot-ARGARCH.png', dpi=300)
+#plt.close()
 
 
 # Make posterior predictive
