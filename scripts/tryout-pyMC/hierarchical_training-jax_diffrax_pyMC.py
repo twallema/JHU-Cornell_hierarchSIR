@@ -366,7 +366,7 @@ eta_opt = eta_opt[1:,:]
 sol_op = SolOp(args_static)
 vjp_sol_op = VJPSolOp(args_static)
 
-p = 2
+p = 1
 
 # Build pyMC probablistic model
 with pm.Model() as model:
@@ -392,10 +392,10 @@ with pm.Model() as model:
     delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
     
     # GARCH parameters
-    omega = pm.HalfNormal("omega", sigma=0.001) # baseline variance (positive)
-    a_garch = pm.Beta("a_garch", alpha=2, beta=2) # sensitivity to shocks
-    b_garch = pm.Beta("b_garch", alpha=2, beta=2) # shock retention
-    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons) # initial position
+    omega = pm.HalfNormal("omega", sigma=0.001) # baseline variance (positive)                  (omega = pm.HalfNormal("omega", sigma=0.01))
+    a_garch = pm.Beta("a_garch", alpha=2, beta=2) # sensitivity to shocks                       (a_garch = pt.constant(0.0))
+    b_garch = pm.Beta("b_garch", alpha=2, beta=2) # shock retention                             (a_garch = pt.constant(0.0))
+    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01, shape=n_seasons) # initial position        (sigma2_0 = omega * pt.ones(n_seasons))
 
     # --- Harmonically decaying AR(p) kernel ---
     # Initial position
@@ -465,10 +465,10 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    trace = pm.sample(150, tune=50, chains=24, init='adapt_full', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=24*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(25, tune=25, chains=3, init='adapt_diag', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=3*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
-    #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=12, progressbar=True)
+    #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=1, progressbar=True)
     # DEMetroplisZ
     #trace = pm.sample(100000, tune=100000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
     #                   initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
