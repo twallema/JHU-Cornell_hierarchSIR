@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.12
+  - python=3.13
   - jupyter
   - matplotlib
   - numpy
@@ -15,3 +15,4 @@ dependencies:
   - arviz
   - diffrax
   - jax
+  - optax

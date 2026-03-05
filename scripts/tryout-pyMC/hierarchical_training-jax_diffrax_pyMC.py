@@ -345,6 +345,7 @@ fig,ax=plt.subplots(nrows=n_seasons)
 for i in range(n_seasons):
     ax[i].plot(ts[i,:], 7*out[i,:], color='red')
     ax[i].scatter(ts[i,:], 7*data[i,:], marker='o', color='black')
+os.makedirs('trace', exist_ok=True)
 plt.savefig(f'trace/initial-optim.pdf')
 plt.close()
 
