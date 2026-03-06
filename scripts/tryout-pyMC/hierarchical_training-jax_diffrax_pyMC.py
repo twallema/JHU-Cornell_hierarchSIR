@@ -282,6 +282,17 @@ def vjp_sol_op_jax_funcify(op, **kwargs):
     return lambda args_diff, gz, args_nodiff: jitted_vjp_sol_op_multi(args_diff, gz, args_nodiff, op.args_static)
 
 
+# Register with pyMC
+# ~~~~~~~~~~~~~~~~~~
+
+# static arguments
+args_static = (start_simulation, max(ts[:,-1]), modifier_length, population)
+
+# Compile forward simulation model
+sol_op = SolOp(args_static)
+vjp_sol_op = VJPSolOp(args_static)
+
+
 # Pre-optimize the forward simulation model's parameters
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -303,9 +314,6 @@ args_diff = jnp.expand_dims(args_diff, 0).repeat(n_seasons, axis=0)
 args_nodiff = [jnp.concatenate([jnp.array([1/3.5,]), jnp.array(ts[i,:])]) for i in range(n_seasons)]
 args_nodiff = np.array(jnp.stack(args_nodiff))
 
-
-# static arguments
-args_static = (start_simulation, max(ts[:,-1]), modifier_length, population)
 
 # define SSE likelihood
 def neg_log_likelihood(args_diff):
@@ -359,12 +367,65 @@ delta_beta_mu_opt = np.mean(delta_beta_opt, axis=0)
 eta_opt = np.transpose(delta_beta_opt - delta_beta_mu_opt[None, :]) / np.sqrt(0.01)
 eta_opt = eta_opt[1:,:]
 
+
+# Build tempored NB distribution
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# computed tempered likelihood weights
+def compute_season_weights(data):
+    """
+    Compute season weights so each season contributes equally.
+
+    Parameters
+    ----------
+    data : ndarray (n_seasons, n_timepoints)
+
+    Returns
+    -------
+    weights : TensorVarirable (n_seasons, 1)
+    """
+    max_per_season = data.max(axis=1)
+    inv_max = 1.0 / max_per_season
+
+    return pt.as_tensor_variable(np.expand_dims(inv_max / inv_max.mean(), axis=1))
+
+weights = compute_season_weights(data)
+
+# tempered negative binomial likelihood
+def weighted_nb_logp(value, mu, alpha, weights):
+    """
+    Weighted Negative Binomial log-probability.
+
+    Parameters
+    ----------
+    value : observed counts
+        shape (seasons, timepoints)
+
+    mu : predicted mean
+        shape (seasons, timepoints)
+
+    alpha : NB dispersion parameter
+
+    weights : season weights
+        shape (seasons, 1)
+    """
+    return pt.sum(weights * pm.logp(pm.NegativeBinomial.dist(mu=mu, alpha=alpha), value))
+
+def weighted_nb_random(*args, rng=None, size=None):
+    """
+    Random draws from Negative Binomial for posterior predictive.
+    weights are ignored during random draws
+    """
+    # mu, alpha: tensors -> convert to numpy
+    mu_ = np.array(args[0])
+    alpha_ = 1/np.array(args[1])
+    
+    # size: PyMC passes shape of batch/draws
+    return rng.negative_binomial(n=1/alpha_, p=1/(1 + mu_ * alpha_))
+
+
 # Build pyMC model
 # ~~~~~~~~~~~~~~~~
-
-# Compile forward simulation model
-sol_op = SolOp(args_static)
-vjp_sol_op = VJPSolOp(args_static)
 
 # AR(1)-GARCH(1,1) step function
 def step(eta_t, prev_z, prev_sigma2, prev_eps, psi, omega, a_garch, b_garch):
@@ -443,7 +504,7 @@ with pm.Model() as model:
 
     # Compute likelihood
     alpha = pm.HalfNormal("alpha", sigma=0.001)
-    data = pm.NegativeBinomial("data", mu=ys, alpha=1/alpha, observed=7*data)
+    pm.CustomDist("data", ys, 1/alpha, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 
 # Sample pyMC model
@@ -451,8 +512,8 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    trace = pm.sample(10, tune=10, chains=1, init='adapt_diag', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(25, tune=25, chains=2, init='adapt_diag', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=2*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
