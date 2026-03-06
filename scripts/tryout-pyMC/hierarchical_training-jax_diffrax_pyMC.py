@@ -400,14 +400,13 @@ with pm.Model() as model:
     delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
     
     # --- GARCH(1,1) parameters ---                                                                         TO DISABLE GARCH:
-    omega = pm.HalfNormal("omega", sigma=0.1)
+    omega = pm.HalfNormal("omega", sigma=0.01/3)
     kappa = pm.Beta("kappa", 3, 1)                                                              
     phi = pm.Beta("phi", 3, 1)                                                                  
     a_garch = pm.Deterministic("a_garch", kappa * phi)                                                      # (a_garch = pt.constant(0.0))
     b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                                                # (b_garch = pt.constant(0.0))
-    sigma2_0_mu = pm.Normal('sigma2_0_mu', mu=0.1, sigma=0.33)
     sigma2_0_sigma = pm.HalfNormal('sigma2_0_sigma', sigma=1/3)
-    sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(sigma2_0_mu), sigma=sigma2_0_sigma, shape=n_seasons)      # (sigma2_0 = omega * pt.ones(n_seasons))
+    sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(omega), sigma=sigma2_0_sigma, shape=n_seasons)      # (sigma2_0 = omega * pt.ones(n_seasons))
 
     # --- AR(1) kernel ---
     # Initial position
@@ -463,7 +462,7 @@ variables2plot = [
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
                 'psi', 'omega', 'kappa', 'phi',                         # AR-GARCH parameters
-                'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_mu', 'sigma2_0_sigma'
+                'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_sigma',
                 ]
 
 # Save original traces
