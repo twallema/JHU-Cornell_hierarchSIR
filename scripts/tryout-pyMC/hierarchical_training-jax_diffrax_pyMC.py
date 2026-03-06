@@ -366,19 +366,14 @@ eta_opt = eta_opt[1:,:]
 sol_op = SolOp(args_static)
 vjp_sol_op = VJPSolOp(args_static)
 
-# AR(p)
-p = 1
-
-# AR-GARCH step function
-def step(eta_t, prev_z_stack, prev_sigma2, prev_eps, psi, omega, a_garch, b_garch):
+# AR(1)-GARCH(1,1) step function
+def step(eta_t, prev_z, prev_sigma2, prev_eps, psi, omega, a_garch, b_garch):
     # --- GARCH(1,1) short-term shocks innovation scale ---
     sigma2 = omega + a_garch * (prev_eps ** 2) + b_garch * prev_sigma2
     eps = eta_t * pt.sqrt(sigma2)
-    # --- AR(p) short-term shocks ---
-    z = pt.sum(psi[:, None] * prev_z_stack, axis=0) + eps
-    # --- shift lag stack ---
-    new_z_stack = pt.concatenate([z[None, :], prev_z_stack[:-1]], axis=0)
-    return new_z_stack, sigma2, eps
+    # --- AR(1) short-term shocks ---
+    z = psi * prev_z + eps
+    return z, sigma2, eps
 
 # Build pyMC probablistic model
 with pm.Model() as model:
@@ -405,42 +400,31 @@ with pm.Model() as model:
     delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
     
     # --- GARCH(1,1) parameters ---                                                                         TO DISABLE GARCH:
-    omega = pm.HalfNormal("omega", sigma=0.01/3)
+    omega = pm.HalfNormal("omega", sigma=0.1)
     kappa = pm.Beta("kappa", 3, 1)                                                              
     phi = pm.Beta("phi", 3, 1)                                                                  
     a_garch = pm.Deterministic("a_garch", kappa * phi)                                                      # (a_garch = pt.constant(0.0))
     b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                                                # (b_garch = pt.constant(0.0))
-    sigma2_0_mu = pm.Normal('sigma2_0_mu', mu=0.0075, sigma=0.0025)
+    sigma2_0_mu = pm.Normal('sigma2_0_mu', mu=0.1, sigma=0.33)
     sigma2_0_sigma = pm.HalfNormal('sigma2_0_sigma', sigma=1/3)
     sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(sigma2_0_mu), sigma=sigma2_0_sigma, shape=n_seasons)      # (sigma2_0 = omega * pt.ones(n_seasons))
 
-    # --- Exponential decay AR(p) kernel ---
+    # --- AR(1) kernel ---
     # Initial position
-    z_0 = pt.zeros((p, n_seasons))
+    z_0 = pt.zeros(n_seasons)
     eps_0 = pt.zeros(n_seasons)
     # Total AR strength (controls overall magnitude)
-    sum_psi = pm.Beta("sum_psi", alpha=5, beta=1)
-    # Fixed exponential decay
-    k_psi = pt.arange(p) + 1.0
-    psi_raw = pt.exp(-k_psi)
-    # Normalize so sum(psi) = sum_psi
-    psi = pm.Deterministic("psi", sum_psi * psi_raw / pt.sum(psi_raw))
-
+    psi = pm.Beta("psi", alpha=5, beta=1)
     # sample iid standard normals as shocks
-    eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers-1, n_seasons))
+    eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers, n_seasons))
 
     # Run AR-GARCH scan over T steps
-    (z_stack_seq, sigma2_seq, eps_seq), _ = pytensor.scan(
+    (z_seq, sigma2_seq, eps_seq), _ = pytensor.scan(
         fn=step,
         sequences=[eta,],
         outputs_info=[z_0, sigma2_0, eps_0],
         non_sequences=[psi, omega, a_garch, b_garch],
     )
-
-    # Prepend the initial states u_0, ell_0, sigma2_0
-    z_seq = pt.concatenate([z_0[0][None, :], z_stack_seq[:, 0, :]], axis=0)
-    sigma2_seq = pt.concatenate([sigma2_0[None, :], sigma2_seq], axis=0)
-    eps_seq = pt.concatenate([eps_0[None, :], eps_seq], axis=0)
 
     # Register deterministic variables to inspect later
     delta_beta = pm.Deterministic("delta_beta", pt.transpose(z_seq) + delta_beta_mu)
@@ -459,7 +443,7 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    alpha = pm.HalfNormal("alpha", sigma=0.01/3)
+    alpha = pm.HalfNormal("alpha", sigma=0.001)
     data = pm.NegativeBinomial("data", mu=ys, alpha=1/alpha, observed=7*data)
 
 
@@ -468,8 +452,8 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    trace = pm.sample(25, tune=25, chains=5, init='adapt_diag', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=5*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(10, tune=10, chains=1, init='adapt_diag', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
@@ -478,7 +462,7 @@ variables2plot = [
                 'f_R_mu', 'f_R_kappa_inv', 'f_R_a', 'f_R_b', 'f_R',     # f_R
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
-                'sum_psi', 'omega', 'kappa', 'phi',                     # AR-GARCH parameters
+                'psi', 'omega', 'kappa', 'phi',                         # AR-GARCH parameters
                 'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_mu', 'sigma2_0_sigma'
                 ]
 
@@ -490,7 +474,7 @@ for var in variables2plot:
     plt.close()
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["kappa", "phi", "omega", "sum_psi"], divergences=True)
+arviz.plot_pair(trace, var_names=["kappa", "phi", "omega", "psi"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.png', dpi=300)
 plt.close()
 
