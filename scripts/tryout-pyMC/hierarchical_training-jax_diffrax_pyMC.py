@@ -393,7 +393,7 @@ with pm.Model() as model:
     f_R_a = pm.Deterministic("f_R_a", f_R_mu * (1/f_R_kappa_inv))
     f_R_b  = pm.Deterministic("f_R_b", (1 - f_R_mu) * (1/f_R_kappa_inv))
 
-    # Differentiable parameters (those we wish to calibrate)
+    # Differentiable parameters
     beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons,1)))
     rho_h = pm.LogNormal("rho_h", mu=pt.log(rho_h_mu), sigma=rho_h_sigma, size=(n_seasons, 1))
     f_I = pm.LogNormal("f_I", mu=pt.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, 1))
@@ -404,7 +404,7 @@ with pm.Model() as model:
     # Hyperparameter for delta_beta_temporal
     delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
     
-    # --- GARCH parameters ---                                                                              TO DISABLE GARCH:
+    # --- GARCH(1,1) parameters ---                                                                         TO DISABLE GARCH:
     omega = pm.HalfNormal("omega", sigma=0.01/3)
     kappa = pm.Beta("kappa", 3, 1)                                                              
     phi = pm.Beta("phi", 3, 1)                                                                  
