@@ -395,8 +395,8 @@ with pm.Model() as model:
 
     # Differentiable parameters (those we wish to calibrate)
     beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons,1)))
-    rho_h = pm.LogNormal("rho_h", mu=np.log(rho_h_mu), sigma=rho_h_sigma, size=(n_seasons, 1))
-    f_I = pm.LogNormal("f_I", mu=np.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, 1))
+    rho_h = pm.LogNormal("rho_h", mu=pt.log(rho_h_mu), sigma=rho_h_sigma, size=(n_seasons, 1))
+    f_I = pm.LogNormal("f_I", mu=pt.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, 1))
     f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(n_seasons, 1))
 
     # ------- AR-GARCH modifiers -----------
@@ -404,13 +404,15 @@ with pm.Model() as model:
     # Hyperparameter for delta_beta_temporal
     delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
     
-    # GARCH parameters                                                                          TO DISABLE GARCH:
+    # --- GARCH parameters ---                                                                              TO DISABLE GARCH:
     omega = pm.HalfNormal("omega", sigma=0.01/3)
     kappa = pm.Beta("kappa", 3, 1)                                                              
     phi = pm.Beta("phi", 3, 1)                                                                  
-    a_garch = pm.Deterministic("a_garch", kappa * phi)                                          # (a_garch = pt.constant(0.0))
-    b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                                    # (b_garch = pt.constant(0.0))                       
-    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01/3, shape=n_seasons)                         # (sigma2_0 = omega * pt.ones(n_seasons))
+    a_garch = pm.Deterministic("a_garch", kappa * phi)                                                      # (a_garch = pt.constant(0.0))
+    b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                                                # (b_garch = pt.constant(0.0))
+    sigma2_0_mu = pm.Normal('sigma2_0_mu', mu=0.0075, sigma=0.0025)
+    sigma2_0_sigma = pm.HalfNormal('sigma2_0_sigma', sigma=1/3)
+    sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(sigma2_0_mu), sigma=sigma2_0_sigma, shape=n_seasons)      # (sigma2_0 = omega * pt.ones(n_seasons))
 
     # --- Exponential decay AR(p) kernel ---
     # Initial position
@@ -424,7 +426,7 @@ with pm.Model() as model:
     # Normalize so sum(psi) = sum_psi
     psi = pm.Deterministic("psi", sum_psi * psi_raw / pt.sum(psi_raw))
 
-    # sample iid standard normals as shocks ----------
+    # sample iid standard normals as shocks
     eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers-1, n_seasons))
 
     # Run AR-GARCH scan over T steps
@@ -468,11 +470,6 @@ with model:
     # NUTS
     trace = pm.sample(25, tune=25, chains=1, init='adapt_diag', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
                      initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
-    # SMC
-    #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=1, progressbar=True)
-    # DEMetroplisZ
-    #trace = pm.sample(100000, tune=100000, chains=1, cores=1, progressbar=True, step=pm.DEMetropolisZ(),
-    #                   initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
@@ -482,7 +479,7 @@ variables2plot = [
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
                 'sum_psi', 'omega', 'kappa', 'phi',                     # AR-GARCH parameters
-                'a_garch', 'b_garch', 'sigma2_0'
+                'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_mu', 'sigma2_0_sigma'
                 ]
 
 # Save original traces
@@ -493,7 +490,7 @@ for var in variables2plot:
     plt.close()
 
 # Build pair plots
-arviz.plot_pair(trace, var_names=["a_garch", "b_garch", "sum_psi"], divergences=True)
+arviz.plot_pair(trace, var_names=["kappa", "phi", "omega", "sum_psi"], divergences=True)
 plt.savefig('trace/pairplot-ARGARCH.png', dpi=300)
 plt.close()
 
