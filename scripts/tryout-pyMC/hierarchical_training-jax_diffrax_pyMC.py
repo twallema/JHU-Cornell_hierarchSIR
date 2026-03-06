@@ -404,11 +404,13 @@ with pm.Model() as model:
     # Hyperparameter for delta_beta_temporal
     delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
     
-    # GARCH parameters                                                                          TO DISABLE:
-    omega = pm.HalfNormal("omega", sigma=0.01)                                                  
-    a_garch = pm.Beta("a_garch", alpha=2, beta=2) # sensitivity to shocks                       (a_garch = pt.constant(0.0))
-    b_garch = pm.Beta("b_garch", alpha=2, beta=2) # shock retention                             (b_garch = pt.constant(0.0))
-    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01/3, shape=n_seasons) # initial position      (sigma2_0 = omega * pt.ones(n_seasons))
+    # GARCH parameters                                                                          TO DISABLE GARCH:
+    omega = pm.HalfNormal("omega", sigma=0.01/3)
+    kappa = pm.Beta("kappa", 3, 1)                                                              
+    phi = pm.Beta("phi", 3, 1)                                                                  
+    a_garch = pm.Deterministic("a_garch", kappa * phi)                                          # (a_garch = pt.constant(0.0))
+    b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                                    # (b_garch = pt.constant(0.0))                       
+    sigma2_0 = pm.HalfNormal("sigma2_0", sigma=0.01/3, shape=n_seasons)                         # (sigma2_0 = omega * pt.ones(n_seasons))
 
     # --- Exponential decay AR(p) kernel ---
     # Initial position
@@ -464,8 +466,8 @@ with pm.Model() as model:
 
 with model:
     # NUTS
-    trace = pm.sample(100, tune=50, chains=25, init='adapt_diag', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=25*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(25, tune=25, chains=1, init='adapt_diag', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
+                     initvals=1*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
     # SMC
     #trace = pm.smc.sample_smc(draws=10000, chains=12, cores=1, progressbar=True)
     # DEMetroplisZ
@@ -479,7 +481,8 @@ variables2plot = [
                 'f_R_mu', 'f_R_kappa_inv', 'f_R_a', 'f_R_b', 'f_R',     # f_R
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'delta_beta_mu',                                        # delta_beta_mu
-                'sum_psi', 'a_garch', 'b_garch', 'sigma2_0',            # AR-GARCH parameters
+                'sum_psi', 'omega', 'kappa', 'phi',                     # AR-GARCH parameters
+                'a_garch', 'b_garch', 'sigma2_0'
                 ]
 
 # Save original traces
@@ -539,7 +542,7 @@ for i, season in enumerate(seasons):
                 color='black', alpha=0.15)
         ax[j].set_ylabel(par)
     ax[0].set_title(season)
-    plt.savefig(f'trace/{season}_ARMA-GARCH_pars.pdf')
+    plt.savefig(f'trace/{season}_AR-GARCH_pars.pdf')
     plt.close()
 
 # Visualise goodnes-of-fit
