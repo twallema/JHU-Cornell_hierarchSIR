@@ -421,7 +421,7 @@ def weighted_nb_random(*args, rng=None, size=None):
     alpha_ = 1/np.array(args[1])
     
     # size: PyMC passes shape of batch/draws
-    return rng.negative_binomial(n=1/alpha_, p=1/(1 + mu_ * alpha_))
+    return rng.negative_binomial(n=1/alpha_, p=1/(1 + mu_ * alpha_), size=size)
 
 
 # Build pyMC model
@@ -503,21 +503,20 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    alpha = pm.HalfNormal("alpha", sigma=0.001)
-    pm.CustomDist("data", ys, 1/alpha, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
-
+    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001)
+    pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
     # NUTS
-    trace = pm.sample(250, tune=50, chains=20, init='adapt_diag', cores=1, progressbar=True, target_accept=0.8, max_treedepth=8,
-                     initvals=20*[{'alpha': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(10, tune=10, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 8},
+                     initvals=1*[{'alpha_inv': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
-                'alpha',                                                # overdispersion
+                'alpha_inv',                                            # overdispersion
                 'rho_h_mu', 'rho_h_sigma', 'rho_h',                     # rho_h
                 'f_R_mu', 'f_R_kappa_inv', 'f_R_a', 'f_R_b', 'f_R',     # f_R
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
