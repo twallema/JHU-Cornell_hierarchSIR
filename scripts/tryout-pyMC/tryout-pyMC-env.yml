@@ -16,3 +16,5 @@ dependencies:
   - diffrax
   - jax
   - optax
+  - pyarrow
+  - fastparquet
