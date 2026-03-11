@@ -469,6 +469,12 @@ def weighted_nb_logp(value, mu, alpha, weights):
     weights : season weights
         shape (n_seasons, n_states, 1)
     """
+
+    # move state axis to the end so alpha (n_states,) broadcasts correctly
+    mu = mu.dimshuffle(0, 2, 1)
+    value = value.dimshuffle(0, 2, 1)
+    weights = weights.dimshuffle(0, 2, 1)
+
     return pt.sum(weights * pm.logp(pm.NegativeBinomial.dist(mu=mu, alpha=alpha), value))
 
 def weighted_nb_random(*args, rng=None, size=None):
@@ -479,7 +485,13 @@ def weighted_nb_random(*args, rng=None, size=None):
     # mu, alpha: tensors -> convert to numpy
     mu_ = np.array(args[0])
     alpha_ = 1/np.array(args[1])
-    
+
+    # remove pyMC broadcast axes
+    alpha_ = alpha_.reshape(-1)
+
+    # broadcast to mu
+    alpha_ = alpha_[None, :, None]
+
     # size: PyMC passes shape of batch/draws
     return rng.negative_binomial(n=1/alpha_, p=1/(1 + mu_ * alpha_), size=size)
 
@@ -563,15 +575,15 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001)
+    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001, shape=n_states)
     pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(3, tune=3, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 8},
-                     initvals=1*[{'alpha_inv': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(15, tune=15, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 8},
+                     initvals=1*[{'alpha_inv': 0.01 * pt.ones(n_states), 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
