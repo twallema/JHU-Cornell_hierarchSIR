@@ -422,8 +422,6 @@ f_R_opt = args_diff[:,:,3]
 delta_beta_opt = args_diff[:,:,4:]
 delta_beta_mu_opt = np.mean(delta_beta_opt, axis=0)
 
-import sys
-sys.exit()
 
 # Build tempored NB distribution
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -431,20 +429,23 @@ sys.exit()
 # computed tempered likelihood weights
 def compute_season_weights(data):
     """
-    Compute season weights so each season contributes equally.
+    Compute weights so each season-state contributes equally.
 
     Parameters
     ----------
-    data : ndarray (n_seasons, n_timepoints)
+    data : ndarray (n_seasons, n_states, n_observations)
 
     Returns
     -------
-    weights : TensorVarirable (n_seasons, 1)
+    weights : np.ndarray, shape (n_seasons, n_states, 1)
     """
-    max_per_season = data.max(axis=1)
-    inv_max = 1.0 / max_per_season
-
-    return pt.as_tensor_variable(np.expand_dims(inv_max / inv_max.mean(), axis=1))
+    # max over observations per season-state
+    max_per_season_state = data.max(axis=2)
+    inv_max = 1.0 / max_per_season_state
+    # normalize to mean 1
+    normalized = inv_max / inv_max.mean()
+    # expand dims for broadcasting across observations
+    return normalized[:, :, None]
 
 weights = compute_season_weights(data)
 
@@ -456,15 +457,15 @@ def weighted_nb_logp(value, mu, alpha, weights):
     Parameters
     ----------
     value : observed counts
-        shape (seasons, timepoints)
+        shape (n_seasons, n_states, observations)
 
     mu : predicted mean
-        shape (seasons, timepoints)
+        shape (n_seasons, n_states, observations)
 
     alpha : NB dispersion parameter
 
     weights : season weights
-        shape (seasons, 1)
+        shape (n_seasons, n_states, 1)
     """
     return pt.sum(weights * pm.logp(pm.NegativeBinomial.dist(mu=mu, alpha=alpha), value))
 
@@ -480,6 +481,8 @@ def weighted_nb_random(*args, rng=None, size=None):
     # size: PyMC passes shape of batch/draws
     return rng.negative_binomial(n=1/alpha_, p=1/(1 + mu_ * alpha_), size=size)
 
+import sys
+sys.exit()
 
 # Build pyMC model
 # ~~~~~~~~~~~~~~~~
