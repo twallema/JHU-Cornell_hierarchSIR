@@ -397,7 +397,7 @@ for i in range(300):
 block_1 = jax.nn.softplus(args_diff[:, :, 0:3])         # beta, rho_h, f_I
 block_2 = jax.nn.sigmoid(args_diff[:, :, 3:4])          # f_R
 block_3 = 0.25 * jnp.tanh(args_diff[:, :, 4:])          # delta_beta
-args_diff = jnp.concatenate([block_1, block_2, block_3], axis=2)
+args_diff = np.array(jnp.concatenate([block_1, block_2, block_3], axis=2))  # also back to numpy otherwise initial point will fail
 
 # run simulation
 out = jitted_sol_op_multi(args_diff, args_nodiff, args_static)
