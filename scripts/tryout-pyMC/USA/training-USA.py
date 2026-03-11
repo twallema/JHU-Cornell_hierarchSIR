@@ -368,7 +368,7 @@ args_diff = jnp.broadcast_to(single_args_diff, (n_seasons, n_states, single_args
 gamma_vec = jnp.full((n_seasons, n_states, 1), gamma)
 pop_mat = jnp.broadcast_to(jnp.asarray(demo)[None, :, None], (n_seasons, n_states, 1))
 ts_mat = jnp.broadcast_to(ts[:, None, :], (n_seasons, n_states, ts.shape[1]))
-args_nodiff = jnp.concatenate([gamma_vec, pop_mat, ts_mat], axis=2)     # shape: (n_seasons, n_states, )
+args_nodiff = np.array(jnp.concatenate([gamma_vec, pop_mat, ts_mat], axis=2))     # shape: (n_seasons, n_states, )  --> convert to numpy otherwise error in pt.as_tensor_variable(args_nodiff) in make_node of pyMC model
 
 # define SSE likelihood
 def neg_log_likelihood(args_diff):
@@ -386,7 +386,7 @@ def neg_log_likelihood(args_diff):
 # optimize
 optimizer = optax.adam(1e-2)
 opt_state = optimizer.init(args_diff)
-for i in range(800):
+for i in range(300):
     loss, grads = jax.value_and_grad(neg_log_likelihood)(args_diff)
     updates, opt_state = optimizer.update(grads, opt_state)
     args_diff = optax.apply_updates(args_diff, updates)
@@ -481,8 +481,6 @@ def weighted_nb_random(*args, rng=None, size=None):
     # size: PyMC passes shape of batch/draws
     return rng.negative_binomial(n=1/alpha_, p=1/(1 + mu_ * alpha_), size=size)
 
-import sys
-sys.exit()
 
 # Build pyMC model
 # ~~~~~~~~~~~~~~~~
@@ -510,33 +508,33 @@ with pm.Model() as model:
     f_R_b  = pm.Deterministic("f_R_b", (1 - f_R_mu) * (1/f_R_kappa_inv))
 
     # Differentiable parameters
-    beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons,1)))
-    rho_h = pm.LogNormal("rho_h", mu=pt.log(rho_h_mu), sigma=rho_h_sigma, size=(n_seasons, 1))
-    f_I = pm.LogNormal("f_I", mu=pt.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, 1))
-    f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(n_seasons, 1))
+    beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons, n_states)))
+    rho_h = pm.LogNormal("rho_h", mu=pt.log(rho_h_mu), sigma=rho_h_sigma, size=(n_seasons, n_states))
+    f_I = pm.LogNormal("f_I", mu=pt.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, n_states))
+    f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(n_seasons, n_states))
 
     # ------- AR-GARCH modifiers -----------
 
     # Hyperparameter for delta_beta_temporal
-    delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=n_modifiers)
-    
-    # --- GARCH(1,1) parameters ---                                                                         TO DISABLE GARCH:
-    omega = pm.HalfNormal("omega", sigma=0.01/3)
-    kappa = pm.Beta("kappa", 3, 1)                                                              
-    phi = pm.Beta("phi", 3, 1)                                                                  
-    a_garch = pm.Deterministic("a_garch", kappa * phi)                                                      # (a_garch = pt.constant(0.0))
-    b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                                                # (b_garch = pt.constant(0.0))
-    sigma2_0_sigma = pm.HalfNormal('sigma2_0_sigma', sigma=1/3)
-    sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(omega), sigma=sigma2_0_sigma, shape=n_seasons)      # (sigma2_0 = omega * pt.ones(n_seasons))
+    delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=(n_modifiers, n_states))
 
     # --- AR(1) kernel ---
     # Initial position
-    z_0 = pt.zeros(n_seasons)
-    eps_0 = pt.zeros(n_seasons)
+    z_0 = pt.zeros([n_seasons, n_states])
+    eps_0 = pt.zeros([n_seasons, n_states])
     # Total AR strength (controls overall magnitude)
     psi = pm.Beta("psi", alpha=5, beta=1)
     # sample iid standard normals as shocks
-    eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers, n_seasons))
+    eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers, n_seasons, n_states))
+    
+    # --- GARCH(1,1) parameters ---                                                                             TO DISABLE GARCH:
+    omega = pm.HalfNormal("omega", sigma=0.01/3)
+    kappa = pm.Beta("kappa", 3, 1)                                                              
+    phi = pm.Beta("phi", 3, 1)                                                                  
+    a_garch = pm.Deterministic("a_garch", kappa * phi)                                                          # (a_garch = pt.constant(0.0))
+    b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                                                    # (b_garch = pt.constant(0.0))
+    sigma2_0_sigma = pm.HalfNormal('sigma2_0_sigma', sigma=1/3)
+    sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(omega), sigma=sigma2_0_sigma, shape=(n_seasons, n_states))    # (sigma2_0 = omega * pt.ones(n_seasons))
 
     # Run AR-GARCH scan over T steps
     (z_seq, sigma2_seq, eps_seq), _ = pytensor.scan(
@@ -547,23 +545,23 @@ with pm.Model() as model:
     )
 
     # Register deterministic variables to inspect later
-    delta_beta = pm.Deterministic("delta_beta", pt.transpose(z_seq) + delta_beta_mu)
-    z = pm.Deterministic("z", pt.transpose(z_seq))
-    sigma2 = pm.Deterministic("sigma2", pt.transpose(sigma2_seq))
-    eps = pm.Deterministic("eps", pt.transpose(eps_seq))
+    delta_beta = pm.Deterministic("delta_beta", z_seq + delta_beta_mu[:, None, :])
+    z = pm.Deterministic("z", z_seq)
+    sigma2 = pm.Deterministic("sigma2", sigma2_seq)
+    eps = pm.Deterministic("eps", eps_seq)
 
-    # Build forward simulation arguments
+    # concatenate along the last axis
     args_diff = pt.concatenate(
-        [beta, rho_h, f_I, f_R, delta_beta],
-        axis=1
-    )
+        [beta[:, :, None], rho_h[:, :, None], f_I[:, :, None], f_R[:, :, None], pt.transpose(delta_beta, (1, 2, 0))],
+        axis=2
+    ) # shape: (n_seasons, n_states, 4 + n_modifiers)
 
     # Run forward simulation model
     ys = 7*sol_op(args_diff, args_nodiff)
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001)
+    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001, shape=n_states)
     pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 # Sample pyMC model
@@ -572,7 +570,7 @@ with pm.Model() as model:
 with model:
     # NUTS
     trace = pm.sample(10, tune=10, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 8},
-                     initvals=1*[{'alpha_inv': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+                     initvals=1*[{'alpha_inv': 0.01 * pt.ones(n_states), 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
