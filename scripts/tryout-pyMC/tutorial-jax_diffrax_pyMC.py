@@ -31,11 +31,11 @@ import arviz
 # Parameters 
 alpha = 0.05
 t_d = 10
-n_timesteps = 90
+n_obs = 80
+n_pred = 20
 # Sample data
-ts = np.linspace(start=0, stop=n_timesteps-1, num=n_timesteps)
-data = np.random.negative_binomial(1/alpha, (1/alpha)/(np.exp(ts*np.log(2)/t_d) + (1/alpha)))
-
+ts = np.linspace(start=0, stop=n_obs+n_pred-1, num=n_obs+n_pred)
+data = np.random.negative_binomial(1/alpha, (1/alpha)/(np.exp(ts[:n_obs]*np.log(2)/t_d) + (1/alpha)))
 
 # Define and solve a diffrax differential equation and wrap it inside jax jit
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -178,35 +178,41 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
     # Likelihood
     alpha = pm.HalfNormal("alpha", 0.05)
-    data = pm.NegativeBinomial("data", mu=ys, alpha=1/alpha, observed=data)
-
+    obs = pm.NegativeBinomial("obs", mu=ys[:n_obs], alpha=1/alpha, observed=data)
+    
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(500, tune=500, chains=2, init='jitter+adapt_diag', cores=1, progressbar=True) #, initvals=[{'alpha': 0.05}, {'beta': 0.15}])
+    trace = pm.sample(250, tune=250, chains=3, init='jitter+adapt_diag', cores=1, progressbar=True)
 
 # Generate traces
 arviz.plot_trace(trace, var_names=['alpha', 'beta']) 
 plt.show()
 plt.close()
 
-
 # Make posterior predictive
 # ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Predict
 with model:
-    posterior_predictive = pm.sample_posterior_predictive(trace)
-
+    pred = pm.NegativeBinomial("pred", mu=ys[n_obs:], alpha=1/alpha)
+    posterior_predictive = pm.sample_posterior_predictive(trace, var_names=["obs", "pred"])
 
 # Visualise
 fig,ax=plt.subplots()
-ax.plot(ts, posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values, linewidth=1, color='red')
-ax.fill_between(ts,
-                posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.025),
-                posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.975),
+## training
+ax.plot(ts[:n_obs], posterior_predictive.posterior_predictive['obs'].median(dim=['chain', 'draw']).values, linewidth=1, color='black')
+ax.fill_between(ts[:n_obs],
+                posterior_predictive.posterior_predictive['obs'].quantile(dim=['chain', 'draw'], q=0.025),
+                posterior_predictive.posterior_predictive['obs'].quantile(dim=['chain', 'draw'], q=0.975),
+                color='black', alpha=0.1)
+ax.scatter(ts[:n_obs], posterior_predictive.observed_data['obs'].values, marker='o', color='black')
+## forecast
+ax.plot(ts[n_obs:], posterior_predictive.posterior_predictive['pred'].median(dim=['chain', 'draw']).values, linewidth=1, color='red')
+ax.fill_between(ts[n_obs:],
+                posterior_predictive.posterior_predictive['pred'].quantile(dim=['chain', 'draw'], q=0.025),
+                posterior_predictive.posterior_predictive['pred'].quantile(dim=['chain', 'draw'], q=0.975),
                 color='red', alpha=0.1)
-ax.scatter(ts, posterior_predictive.observed_data['data'].values, marker='o', color='black')
 plt.show()
 plt.close()
