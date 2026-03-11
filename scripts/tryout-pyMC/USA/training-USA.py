@@ -561,7 +561,7 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001, shape=n_states)
+    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001)
     pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 # Sample pyMC model
