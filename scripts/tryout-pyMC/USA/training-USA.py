@@ -271,7 +271,7 @@ jitted_vjp_sol_op_multi = jax.jit(vjp_sol_op_multi, static_argnums=3)
 class SolOp(Op):
     def __init__(self, args_static):
         self.args_static = args_static
-        self.vjp_op = VJPSolOp(args_static)
+        self.vjp_sol_op = VJPSolOp(args_static)
 
     def make_node(self, args_diff, args_nodiff):
         args_diff = pt.as_tensor_variable(args_diff)
