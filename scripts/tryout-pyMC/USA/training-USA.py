@@ -24,11 +24,14 @@ import optax
 # all paths defined relative to this file
 abs_dir = os.path.dirname(__file__)
 
+gamma = 1/3.5
+
 # Get US demographics
 # ~~~~~~~~~~~~~~~~~~~
 
-state_fips = pd.read_csv(os.path.join(abs_dir, 'demography.csv'))[['abbreviation_state', 'name_state', 'fips_state']]
+state_fips_index = pd.read_csv(os.path.join(abs_dir, 'demography.csv'))[['abbreviation_state', 'name_state', 'fips_state']]
 demo = pd.read_csv(os.path.join(abs_dir, 'demography.csv'))['population'].values
+n_states = len(state_fips_index)
 
 # Get US incidences
 # ~~~~~~~~~~~~~~~~~
@@ -61,7 +64,7 @@ def get_data(start_calibrations, modifier_reference_dates, n_observations):
     dates = []
     timesteps = []
     # loop over seasons
-    for start_calibration, modifier_reference_date in zip(start_calibrations, modifier_reference_dates):
+    for i, (start_calibration, modifier_reference_date) in enumerate(zip(start_calibrations, modifier_reference_dates)):
         # get the data
         df = pd.read_parquet(os.path.join(abs_dir, 'NHSN-HRD_reference-date-2026-03-07_gathered-2026-03-04-17-16-11.parquet.gzip'))
         # convert date column to datetime and fips_state to int
@@ -71,6 +74,8 @@ def get_data(start_calibrations, modifier_reference_dates, n_observations):
         df = df[['date', 'fips_state', 'influenza admissions']]
         # trim temporally
         df = df[((df['date'] > start_calibration) & (df['date'] <= start_calibration+timedelta(weeks=n_observations)))]
+        # Backward fill per state (Happens first week of season 2024-2025 in 3 states)
+        df['influenza admissions'] = df.groupby('fips_state')['influenza admissions'].bfill()
         # save the data's time index relative to the forward simulation model's t=0 (per season) + dates
         dates.append(df['date'].unique())
         timesteps.append([(d - modifier_reference_date)/timedelta(days=1) for d in df['date'].unique()])
@@ -81,16 +86,11 @@ def get_data(start_calibrations, modifier_reference_dates, n_observations):
     dates = np.stack(dates, axis=0)
     timesteps = np.stack(timesteps, axis=0)
     
-    return data, dates, timesteps
+    return data/7, dates, timesteps
 
 # get the data
 data, dt, ts = get_data(start_calibrations, modifier_reference_dates, n_observations) # (n_season, n_variables, n_observations)
 
-print(ts)
-print(dt)
-print(data.shape)
-import sys
-sys.exit()
 
 # Define a jax-jitted diffrax differential equation model
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -188,9 +188,10 @@ def sol_op_jax(args_diff, args_nodiff, args_static):
     # unpack non-differentiable parameters and block their gradients
     args_nodiff = stop_gradients(args_nodiff)
     gamma = args_nodiff[0]
-    ts = args_nodiff[1:]
+    population = args_nodiff[1]
+    ts = args_nodiff[2:]
     # unpack static arguments
-    t0, t1_max, modifier_length, population = args_static
+    t0, t1_max, modifier_length = args_static
     # evaluate modifiers
     delta_beta_daily = make_delta_beta_daily(delta_beta, modifier_length, t0, t1_max)
     # wrap ODE rhs
@@ -216,31 +217,53 @@ def sol_op_single(args_diff, args_nodiff, args_static):
     """Wrapper for sol_op_jax to allow vmap."""
     return sol_op_jax(args_diff, args_nodiff, args_static)
 
-# vmap over the first axis of each argument
-sol_op_multi = jax.vmap(sol_op_single,
-                        in_axes=(0, 0, None),   # each season gets its own slice
-                        out_axes=0)          # stack results for all seasons
+# jit the inner ODE model
+sol_op_single_jit = jax.jit(sol_op_single, static_argnums=2)
 
-# jit it
+# vmap across the states
+state_vmapped = jax.vmap(
+    sol_op_single,
+    in_axes=(0,0,None),
+    out_axes=0
+)
+
+# vmap the vmapped states
+sol_op_multi = jax.vmap(
+    state_vmapped,
+    in_axes=(0,0,None),
+    out_axes=0
+)
+
+# jit again
 jitted_sol_op_multi = jax.jit(sol_op_multi, static_argnums=2)
-
 
 # Define jax VJP (gradient computation) function
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def vjp_sol_op_multi(args_diff, gz, args_nodiff, args_static):
-    # vectorize the single-season VJP
-    single_vjp = lambda ad, g, an: jax.vjp(
+def single_vjp(ad, g, an, args_static):
+    _, pullback = jax.vjp(
         lambda th: sol_op_jax(th, an, args_static),
         ad
-    )[1](g)[0]  # take only gradient w.r.t args_diff
+    )
+    return pullback(g)[0]
 
-    # vmap over the season dimension
-    return jax.vmap(single_vjp, in_axes=(0,0,0))(args_diff, gz, args_nodiff)
 
-# jit it
+def vjp_sol_op_multi(args_diff, gz, args_nodiff, args_static):
+
+    state_vjp = jax.vmap(
+        single_vjp,
+        in_axes=(0,0,0,None)
+    )
+
+    season_vjp = jax.vmap(
+        state_vjp,
+        in_axes=(0,0,0,None)
+    )
+
+    return season_vjp(args_diff, gz, args_nodiff, args_static)
+
+# jit the gradient 
 jitted_vjp_sol_op_multi = jax.jit(vjp_sol_op_multi, static_argnums=3)
-
 
 # Define the Op and VJPOp classes for the ODE problem
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -248,22 +271,23 @@ jitted_vjp_sol_op_multi = jax.jit(vjp_sol_op_multi, static_argnums=3)
 class SolOp(Op):
     def __init__(self, args_static):
         self.args_static = args_static
+        self.vjp_op = VJPSolOp(args_static)
 
     def make_node(self, args_diff, args_nodiff):
         args_diff = pt.as_tensor_variable(args_diff)
         args_nodiff = pt.as_tensor_variable(args_nodiff)
-        return Apply(self, [args_diff, args_nodiff], [pt.matrix()])
+        return Apply(self, [args_diff, args_nodiff], [pt.tensor3()])
 
     def perform(self, node, inputs, outputs):
         args_diff, args_nodiff = inputs
         ys = jitted_sol_op_multi(args_diff, args_nodiff, self.args_static)
-        outputs[0][0] = np.asarray(ys)
+        outputs[0][0] = np.asarray(ys, dtype=np.float64)
 
     def grad(self, inputs, output_grads):
         args_diff, args_nodiff = inputs
         (gz,) = output_grads
 
-        grad_wrt_args_diff = vjp_sol_op(args_diff, gz, args_nodiff)
+        grad_wrt_args_diff = self.vjp_sol_op(args_diff, gz, args_nodiff)
         grad_wrt_args_nodiff = pt.zeros_like(args_nodiff)  # block gradients
 
         return [grad_wrt_args_diff, grad_wrt_args_nodiff]
@@ -278,16 +302,14 @@ class VJPSolOp(Op):
             pt.as_tensor_variable(args_diff),   
             pt.as_tensor_variable(gz),         
             pt.as_tensor_variable(args_nodiff)  
-        ], [pt.matrix()])                      
+        ], [pt.tensor3()])                      
 
     def perform(self, node, inputs, outputs):
         args_diff, gz, args_nodiff = inputs
-
         # Use the new batched VJP
-        grad = vjp_sol_op_multi(args_diff, gz, args_nodiff, self.args_static)
-
+        grad = jitted_vjp_sol_op_multi(args_diff, gz, args_nodiff, self.args_static)
         # Convert to NumPy array for Theano
-        outputs[0][0] = np.asarray(grad)
+        outputs[0][0] = np.asarray(grad, dtype=np.float64)
 
 # Register with jax
 # ~~~~~~~~~~~~~~~~~
@@ -305,7 +327,7 @@ def vjp_sol_op_jax_funcify(op, **kwargs):
 # ~~~~~~~~~~~~~~~~~~
 
 # static arguments
-args_static = (start_simulation, max(ts[:,-1]), modifier_length, population)
+args_static = (start_simulation, max(ts[:,-1]), modifier_length)
 
 # Compile forward simulation model
 sol_op = SolOp(args_static)
@@ -329,63 +351,79 @@ args_diff = jnp.concatenate([
             ])
 args_diff = jnp.expand_dims(args_diff, 0).repeat(n_seasons, axis=0)
 
-# stack args_nodiff per season
-args_nodiff = [jnp.concatenate([jnp.array([1/3.5,]), jnp.array(ts[i,:])]) for i in range(n_seasons)]
-args_nodiff = np.array(jnp.stack(args_nodiff))
+# construct initial differentiable arguments vector
+## gradient safe transforms
+single_args_diff = jnp.concatenate([
+    jnp.array([jnp.log(jnp.exp(beta)-1),           # beta
+               jnp.log(jnp.exp(rho_h)-1),          # rho_h
+               jnp.log(jnp.exp(f_I)-1),            # f_I
+               jnp.log(f_R / (1 - f_R))]),         # f_R
+    jnp.arctanh(delta_beta_vals / 0.25)            # delta_beta
+])   # shape: (4 + n_modifiers,)
+## broadcast across seasons and states
+args_diff = jnp.broadcast_to(single_args_diff, (n_seasons, n_states, single_args_diff.shape[0])) # shape: (n_seasons, n_states, n_params)
 
+
+# stack args_nodiff so two leading axes are seasons, states and the third axes gives the arguments for the season-state combination
+gamma_vec = jnp.full((n_seasons, n_states, 1), gamma)
+pop_mat = jnp.broadcast_to(jnp.asarray(demo)[None, :, None], (n_seasons, n_states, 1))
+ts_mat = jnp.broadcast_to(ts[:, None, :], (n_seasons, n_states, ts.shape[1]))
+args_nodiff = jnp.concatenate([gamma_vec, pop_mat, ts_mat], axis=2)     # shape: (n_seasons, n_states, )
 
 # define SSE likelihood
 def neg_log_likelihood(args_diff):
     # 1. convert back to untransformed values
-    block_1 = jax.nn.softplus(args_diff[:, 0:3])  # beta, rho_h, f_I
-    block_2 = jnp.expand_dims(jax.nn.sigmoid(args_diff[:, 3]), axis=1)       # f_R
-    block_3 = 0.25 * jnp.tanh(args_diff[:, 4:])    # delta_beta
+    block_1 = jax.nn.softplus(args_diff[:, :, 0:3])        # beta, rho_h, f_I
+    block_2 = jax.nn.sigmoid(args_diff[:, :, 3:4])         # f_R
+    block_3 = 0.25 * jnp.tanh(args_diff[:, :, 4:])         # delta_beta
     # 2. pack blocks into args_diff
-    args_diff = jnp.concatenate([block_1, block_2, block_3], axis=1)
+    args_diff = jnp.concatenate([block_1, block_2, block_3], axis=2)
     # 3. run simulation
     pred = jitted_sol_op_multi(args_diff, args_nodiff, args_static)
-    # 3. compute SSE loss
+    # 4. compute SSE loss
     return jnp.sum((data - pred)**2)
-
 
 # optimize
 optimizer = optax.adam(1e-2)
 opt_state = optimizer.init(args_diff)
-for i in range(500):
+for i in range(800):
     loss, grads = jax.value_and_grad(neg_log_likelihood)(args_diff)
     updates, opt_state = optimizer.update(grads, opt_state)
     args_diff = optax.apply_updates(args_diff, updates)
     if i % 100 == 0:
-        print(i, float(loss))
+        print(i+100, float(loss))
 
 # convert back to untransformed values
-block_1 = jax.nn.softplus(args_diff[:, 0:3])  # beta, rho_h, f_I
-block_2 = jnp.expand_dims(jax.nn.sigmoid(args_diff[:, 3]), axis=1)       # f_R
-block_3 = 0.25 * jnp.tanh(args_diff[:, 4:])    # delta_beta
-args_diff = jnp.concatenate([block_1, block_2, block_3], axis=1)
+block_1 = jax.nn.softplus(args_diff[:, :, 0:3])         # beta, rho_h, f_I
+block_2 = jax.nn.sigmoid(args_diff[:, :, 3:4])          # f_R
+block_3 = 0.25 * jnp.tanh(args_diff[:, :, 4:])          # delta_beta
+args_diff = jnp.concatenate([block_1, block_2, block_3], axis=2)
 
 # run simulation
 out = jitted_sol_op_multi(args_diff, args_nodiff, args_static)
 
 # inspect result
-fig,ax=plt.subplots(nrows=n_seasons)
-for i in range(n_seasons):
-    ax[i].plot(ts[i,:], 7*out[i,:], color='red')
-    ax[i].scatter(ts[i,:], 7*data[i,:], marker='o', color='black')
-os.makedirs('trace', exist_ok=True)
-plt.savefig(f'trace/initial-optim.pdf')
-plt.close()
+for s in range(n_states):
+    fig, ax = plt.subplots(nrows=1, figsize=(8.7, 11.3/4))
+    for i in range(n_seasons):
+        ax.plot(dt[i, :], 7*out[i, s, :], color='red', label='pred')
+        ax.scatter(dt[i, :], 7*data[i, s, :], marker='o', color='black', label='obs')
+    fig.suptitle(f'{state_fips_index.iloc[s]['abbreviation_state']}')
+    fig.tight_layout()
+    os.makedirs('trace/initial-optim', exist_ok=True)
+    plt.savefig(f'trace/initial-optim/state_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf')
+    plt.close(fig)
 
 # store 1D vector per variable so we can start the chains easily
-beta_opt = np.expand_dims(np.array(args_diff[:,0]), axis=1)
-rho_h_opt = np.expand_dims(np.array(args_diff[:,1]), axis=1)
-f_I_opt = np.expand_dims(np.array(args_diff[:,2]), axis=1)
-f_R_opt = np.expand_dims(np.array(args_diff[:,3]), axis=1)
-delta_beta_opt = np.array(args_diff[:,4:])
+beta_opt = args_diff[:,:,0]
+rho_h_opt = args_diff[:,:,1]
+f_I_opt = args_diff[:,:,2]
+f_R_opt = args_diff[:,:,3]
+delta_beta_opt = args_diff[:,:,4:]
 delta_beta_mu_opt = np.mean(delta_beta_opt, axis=0)
-eta_opt = np.transpose(delta_beta_opt - delta_beta_mu_opt[None, :]) / np.sqrt(0.01)
-eta_opt = eta_opt[1:,:]
 
+import sys
+sys.exit()
 
 # Build tempored NB distribution
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

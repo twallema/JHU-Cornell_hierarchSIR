@@ -314,7 +314,6 @@ args_diff = jnp.expand_dims(args_diff, 0).repeat(n_seasons, axis=0)
 args_nodiff = [jnp.concatenate([jnp.array([1/3.5,]), jnp.array(ts[i,:])]) for i in range(n_seasons)]
 args_nodiff = np.array(jnp.stack(args_nodiff))
 
-
 # define SSE likelihood
 def neg_log_likelihood(args_diff):
     # 1. convert back to untransformed values
