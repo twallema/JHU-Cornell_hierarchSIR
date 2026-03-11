@@ -43,7 +43,7 @@ modifier_length = 7
 population = 11E6
 seasons = ['2023-2024', '2024-2025', '2025-2026']        # script works with only one season
 n_seasons = len(seasons)
-n_observations = 22
+n_observations = 23
 start_calibration_month = 10    # (year X)
 end_calibration_month = 3       # (year X+1)
 start_calibrations = [datetime(int(season[0:4]), start_calibration_month, 1) for season in seasons]
@@ -67,7 +67,7 @@ def get_data(start_calibrations, modifier_reference_dates, n_observations):
     # loop over seasons
     for i, (start_calibration, modifier_reference_date) in enumerate(zip(start_calibrations, modifier_reference_dates)):
         # get the data
-        df = pd.read_parquet(os.path.join(abs_dir, 'NHSN-HRD_reference-date-2026-03-07_gathered-2026-03-04-17-16-11.parquet.gzip'))
+        df = pd.read_parquet(os.path.join(abs_dir, 'NHSN-HRD_reference-date-2026-03-14_gathered-2026-03-11-18-20-58.parquet.gzip'))
         # convert date column to datetime and fips_state to int
         df['date'] = pd.to_datetime(df['date'], format='ISO8601')
         df['fips_state'] = df['fips_state'].astype(int)
@@ -469,10 +469,6 @@ def weighted_nb_logp(value, mu, alpha, weights):
     weights : season weights
         shape (n_seasons, n_states, 1)
     """
-    # align alpha with dimensions of value and mu
-    alpha = pt.shape_padleft(alpha, value.ndim - 2)
-    alpha = pt.shape_padright(alpha, 1)
-    # compute log likelihood
     return pt.sum(weights * pm.logp(pm.NegativeBinomial.dist(mu=mu, alpha=alpha), value))
 
 def weighted_nb_random(*args, rng=None, size=None):
@@ -567,7 +563,7 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001, shape=n_states)
+    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001)
     pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 # Sample pyMC model
@@ -575,7 +571,7 @@ with pm.Model() as model:
 
 with model:
     trace = pm.sample(3, tune=3, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 8},
-                     initvals=1*[{'alpha_inv': 0.01 * pt.ones(n_states), 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+                     initvals=1*[{'alpha_inv': 0.01, 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
 variables2plot = [
@@ -597,7 +593,7 @@ for var in variables2plot:
 
 # Build pair plots
 arviz.plot_pair(trace, var_names=["kappa", "phi", "omega", "psi"], divergences=True)
-plt.savefig('output/traces/pairplot-ARGARCH.png', dpi=300)
+plt.savefig('output/traces/pairplot-ARGARCH.pdf')
 plt.close()
 
 
@@ -637,43 +633,40 @@ for s in range(n_states):
     plt.savefig(f'output/modifiers/modifiers_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf')
     plt.close()
 
-import sys
-sys.exit()
 
-# Visualise delta_beta, z, sigma2 and eps per season
-for i, season in enumerate(seasons):
-    fig,ax=plt.subplots(nrows=4, figsize=(8.3, 11.7))
-    # across-season delta_beta trend
-    ax[0].plot(range(n_modifiers), trace.posterior['delta_beta_mu'].median(dim=['chain', 'draw']).values, color='green')
-    ax[0].fill_between(range(n_modifiers),
-                    trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.025).values,
-                    trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.975).values,
-                    color='green', alpha=0.15)
-    # within-season delta_beta, z, sigma2, eps
-    for j, par in enumerate(['delta_beta', 'z', 'sigma2', 'eps']):
-        ax[j].plot(range(n_modifiers), trace.posterior[par].median(dim=['chain', 'draw']).values[i,:], color='black', linewidth=0.5)
-        ax[j].fill_between(range(n_modifiers),
-                trace.posterior[par].quantile(dim=['chain', 'draw'], q=0.025).values[i,:],
-                trace.posterior[par].quantile(dim=['chain', 'draw'], q=0.975).values[i,:],
-                color='black', alpha=0.15)
-        ax[j].set_ylabel(par)
-    ax[0].set_title(season)
-    plt.savefig(f'output/AR-GARCH_pars/{season}_AR-GARCH_pars.pdf')
-    plt.close()
+# Visualise goodness-of-fit, delta_beta, z, sigma2 and eps per state and per season
+for s in range(n_states):
+    os.makedirs(f'output/goodness-fit/{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}/', exist_ok=True)
+    for i, season in enumerate(seasons):
+        
+        fig,ax=plt.subplots(nrows=5, figsize=(8.3, 11.7))
+        # observed versus modeled
+        ax[0].plot(dt[i, :], posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values[i,s,:], linewidth=1, color='green')
+        ax[0].fill_between(dt[i, :],
+                        posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.025).values[i,s,:],
+                        posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.975).values[i,s,:],
+                        color='green', alpha=0.1)
+        ax[0].fill_between(dt[i, :],
+                        posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.25).values[i,s,:],
+                        posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.75).values[i,s,:],
+                        color='green', alpha=0.2)
+        ax[0].scatter(dt[i, :], posterior_predictive.observed_data['data'].values[i,s,:], marker='o', color='black')
 
-# Visualise goodnes-of-fit
-fig,ax=plt.subplots(nrows=n_seasons, sharex=True, figsize=(8.3, 11.7/5*n_seasons))
-for i in range(n_seasons):
-    ax[i].plot(ts[i, :], posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values[i,:], linewidth=1, color='green')
-    ax[i].fill_between(ts[i, :],
-                    posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.025).values[i,:],
-                    posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.975).values[i,:],
-                    color='green', alpha=0.1)
-    ax[i].fill_between(ts[i, :],
-                    posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.25).values[i,:],
-                    posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.75).values[i,:],
-                    color='green', alpha=0.2)
-    ax[i].scatter(ts[i, :], posterior_predictive.observed_data['data'].values[i,:], marker='o', color='black')
-    ax[i].set_title(seasons[i])
-plt.savefig(f'trace/plot-fit.pdf')
-plt.close()
+        # across-season delta_beta trend
+        ax[1].plot(range(n_modifiers), trace.posterior['delta_beta_mu'].median(dim=['chain', 'draw']).values[:,s], color='green')
+        ax[1].fill_between(range(n_modifiers),
+                        trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.025).values[:,s],
+                        trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.975).values[:,s],
+                        color='green', alpha=0.15)
+        
+        # within-season delta_beta, z, sigma2, eps
+        for j, par in enumerate(['delta_beta', 'z', 'sigma2', 'eps']):
+            ax[j+1].plot(range(n_modifiers), trace.posterior[par].median(dim=['chain', 'draw']).values[:,i,s], color='black', linewidth=0.5)
+            ax[j+1].fill_between(range(n_modifiers),
+                    trace.posterior[par].quantile(dim=['chain', 'draw'], q=0.025).values[:,i,s],
+                    trace.posterior[par].quantile(dim=['chain', 'draw'], q=0.975).values[:,i,s],
+                    color='black', alpha=0.15)
+            ax[j+1].set_ylabel(par)
+        ax[0].set_title(season)
+        plt.savefig(f'output/goodness-fit/{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}/{season}_goodness-fit.pdf')
+        plt.close()
