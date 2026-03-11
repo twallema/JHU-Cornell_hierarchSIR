@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 # pyMC / pytensor
 import pymc as pm
@@ -397,7 +398,7 @@ for i in range(300):
 block_1 = jax.nn.softplus(args_diff[:, :, 0:3])         # beta, rho_h, f_I
 block_2 = jax.nn.sigmoid(args_diff[:, :, 3:4])          # f_R
 block_3 = 0.25 * jnp.tanh(args_diff[:, :, 4:])          # delta_beta
-args_diff = np.array(jnp.concatenate([block_1, block_2, block_3], axis=2))  # also back to numpy otherwise initial point will fail
+args_diff = jnp.concatenate([block_1, block_2, block_3], axis=2)  # also back to numpy otherwise initial point will fail
 
 # run simulation
 out = jitted_sol_op_multi(args_diff, args_nodiff, args_static)
@@ -410,17 +411,17 @@ for s in range(n_states):
         ax.scatter(dt[i, :], 7*data[i, s, :], marker='o', color='black', label='obs')
     fig.suptitle(f'{state_fips_index.iloc[s]['abbreviation_state']}')
     fig.tight_layout()
-    os.makedirs('trace/initial-optim', exist_ok=True)
-    plt.savefig(f'trace/initial-optim/state_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf')
+    os.makedirs('output/initial-optim', exist_ok=True)
+    plt.savefig(f'output/initial-optim/state_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf')
     plt.close(fig)
 
 # store 1D vector per variable so we can start the chains easily
-beta_opt = args_diff[:,:,0]
-rho_h_opt = args_diff[:,:,1]
-f_I_opt = args_diff[:,:,2]
-f_R_opt = args_diff[:,:,3]
-delta_beta_opt = args_diff[:,:,4:]
-delta_beta_mu_opt = np.mean(delta_beta_opt, axis=0)
+beta_opt = np.array(args_diff[:,:,0])
+rho_h_opt = np.array(args_diff[:,:,1])
+f_I_opt = np.array(args_diff[:,:,2])
+f_R_opt = np.array(args_diff[:,:,3])
+delta_beta_opt = np.array(args_diff[:,:,4:])
+delta_beta_mu_opt = np.transpose(np.mean(delta_beta_opt, axis=0))
 
 
 # Build tempored NB distribution
@@ -463,10 +464,15 @@ def weighted_nb_logp(value, mu, alpha, weights):
         shape (n_seasons, n_states, observations)
 
     alpha : NB dispersion parameter
+        shape (n_states,)
 
     weights : season weights
         shape (n_seasons, n_states, 1)
     """
+    # align alpha with dimensions of value and mu
+    alpha = pt.shape_padleft(alpha, value.ndim - 2)
+    alpha = pt.shape_padright(alpha, 1)
+    # compute log likelihood
     return pt.sum(weights * pm.logp(pm.NegativeBinomial.dist(mu=mu, alpha=alpha), value))
 
 def weighted_nb_random(*args, rng=None, size=None):
@@ -561,15 +567,14 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001)
+    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001, shape=n_states)
     pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    # NUTS
-    trace = pm.sample(10, tune=10, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 8},
+    trace = pm.sample(3, tune=3, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 8},
                      initvals=1*[{'alpha_inv': 0.01 * pt.ones(n_states), 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
 
 # Generate traces
@@ -584,15 +589,15 @@ variables2plot = [
                 ]
 
 # Save original traces
-os.makedirs('trace', exist_ok=True)
+os.makedirs('output/traces', exist_ok=True)
 for var in variables2plot:
     arviz.plot_trace(trace, var_names=[var]) 
-    plt.savefig(f'trace/trace-{var}.pdf')
+    plt.savefig(f'output/traces/trace-{var}.pdf')
     plt.close()
 
 # Build pair plots
 arviz.plot_pair(trace, var_names=["kappa", "phi", "omega", "psi"], divergences=True)
-plt.savefig('trace/pairplot-ARGARCH.png', dpi=300)
+plt.savefig('output/traces/pairplot-ARGARCH.png', dpi=300)
 plt.close()
 
 
@@ -604,23 +609,36 @@ with model:
     posterior_predictive = pm.sample_posterior_predictive(trace)
 
 # Save traces and posterior predictive
-arviz.to_netcdf(trace, "trace/trace.nc")
-arviz.to_netcdf(posterior_predictive, "trace/posterior_predictive.nc")
+arviz.to_netcdf(trace, "output/trace.nc")
+arviz.to_netcdf(posterior_predictive, "output/posterior_predictive.nc")
 
-# Visualise across-season modifier trend + within-season median
-fig,ax=plt.subplots(figsize=(8.3, 11.7/5))
-# average trend
-ax.plot(range(n_modifiers), trace.posterior['delta_beta_mu'].median(dim=['chain', 'draw']).values, color='green')
-ax.fill_between(range(n_modifiers),
-                trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.025).values,
-                trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.975).values,
-                color='green', alpha=0.15)
-# individual seasons
-for i in range(n_seasons):
-    ax.plot(range(n_modifiers), trace.posterior['delta_beta'].median(dim=['chain', 'draw']).values[i,:], color='black', alpha=0.3, linewidth=0.5)
-ax.axhline(y=0, color='red', linewidth=0.5)
-plt.savefig(f'trace/modifiers.pdf')
-plt.close()
+# Visualise across-season modifier trend + within-season median per state
+os.makedirs('output/modifiers', exist_ok=True)
+# make dates
+x = pd.date_range(start=datetime(2000,10,15), periods=n_modifiers, freq='W')
+for s in range(n_states):
+    fig,ax=plt.subplots(figsize=(8.3, 11.7/5))
+    # average trend
+    ax.plot(x, 1+trace.posterior['delta_beta_mu'].median(dim=['chain', 'draw']).values[:,s], color='green')
+    ax.fill_between(x,
+                    1+trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.025).values[:,s],
+                    1+trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.975).values[:,s],
+                    color='green', alpha=0.15)
+    # individual seasons
+    for i in range(n_seasons):
+        ax.plot(x, 1+trace.posterior['delta_beta'].median(dim=['chain', 'draw']).values[:,i,s], color='black', alpha=0.3, linewidth=0.5)
+    ax.axhline(y=1, color='red', linewidth=0.5)
+    # decorations
+    fig.suptitle(f'{state_fips_index.iloc[s]['abbreviation_state']}')
+    ax.set_ylabel(r'$\Delta \beta_t$')
+    ax.set_ylim([0.7, 1.3])
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+    plt.savefig(f'output/modifiers/modifiers_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf')
+    plt.close()
+
+import sys
+sys.exit()
 
 # Visualise delta_beta, z, sigma2 and eps per season
 for i, season in enumerate(seasons):
@@ -640,7 +658,7 @@ for i, season in enumerate(seasons):
                 color='black', alpha=0.15)
         ax[j].set_ylabel(par)
     ax[0].set_title(season)
-    plt.savefig(f'trace/{season}_AR-GARCH_pars.pdf')
+    plt.savefig(f'output/AR-GARCH_pars/{season}_AR-GARCH_pars.pdf')
     plt.close()
 
 # Visualise goodnes-of-fit
