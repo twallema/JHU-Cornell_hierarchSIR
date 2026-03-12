@@ -25,14 +25,41 @@ import optax
 # all paths defined relative to this file
 abs_dir = os.path.dirname(__file__)
 
+# global parameters go here
 gamma = 1/3.5
+regions = ['New England', 'Middle Atlantic']
 
 # Get US demographics
 # ~~~~~~~~~~~~~~~~~~~
 
-state_fips_index = pd.read_csv(os.path.join(abs_dir, 'demography.csv'))[['abbreviation_state', 'name_state', 'fips_state']]
-demo = pd.read_csv(os.path.join(abs_dir, 'demography.csv'))['population'].values
-n_states = len(state_fips_index)
+def get_demography(regions=None):
+    """
+    input
+    -----
+
+    regions: list
+        A list containing the regions 
+    
+    output
+    ------
+
+    state_fips_index: pd.DataFrame
+        contains the abbreviation, name and fips code of states
+    
+    demography: np.ndarray
+        contains the corresponding population
+    """
+    # get data
+    demo = pd.read_csv(os.path.join(abs_dir, 'demography.csv'))
+    # slice out right regions
+    if regions:
+        demo = demo[demo['region_name'].isin(regions)]
+    # return index and demography
+    return demo[['abbreviation_state', 'name_state', 'fips_state']], demo['population'].values
+
+state_fips_index, demo = get_demography(regions)
+n_states = len(demo)
+
 
 # Get US incidences
 # ~~~~~~~~~~~~~~~~~
@@ -50,7 +77,7 @@ start_calibrations = [datetime(int(season[0:4]), start_calibration_month, 1) for
 modifier_reference_dates = [datetime(int(season[0:4]), 10, 15) for season in seasons]
 start_simulation = -15 # (October 1)
 
-def get_data(start_calibrations, modifier_reference_dates, n_observations):
+def get_data(start_calibrations, modifier_reference_dates, n_observations, state_fips=None):
     """
     A function formatting the model's input data
 
@@ -71,6 +98,8 @@ def get_data(start_calibrations, modifier_reference_dates, n_observations):
         # convert date column to datetime and fips_state to int
         df['date'] = pd.to_datetime(df['date'], format='ISO8601')
         df['fips_state'] = df['fips_state'].astype(int)
+        # slice out states of interest
+        df = df[df['fips_state'].isin(state_fips)]
         # slice out variables of interest
         df = df[['date', 'fips_state', 'influenza admissions']]
         # trim temporally
@@ -90,20 +119,11 @@ def get_data(start_calibrations, modifier_reference_dates, n_observations):
     return data/7, dates, timesteps
 
 # get the data
-data, dt, ts = get_data(start_calibrations, modifier_reference_dates, n_observations) # (n_season, n_variables, n_observations)
+data, dt, ts = get_data(start_calibrations, modifier_reference_dates, n_observations, state_fips_index['fips_state'].values) # (n_season, n_variables, n_observations)
 
 
 # Define a jax-jitted diffrax differential equation model
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# jax-compatible gaussian smoother
-def smooth_with_gaussian(vec, sigma=2.0):
-    window_size = 15
-    # Build a Gaussian kernel
-    x = jnp.linspace(-3, 3, window_size)
-    kern = jnp.exp(-0.5 * (x/sigma)**2)
-    kern = kern / kern.sum()
-    return convolve(vec, kern, mode="same")
 
 # define delta_beta[t] modifier function
 def make_delta_beta_daily(delta_beta, duration, t0, t1, sigma=2.5):
@@ -589,11 +609,11 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(25, tune=5, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 6},
+    trace = pm.sample(20, tune=10, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 6},
                      initvals=1*[{'z_alpha': (0.003 / 0.001) * pt.ones(n_states), 'z_delta': delta_beta_mu_opt / 0.1, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R_raw': pm.math.logit(f_R_opt)},])
 
 # burn some more off
-n_burn = 0
+n_burn = 250
 trace = trace.isel(draw=slice(n_burn, None))
 
 # Generate traces
