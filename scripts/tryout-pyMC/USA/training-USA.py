@@ -536,6 +536,9 @@ with pm.Model() as model:
 
     # Hyperparameters '<parameter>_<level>_<type>' with level: {global, state, season} and type: {mean, sd, offset}
 
+    ## transmission coefficient: beta (fixed)
+    beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons, n_states)))
+
     ## ascertainment: rho
     ### global
     log_rho_global_mean = pm.Normal("log_rho_global_mean", mu=np.log(np.mean(rho_opt)), sigma=1/3)    
@@ -580,9 +583,6 @@ with pm.Model() as model:
     fR_season_raw = pm.Normal("fR_season_raw", 0, 1, shape=(n_seasons, n_states))
     logit_fR = logit_fR_state[None, :] + fR_season_sd * fR_season_raw
     fR = pm.Deterministic("fR", pm.math.sigmoid(logit_fR))
-
-    ## transmission coefficient: beta (fixed)
-    beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons, n_states)))
 
     # ------- AR-GARCH modifiers -----------
 
@@ -640,8 +640,8 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(25, tune=6, chains=2, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 7},
-                     initvals=2*[{'alpha_inv': 0.003 * pt.ones(n_states), 'z_delta': delta_beta_mu_opt / 0.1, 'log_rho_global_mean': np.log(np.mean(rho_opt)), 'log_fI_global_mean': np.log(np.mean(fI_opt)), 'logit_fR_global_mean':  pm.math.logit(np.mean(fR_opt))},])
+    trace = pm.sample(4, tune=6, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 7},
+                     initvals=1*[{'alpha_inv': 0.01 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1, 'log_rho_global_mean': np.log(np.mean(rho_opt)), 'log_fI_global_mean': np.log(np.mean(fI_opt)), 'logit_fR_global_mean':  pm.math.logit(np.mean(fR_opt))},])
 
 # burn some more off
 n_burn = 0
@@ -689,10 +689,10 @@ x = pd.date_range(start=datetime(2000,10,15), periods=n_modifiers, freq='W')
 for s in range(n_states):
     fig,ax=plt.subplots(figsize=(8.3, 11.7/5))
     # average trend
-    ax.plot(x, 1+trace.posterior['delta_beta_mu'].median(dim=['chain', 'draw']).values[:,s], color='green')
+    ax.plot(x, 1+trace.posterior['delta_beta_state_mean'].median(dim=['chain', 'draw']).values[:,s], color='green')
     ax.fill_between(x,
-                    1+trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.025).values[:,s],
-                    1+trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.975).values[:,s],
+                    1+trace.posterior['delta_beta_state_mean'].quantile(dim=['chain', 'draw'], q=0.025).values[:,s],
+                    1+trace.posterior['delta_beta_state_mean'].quantile(dim=['chain', 'draw'], q=0.975).values[:,s],
                     color='green', alpha=0.15)
     # individual seasons
     for i in range(n_seasons):
@@ -727,10 +727,10 @@ for s in range(n_states):
         ax[0].scatter(dt[i, :], posterior_predictive.observed_data['data'].values[i,s,:], marker='o', color='black')
 
         # across-season delta_beta trend
-        ax[1].plot(range(n_modifiers), trace.posterior['delta_beta_mu'].median(dim=['chain', 'draw']).values[:,s], color='green')
+        ax[1].plot(range(n_modifiers), trace.posterior['delta_beta_state_mean'].median(dim=['chain', 'draw']).values[:,s], color='green')
         ax[1].fill_between(range(n_modifiers),
-                        trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.025).values[:,s],
-                        trace.posterior['delta_beta_mu'].quantile(dim=['chain', 'draw'], q=0.975).values[:,s],
+                        trace.posterior['delta_beta_state_mean'].quantile(dim=['chain', 'draw'], q=0.025).values[:,s],
+                        trace.posterior['delta_beta_state_mean'].quantile(dim=['chain', 'draw'], q=0.975).values[:,s],
                         color='green', alpha=0.15)
         
         # within-season delta_beta, z, sigma2, eps
