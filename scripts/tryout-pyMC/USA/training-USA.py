@@ -515,10 +515,13 @@ with pm.Model() as model:
 
     # Hyperparameters
     log_rho_h_mu = pm.Normal('log_rho_h_mu', mu=np.log(np.mean(rho_h_opt)), sigma=1.0)
+    rho_h_mu = pm.Deterministic('rho_h_mu', pt.exp(log_rho_h_mu))
     rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
     log_f_I_mu = pm.Normal('log_f_I_mu', mu=np.log(np.mean(f_I_opt)), sigma=1.0)
+    f_I_mu = pm.Deterministic('f_I_mu', pt.exp(log_f_I_mu))
     f_I_sigma = pm.HalfNormal('f_I_sigma', sigma=1/3)
     logit_f_R_mu = pm.Normal("logit_f_R_mu", mu=pm.math.logit(0.4), sigma=1.0)
+    f_R_mu = pm.Deterministic("f_R_mu", pm.math.sigmoid(logit_f_R_mu))
     sigma_f_R = pm.HalfNormal("sigma_f_R", sigma=1/3)           
 
     # Differentiable parameters
@@ -532,7 +535,8 @@ with pm.Model() as model:
 
     # Hyperparameter for delta_beta_temporal
     z_delta = pm.Normal("z_delta", mu=0, sigma=1, shape=(n_modifiers, n_states))
-    delta_beta_mu = pm.Deterministic("delta_beta_mu", 0.1 * z_delta)
+    delta_beta_mu_sigma = pm.HalfNormal("delta_beta_mu_sigma", sigma=0.3/3)
+    delta_beta_mu = pm.Deterministic("delta_beta_mu", delta_beta_mu_sigma * z_delta)
 
     # --- AR(1) kernel ---
     # Initial position
@@ -544,7 +548,7 @@ with pm.Model() as model:
     eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers, n_seasons, n_states))
     
     # --- GARCH(1,1) parameters ---                                                                             TO DISABLE GARCH:
-    omega = pm.HalfNormal("omega", sigma=0.01/3)
+    omega = pm.HalfNormal("omega", sigma=0.01/3, shape=n_states)
     kappa = pm.Beta("kappa", 3, 1)                                                              
     phi = pm.Beta("phi", 3, 1)                                                                  
     a_garch = pm.Deterministic("a_garch", kappa * phi)                                                          # (a_garch = pt.constant(0.0))
@@ -585,16 +589,16 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(50, tune=5, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 5},
+    trace = pm.sample(20, tune=5, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 5},
                      initvals=1*[{'z_alpha': (0.01 / 0.001) * pt.ones(n_states), 'z_delta': delta_beta_mu_opt / 0.1, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R_raw': pm.math.logit(f_R_opt)},])
 
 # Generate traces
 variables2plot = [
                 'alpha_inv',                                            # overdispersion
-                'log_rho_h_mu', 'rho_h_sigma', 'rho_h',                 # rho_h
-                'log_f_I_mu', 'f_I_sigma', 'f_I',                       # f_I
-                'logit_f_R_mu', 'sigma_f_R', 'f_R',                     # f_R
-                'delta_beta_mu',                                        # delta_beta_mu
+                'rho_h_mu', 'rho_h_sigma', 'rho_h',                     # rho_h
+                'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
+                'f_R_mu', 'sigma_f_R', 'f_R',                           # f_R
+                'delta_beta_mu', 'delta_beta_mu_sigma',                 # delta_beta_mu
                 'psi', 'omega', 'kappa', 'phi',                         # AR-GARCH parameters
                 'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_sigma',
                 ]
