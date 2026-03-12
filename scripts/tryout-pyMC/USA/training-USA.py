@@ -535,8 +535,7 @@ with pm.Model() as model:
 
     # Hyperparameter for delta_beta_temporal
     z_delta = pm.Normal("z_delta", mu=0, sigma=1, shape=(n_modifiers, n_states))
-    delta_beta_mu_sigma = pm.HalfNormal("delta_beta_mu_sigma", sigma=0.3/3)
-    delta_beta_mu = pm.Deterministic("delta_beta_mu", delta_beta_mu_sigma * z_delta)
+    delta_beta_mu = pm.Deterministic("delta_beta_mu", 0.1 * z_delta)
 
     # --- AR(1) kernel ---
     # Initial position
@@ -598,7 +597,7 @@ variables2plot = [
                 'rho_h_mu', 'rho_h_sigma', 'rho_h',                     # rho_h
                 'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
                 'f_R_mu', 'sigma_f_R', 'f_R',                           # f_R
-                'delta_beta_mu', 'delta_beta_mu_sigma',                 # delta_beta_mu
+                'delta_beta_mu',                                        # delta_beta_mu
                 'psi', 'omega', 'kappa', 'phi',                         # AR-GARCH parameters
                 'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_sigma',
                 ]
