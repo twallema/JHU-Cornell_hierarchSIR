@@ -415,7 +415,7 @@ for s in range(n_states):
     plt.savefig(f'output/initial-optim/state_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf')
     plt.close(fig)
 
-# store 1D vector per variable so we can start the chains easily
+# store 2D vector per variable so we can start the chains easily
 beta_opt = np.array(args_diff[:,:,0])
 rho_h_opt = np.array(args_diff[:,:,1])
 f_I_opt = np.array(args_diff[:,:,2])
@@ -423,6 +423,8 @@ f_R_opt = np.array(args_diff[:,:,3])
 delta_beta_opt = np.array(args_diff[:,:,4:])
 delta_beta_mu_opt = np.transpose(np.mean(delta_beta_opt, axis=0))
 
+print(np.mean(rho_h_opt))
+print(np.mean(f_I_opt))
 
 # Build tempored NB distribution
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -512,25 +514,25 @@ def step(eta_t, prev_z, prev_sigma2, prev_eps, psi, omega, a_garch, b_garch):
 with pm.Model() as model:
 
     # Hyperparameters
-    rho_h_mu = pm.Uniform('rho_h_mu', lower=1e-4, upper=1e-2)
+    log_rho_h_mu = pm.Normal('log_rho_h_mu', mu=np.log(np.mean(rho_h_opt)), sigma=1.0)
     rho_h_sigma = pm.HalfNormal('rho_h_sigma', sigma=1/3)
-    f_I_mu = pm.Uniform('f_I_mu', lower=1e-7, upper=1e-3)
+    log_f_I_mu = pm.Normal('log_f_I_mu', mu=np.log(np.mean(f_I_opt)), sigma=1.0)
     f_I_sigma = pm.HalfNormal('f_I_sigma', sigma=1/3)
-    f_R_mu = pm.Beta("f_R_mu", alpha=10, beta=15)
-    f_R_kappa_inv = pm.HalfNormal("f_R_kappa_inv", sigma=0.1)
-    f_R_a = pm.Deterministic("f_R_a", f_R_mu * (1/f_R_kappa_inv))
-    f_R_b  = pm.Deterministic("f_R_b", (1 - f_R_mu) * (1/f_R_kappa_inv))
+    logit_f_R_mu = pm.Normal("logit_f_R_mu", mu=pm.math.logit(0.4), sigma=1.0)
+    sigma_f_R = pm.HalfNormal("sigma_f_R", sigma=1/3)           
 
     # Differentiable parameters
     beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons, n_states)))
-    rho_h = pm.LogNormal("rho_h", mu=pt.log(rho_h_mu), sigma=rho_h_sigma, size=(n_seasons, n_states))
-    f_I = pm.LogNormal("f_I", mu=pt.log(f_I_mu), sigma=f_I_sigma, size=(n_seasons, n_states))
-    f_R = pm.Beta("f_R", alpha=f_R_a, beta=f_R_b, size=(n_seasons, n_states))
+    rho_h = pm.LogNormal("rho_h", mu=log_rho_h_mu, sigma=rho_h_sigma, size=(n_seasons, n_states))
+    f_I = pm.LogNormal("f_I", mu=log_f_I_mu, sigma=f_I_sigma, size=(n_seasons, n_states))
+    f_R_raw = pm.Normal("f_R_raw", mu=logit_f_R_mu, sigma=sigma_f_R, shape=(n_seasons, n_states))
+    f_R = pm.Deterministic("f_R", pm.math.sigmoid(f_R_raw))
 
     # ------- AR-GARCH modifiers -----------
 
     # Hyperparameter for delta_beta_temporal
-    delta_beta_mu = pm.Normal("delta_beta_mu", mu=0, sigma=0.1, shape=(n_modifiers, n_states))
+    z_delta = pm.Normal("z_delta", mu=0, sigma=1, shape=(n_modifiers, n_states))
+    delta_beta_mu = pm.Deterministic("delta_beta_mu", 0.1 * z_delta)
 
     # --- AR(1) kernel ---
     # Initial position
@@ -575,22 +577,23 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    alpha_inv = pm.HalfNormal("alpha_inv", sigma=0.001, shape=n_states)
+    z_alpha = pm.Normal("z_alpha", mu=0, sigma=1, shape=n_states)
+    alpha_inv = pm.Deterministic("alpha_inv", 0.001 * z_alpha)
     pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(15, tune=15, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 8},
-                     initvals=1*[{'alpha_inv': 0.01 * pt.ones(n_states), 'delta_beta_mu': delta_beta_mu_opt, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R': f_R_opt},])
+    trace = pm.sample(50, tune=5, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 5},
+                     initvals=1*[{'z_alpha': (0.01 / 0.001) * pt.ones(n_states), 'z_delta': delta_beta_mu_opt / 0.1, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R_raw': pm.math.logit(f_R_opt)},])
 
 # Generate traces
 variables2plot = [
                 'alpha_inv',                                            # overdispersion
-                'rho_h_mu', 'rho_h_sigma', 'rho_h',                     # rho_h
-                'f_R_mu', 'f_R_kappa_inv', 'f_R_a', 'f_R_b', 'f_R',     # f_R
-                'f_I_mu', 'f_I_sigma', 'f_I',                           # f_I
+                'log_rho_h_mu', 'rho_h_sigma', 'rho_h',                 # rho_h
+                'log_f_I_mu', 'f_I_sigma', 'f_I',                       # f_I
+                'logit_f_R_mu', 'sigma_f_R', 'f_R',                     # f_R
                 'delta_beta_mu',                                        # delta_beta_mu
                 'psi', 'omega', 'kappa', 'phi',                         # AR-GARCH parameters
                 'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_sigma',
