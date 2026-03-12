@@ -203,8 +203,8 @@ def sol_op_jax(args_diff, args_nodiff, args_static):
     # unpack differentiable parameters
     beta = args_diff[0]
     rho = args_diff[1]
-    f_I = args_diff[2]
-    f_R = args_diff[3]
+    fI = args_diff[2]
+    fR = args_diff[3]
     delta_beta = args_diff[4:]
     # unpack non-differentiable parameters and block their gradients
     args_nodiff = stop_gradients(args_nodiff)
@@ -224,7 +224,7 @@ def sol_op_jax(args_diff, args_nodiff, args_static):
         t0=t0,
         t1=t1_max,
         dt0=0.1,
-        y0=population * jnp.array([1-f_I-f_R, f_I, f_R, 0]),
+        y0=population * jnp.array([1-fI-fR, fI, fR, 0]),
         args = (beta, delta_beta_daily, gamma, rho),
         saveat=diffrax.SaveAt(ts=list(ts)),
         stepsize_controller=diffrax.PIDController(rtol=1e-4, atol=1e-4)
@@ -361,13 +361,13 @@ vjp_sol_op = VJPSolOp(args_static)
 # args diff initial guesses (ballpark estimates)
 beta = 0.455
 rho = 0.0025
-f_I = 1e-4
-f_R = 0.25
+fI = 1e-4
+fR = 0.25
 delta_beta_vals = jnp.zeros(n_modifiers)
 
 # compute gradient-safe transformations
 args_diff = jnp.concatenate([
-                jnp.array([jnp.log(jnp.exp(beta) - 1), jnp.log(jnp.exp(rho) - 1), jnp.log(jnp.exp(f_I) - 1), jnp.log(f_R / (1 - f_R))]),
+                jnp.array([jnp.log(jnp.exp(beta) - 1), jnp.log(jnp.exp(rho) - 1), jnp.log(jnp.exp(fI) - 1), jnp.log(fR / (1 - fR))]),
                 jnp.arctanh(delta_beta_vals / 0.25)
             ])
 args_diff = jnp.expand_dims(args_diff, 0).repeat(n_seasons, axis=0)
@@ -377,8 +377,8 @@ args_diff = jnp.expand_dims(args_diff, 0).repeat(n_seasons, axis=0)
 single_args_diff = jnp.concatenate([
     jnp.array([jnp.log(jnp.exp(beta)-1),           # beta
                jnp.log(jnp.exp(rho)-1),          # rho
-               jnp.log(jnp.exp(f_I)-1),            # f_I
-               jnp.log(f_R / (1 - f_R))]),         # f_R
+               jnp.log(jnp.exp(fI)-1),            # fI
+               jnp.log(fR / (1 - fR))]),         # fR
     jnp.arctanh(delta_beta_vals / 0.25)            # delta_beta
 ])   # shape: (4 + n_modifiers,)
 ## broadcast across seasons and states
@@ -394,8 +394,8 @@ args_nodiff = np.array(jnp.concatenate([gamma_vec, pop_mat, ts_mat], axis=2))   
 # define SSE likelihood
 def neg_log_likelihood(args_diff):
     # 1. convert back to untransformed values
-    block_1 = jax.nn.softplus(args_diff[:, :, 0:3])        # beta, rho, f_I
-    block_2 = jax.nn.sigmoid(args_diff[:, :, 3:4])         # f_R
+    block_1 = jax.nn.softplus(args_diff[:, :, 0:3])        # beta, rho, fI
+    block_2 = jax.nn.sigmoid(args_diff[:, :, 3:4])         # fR
     block_3 = 0.25 * jnp.tanh(args_diff[:, :, 4:])         # delta_beta
     # 2. pack blocks into args_diff
     args_diff = jnp.concatenate([block_1, block_2, block_3], axis=2)
@@ -415,8 +415,8 @@ for i in range(300):
         print(i+100, float(loss))
 
 # convert back to untransformed values
-block_1 = jax.nn.softplus(args_diff[:, :, 0:3])         # beta, rho, f_I
-block_2 = jax.nn.sigmoid(args_diff[:, :, 3:4])          # f_R
+block_1 = jax.nn.softplus(args_diff[:, :, 0:3])         # beta, rho, fI
+block_2 = jax.nn.sigmoid(args_diff[:, :, 3:4])          # fR
 block_3 = 0.25 * jnp.tanh(args_diff[:, :, 4:])          # delta_beta
 args_diff = jnp.concatenate([block_1, block_2, block_3], axis=2)  # also back to numpy otherwise initial point will fail
 
@@ -438,13 +438,13 @@ for s in range(n_states):
 # store 2D vector per variable so we can start the chains easily
 beta_opt = np.array(args_diff[:,:,0])
 rho_opt = np.array(args_diff[:,:,1])
-f_I_opt = np.array(args_diff[:,:,2])
-f_R_opt = np.array(args_diff[:,:,3])
+fI_opt = np.array(args_diff[:,:,2])
+fR_opt = np.array(args_diff[:,:,3])
 delta_beta_opt = np.array(args_diff[:,:,4:])
 delta_beta_mu_opt = np.transpose(np.mean(delta_beta_opt, axis=0))
 
 print(np.mean(rho_opt))
-print(np.mean(f_I_opt))
+print(np.mean(fI_opt))
 
 # Build tempored NB distribution
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -535,36 +535,60 @@ def step(eta_t, prev_z, prev_sigma2, prev_eps, psi, omega, a_garch, b_garch):
 with pm.Model() as model:
 
     # Hyperparameters '<parameter>_<level>_<type>' with level: {global, state, season} and type: {mean, sd, offset}
-    ## acertainment: rho
+
+    ## ascertainment: rho
+    ### global
     log_rho_global_mean = pm.Normal("log_rho_global_mean", mu=np.log(np.mean(rho_opt)), sigma=1/3)    
     rho_global_mean = pm.Deterministic("rho_global_mean", pt.exp(log_rho_global_mean))
-    rho_state_sd = pm.HalfNormal("rho_state_sd", sigma=1/10)      
+    ### state
+    rho_state_sd = pm.HalfNormal("rho_state_sd", sigma=1/5)      
     rho_state_raw = pm.Normal("rho_state_raw", 0, 1, shape=n_states)
     log_rho_state = pm.Deterministic("log_rho_state", log_rho_global_mean + rho_state_sd * rho_state_raw)
     rho_state = pm.Deterministic("rho_state", pt.exp(log_rho_state))
-    rho_season_sd = pm.HalfNormal("rho_season_sd", sigma=1/3)
+    ### season
+    rho_season_sd = pm.HalfNormal("rho_season_sd", sigma=1/10)
     rho_season_raw = pm.Normal("rho_season_raw", 0, 1, shape=(n_seasons, n_states))
     log_rho = log_rho_state[None, :] + rho_season_sd * rho_season_raw
     rho = pm.Deterministic("rho", pt.exp(log_rho))
+
     ## initial infected: fI
-    log_f_I_mu = pm.Normal('log_f_I_mu', mu=np.log(np.mean(f_I_opt)), sigma=1.0)
-    f_I_mu = pm.Deterministic('f_I_mu', pt.exp(log_f_I_mu))
-    f_I_sigma = pm.HalfNormal('f_I_sigma', sigma=1/3)
-    f_I = pm.LogNormal("f_I", mu=log_f_I_mu, sigma=f_I_sigma, size=(n_seasons, n_states))
+    ### global
+    log_fI_global_mean = pm.Normal("log_fI_global_mean", mu=np.log(np.mean(fI_opt)), sigma=1/3)    
+    fI_global_mean = pm.Deterministic("fI_global_mean", pt.exp(log_fI_global_mean))
+    ### state
+    fI_state_sd = pm.HalfNormal("fI_state_sd", sigma=1/5)      
+    fI_state_raw = pm.Normal("fI_state_raw", 0, 1, shape=n_states)
+    log_fI_state = pm.Deterministic("log_fI_state", log_fI_global_mean + fI_state_sd * fI_state_raw)
+    I_state = pm.Deterministic("fI_state", pt.exp(log_fI_state))
+    ### season
+    fI_season_sd = pm.HalfNormal("fI_season_sd", sigma=1/10)
+    fI_season_raw = pm.Normal("fI_season_raw", 0, 1, shape=(n_seasons, n_states))
+    log_fI = log_fI_state[None, :] + fI_season_sd * fI_season_raw
+    fI = pm.Deterministic("fI", pt.exp(log_fI))
+
     ## initial recovered: fR
-    logit_f_R_mu = pm.Normal("logit_f_R_mu", mu=pm.math.logit(0.4), sigma=1.0)
-    f_R_mu = pm.Deterministic("f_R_mu", pm.math.sigmoid(logit_f_R_mu))
-    sigma_f_R = pm.HalfNormal("sigma_f_R", sigma=1/3)           
-    f_R_raw = pm.Normal("f_R_raw", mu=logit_f_R_mu, sigma=sigma_f_R, shape=(n_seasons, n_states))
-    f_R = pm.Deterministic("f_R", pm.math.sigmoid(f_R_raw))
+    ### global
+    logit_fR_global_mean = pm.Normal("logit_fR_global_mean", mu=pm.math.logit(0.4), sigma=1.0)
+    fR_global_mean = pm.Deterministic("fR_global_mean", pm.math.sigmoid(logit_fR_global_mean))
+    ### state
+    fR_state_sd = pm.HalfNormal("fR_state_sd", sigma=1/5)
+    fR_state_raw = pm.Normal("fR_state_raw", 0, 1, shape=(n_states))
+    logit_fR_state = pm.Deterministic("logit_fR_state", logit_fR_global_mean + fR_state_sd * fR_state_raw)
+    fR_state = pm.Deterministic("fR_state", pm.math.sigmoid(logit_fR_state))
+    ### season
+    fR_season_sd = pm.HalfNormal("fR_season_sd", sigma=1/10)
+    fR_season_raw = pm.Normal("fR_season_raw", 0, 1, shape=(n_seasons, n_states))
+    logit_fR = logit_fR_state[None, :] + fR_season_sd * fR_season_raw
+    fR = pm.Deterministic("fR", pm.math.sigmoid(logit_fR))
+
     ## transmission coefficient: beta (fixed)
     beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons, n_states)))
 
     # ------- AR-GARCH modifiers -----------
 
     # Hyperparameter for delta_beta_temporal
-    z_delta = pm.Normal("z_delta", mu=0, sigma=1, shape=(n_modifiers, n_states))
-    delta_beta_mu = pm.Deterministic("delta_beta_mu", 0.1 * z_delta)
+    delta_beta_raw = pm.Normal("delta_beta_raw", mu=0, sigma=1, shape=(n_modifiers, n_states))
+    delta_beta_state_mean = pm.Deterministic("delta_beta_state_mean", 0.1 * delta_beta_raw)
 
     # --- AR(1) kernel ---
     # Initial position
@@ -593,32 +617,31 @@ with pm.Model() as model:
     )
 
     # Register deterministic variables to inspect later
-    delta_beta = pm.Deterministic("delta_beta", z_seq + delta_beta_mu[:, None, :])
+    delta_beta = pm.Deterministic("delta_beta", z_seq + delta_beta_state_mean[:, None, :])
     z = pm.Deterministic("z", z_seq)
     sigma2 = pm.Deterministic("sigma2", sigma2_seq)
     eps = pm.Deterministic("eps", eps_seq)
 
     # concatenate along the last axis
     args_diff = pt.concatenate(
-        [beta[:, :, None], rho[:, :, None], f_I[:, :, None], f_R[:, :, None], pt.transpose(delta_beta, (1, 2, 0))],
+        [beta[:, :, None], rho[:, :, None], fI[:, :, None], fR[:, :, None], pt.transpose(delta_beta, (1, 2, 0))],
         axis=2
-    ) # shape: (n_seasons, n_states, 4 + n_modifiers)
+    )
 
     # Run forward simulation model
     ys = 7*sol_op(args_diff, args_nodiff)
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    z_alpha = pm.Normal("z_alpha", mu=0, sigma=1, shape=n_states)
-    alpha_inv = pm.Deterministic("alpha_inv", 0.001 * z_alpha)
+    alpha_inv = pm.LogNormal("alpha_inv", mu=pt.log(0.001), sigma=1/3, shape=n_states)
     pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(20, tune=10, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 7},
-                     initvals=1*[{'z_alpha': (0.003 / 0.001) * pt.ones(n_states), 'z_delta': delta_beta_mu_opt / 0.1, 'log_rho_global_mean': np.log(np.mean(rho_opt)), 'f_I': f_I_opt, 'f_R_raw': pm.math.logit(f_R_opt)},])
+    trace = pm.sample(25, tune=6, chains=2, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 7},
+                     initvals=2*[{'alpha_inv': 0.003 * pt.ones(n_states), 'z_delta': delta_beta_mu_opt / 0.1, 'log_rho_global_mean': np.log(np.mean(rho_opt)), 'log_fI_global_mean': np.log(np.mean(fI_opt)), 'logit_fR_global_mean':  pm.math.logit(np.mean(fR_opt))},])
 
 # burn some more off
 n_burn = 0
@@ -626,12 +649,12 @@ trace = trace.isel(draw=slice(n_burn, None))
 
 # Generate traces
 variables2plot = [
-                'alpha_inv',                                                # overdispersion
+                'alpha_inv',                                                                # overdispersion
                 'rho_global_mean', 'rho_state_sd', 'rho_state', 'rho_season_sd', 'rho',     # rho
-                'f_I_mu', 'f_I_sigma', 'f_I',                               # f_I
-                'f_R_mu', 'sigma_f_R', 'f_R',                               # f_R
-                'delta_beta_mu',                                            # delta_beta_mu
-                'psi', 'omega', 'kappa', 'phi',                             # AR-GARCH parameters
+                'fI_global_mean', 'fI_state_sd', 'fI_state', 'fI_season_sd', 'fI',          # fI
+                'fR_global_mean', 'fR_state_sd', 'fR_state', 'fR_season_sd', 'fR',          # fR
+                'delta_beta_state_mean',                                                    # delta_beta_mu
+                'psi', 'omega', 'kappa', 'phi',                                             # AR-GARCH parameters
                 'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_sigma',
                 ]
 
