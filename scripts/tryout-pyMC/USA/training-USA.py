@@ -443,7 +443,7 @@ def compute_season_weights(data):
     weights : np.ndarray, shape (n_seasons, n_states, 1)
     """
     # max over observations per season-state
-    max_per_season_state = data.max(axis=2)
+    max_per_season_state = np.sqrt(data.mean(axis=2))
     inv_max = 1.0 / max_per_season_state
     # normalize to mean 1
     normalized = inv_max / inv_max.mean()
@@ -451,6 +451,7 @@ def compute_season_weights(data):
     return normalized[:, :, None]
 
 weights = compute_season_weights(data)
+
 
 # tempered negative binomial likelihood
 def weighted_nb_logp(value, mu, alpha, weights):
@@ -588,8 +589,12 @@ with pm.Model() as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(20, tune=5, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 5},
-                     initvals=1*[{'z_alpha': (0.01 / 0.001) * pt.ones(n_states), 'z_delta': delta_beta_mu_opt / 0.1, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R_raw': pm.math.logit(f_R_opt)},])
+    trace = pm.sample(25, tune=5, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 6},
+                     initvals=1*[{'z_alpha': (0.003 / 0.001) * pt.ones(n_states), 'z_delta': delta_beta_mu_opt / 0.1, 'rho_h': rho_h_opt, 'f_I': f_I_opt, 'f_R_raw': pm.math.logit(f_R_opt)},])
+
+# burn some more off
+n_burn = 0
+trace = trace.isel(draw=slice(n_burn, None))
 
 # Generate traces
 variables2plot = [
