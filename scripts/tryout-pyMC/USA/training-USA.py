@@ -778,7 +778,7 @@ for n, p, g in zip(labels_params, state_params, global_params):
 
     # Top panel: global mean posterior KDE
     global_samples = trace.posterior[g].stack(sample=("chain", "draw")).values
-    axes[0].hist(global_samples, bins=15, density=True, color='lightblue')
+    axes[0].hist(global_samples, bins=15, density=True, color='black')
     axes[0].axvline(np.median(global_samples), color='k', linestyle='--', label='Median')
     axes[0].set_title(f"Global {n}")
     axes[0].spines['left'].set_visible(False)
