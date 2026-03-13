@@ -531,13 +531,20 @@ def step(eta_t, prev_z, prev_sigma2, prev_eps, psi, omega, a_garch, b_garch):
     z = psi * prev_z + eps
     return z, sigma2, eps
 
+# construct coordinates
+coords = {
+    "state": state_fips_index['abbreviation_state'].values,
+    "season": seasons,
+    "modifier": np.arange(n_modifiers)
+}
+
 # Build pyMC probablistic model
-with pm.Model() as model:
+with pm.Model(coords=coords) as model:
 
     # Hyperparameters '<parameter>_<level>_<type>' with level: {global, state, season} and type: {mean, sd, offset}
 
     ## transmission coefficient: beta (fixed)
-    beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons, n_states)))
+    beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons,n_states)))
 
     ## ascertainment: rho
     ### global
@@ -545,11 +552,11 @@ with pm.Model() as model:
     rho_global_mean = pm.Deterministic("rho_global_mean", pt.exp(log_rho_global_mean))
     ### state
     rho_state_sd = pm.HalfNormal("rho_state_sd", sigma=1/5)      
-    rho_state_raw = pm.Normal("rho_state_raw", 0, 1, shape=n_states)
-    rho_state = pm.Deterministic("rho_state", pt.exp(rho_state_sd * rho_state_raw))
+    rho_state_raw = pm.Normal("rho_state_raw", 0, 1, dims="state")
+    rho_state = pm.Deterministic("rho_state", pt.exp(rho_state_sd * rho_state_raw), dims="state")
     ### season
     rho_season_sd = pm.HalfNormal("rho_season_sd", sigma=1/10)
-    rho_season_raw = pm.Normal("rho_season_raw", 0, 1, shape=(n_seasons, n_states))
+    rho_season_raw = pm.Normal("rho_season_raw", 0, 1, dims=("season","state"))
     log_rho = log_rho_global_mean + rho_state_sd * rho_state_raw[None, :] + rho_season_sd * rho_season_raw
     rho = pm.Deterministic("rho", pt.exp(log_rho))
 
@@ -559,11 +566,11 @@ with pm.Model() as model:
     fI_global_mean = pm.Deterministic("fI_global_mean", pt.exp(log_fI_global_mean))
     ### state
     fI_state_sd = pm.HalfNormal("fI_state_sd", sigma=1/5)      
-    fI_state_raw = pm.Normal("fI_state_raw", 0, 1, shape=n_states)
-    fI_state = pm.Deterministic("fI_state", pt.exp(fI_state_sd * fI_state_raw))
+    fI_state_raw = pm.Normal("fI_state_raw", 0, 1, dims="state")
+    fI_state = pm.Deterministic("fI_state", pt.exp(fI_state_sd * fI_state_raw), dims="state")
     ### season
     fI_season_sd = pm.HalfNormal("fI_season_sd", sigma=1/10)
-    fI_season_raw = pm.Normal("fI_season_raw", 0, 1, shape=(n_seasons, n_states))
+    fI_season_raw = pm.Normal("fI_season_raw", 0, 1, dims=("season","state"))
     log_fI = log_fI_global_mean + fI_state_sd * fI_state_raw[None, :] + fI_season_sd * fI_season_raw
     fI = pm.Deterministic("fI", pt.exp(log_fI))
 
@@ -573,11 +580,11 @@ with pm.Model() as model:
     fR_global_mean = pm.Deterministic("fR_global_mean", pm.math.sigmoid(logit_fR_global_mean))
     ### state
     fR_state_sd = pm.HalfNormal("fR_state_sd", sigma=1/5)
-    fR_state_raw = pm.Normal("fR_state_raw", 0, 1, shape=(n_states))
-    fR_state = pm.Deterministic("fR_state", pt.exp(fR_state_sd * fR_state_raw))
+    fR_state_raw = pm.Normal("fR_state_raw", 0, 1, dims="state")
+    fR_state = pm.Deterministic("fR_state", pt.exp(fR_state_sd * fR_state_raw), dims="state")
     ### season
     fR_season_sd = pm.HalfNormal("fR_season_sd", sigma=1/10)
-    fR_season_raw = pm.Normal("fR_season_raw", 0, 1, shape=(n_seasons, n_states))
+    fR_season_raw = pm.Normal("fR_season_raw", 0, 1, dims=("season","state"))
     logit_fR = logit_fR_global_mean + fR_state_sd * fR_state_raw[None, :] + fR_season_sd * fR_season_raw
     fR = pm.Deterministic("fR", pm.math.sigmoid(logit_fR))
 
@@ -585,7 +592,7 @@ with pm.Model() as model:
 
     # Hyperparameter for delta_beta_temporal
     delta_beta_sd = pm.HalfNormal("delta_beta_sd", sigma=0.20/3)
-    delta_beta_raw = pm.Normal("delta_beta_raw", mu=0, sigma=1, shape=(n_modifiers, n_states))
+    delta_beta_raw = pm.Normal("delta_beta_raw", mu=0, sigma=1, dims=("modifier","state"))
     delta_beta_state_mean = pm.Deterministic("delta_beta_state_mean", delta_beta_sd * delta_beta_raw)
 
     # --- AR(1) kernel ---
@@ -598,11 +605,11 @@ with pm.Model() as model:
     psi_global_mean = pm.Deterministic("psi_global_mean", pm.math.sigmoid(logit_psi_global_mean))
     ## state
     psi_state_sd = pm.HalfNormal("psi_state_sd", sigma=1/2)
-    psi_state_raw = pm.Normal("psi_state_raw", 0, 1, shape=n_states)
-    psi_state = pm.Deterministic("psi_state", pt.exp(psi_state_sd * psi_state_raw))
+    psi_state_raw = pm.Normal("psi_state_raw", 0, 1, dims="state")
+    psi_state = pm.Deterministic("psi_state", pt.exp(psi_state_sd * psi_state_raw), dims="state")
     psi = pm.Deterministic("psi", pm.math.sigmoid(logit_psi_global_mean + psi_state_sd * psi_state_raw))
     # sample iid standard normals as shocks
-    eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers, n_seasons, n_states))
+    eta = pm.Normal("eta", mu=0.0, sigma=1.0, dims=("modifier","season","state"))
     
     # --- GARCH(1,1) parameters ---                                                                             TO DISABLE GARCH:
     omega = pm.HalfNormal("omega", sigma=0.01/3)
@@ -611,7 +618,7 @@ with pm.Model() as model:
     a_garch = pm.Deterministic("a_garch", kappa * phi)                                                          # (a_garch = pt.constant(0.0))
     b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                                                    # (b_garch = pt.constant(0.0))
     sigma2_0_sigma = pm.HalfNormal('sigma2_0_sigma', sigma=1/3)
-    sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(omega), sigma=sigma2_0_sigma, shape=(n_seasons, n_states))    # (sigma2_0 = omega * pt.ones(n_seasons))
+    sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(omega), sigma=sigma2_0_sigma, dims=("season","state"))    # (sigma2_0 = omega * pt.ones(n_seasons))
 
     # Run AR-GARCH scan over T steps
     (z_seq, sigma2_seq, eps_seq), _ = pytensor.scan(
@@ -638,15 +645,15 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    alpha_inv = pm.LogNormal("alpha_inv", mu=pt.log(0.005), sigma=1/5, shape=n_states)
+    alpha_inv = pm.LogNormal("alpha_inv", mu=pt.log(0.005), sigma=1/5, dims="state")
     pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(50, tune=6, chains=4, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 7},
-                     initvals=4*[{'alpha_inv': 0.05 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1,
+    trace = pm.sample(14, tune=6, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 7},
+                     initvals=1*[{'alpha_inv': 0.05 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1,
                                   'log_rho_global_mean': np.log(np.mean(rho_opt)), 'log_fI_global_mean': np.log(np.mean(fI_opt)),
                                   'logit_fR_global_mean':  pm.math.logit(np.mean(fR_opt)), 'logit_psi_global_mean': 0.75},])
 
@@ -754,7 +761,35 @@ for s in range(n_states):
         plt.close()
 
 
-# compute state effect sizes and their significance for rho, fR, fI and psi
+# visualise forest plots of state and season effect sizes
+labels_params = [r'$\rho$', r'$f_I$', r'$f_R$', r'$\psi$']
+state_params = ["rho_state", "fI_state", "fR_state", "psi_state"]
+global_params = ["rho_global_mean", "fI_global_mean", "fR_global_mean", "psi_global_mean"]
+
+for n, p, g in zip(labels_params, state_params, global_params):
+
+    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(8.7/2, 11.3/2),
+                             gridspec_kw={'height_ratios': [1, 3]})
+    
+    # Bottom panel: state effects ridge plot
+    arviz.plot_forest(trace, var_names=[p], combined=True, hdi_prob=0.95, kind="ridgeplot", ax=axes[1])
+    axes[1].axvline(1, color="black", linestyle="--")
+    axes[1].set_title(f"Multiplicative state effects")
+
+    # Top panel: global mean posterior KDE
+    global_samples = trace.posterior[g].stack(sample=("chain", "draw")).values
+    axes[0].hist(global_samples, bins=15, density=True, color='lightblue')
+    axes[0].axvline(np.median(global_samples), color='k', linestyle='--', label='Median')
+    axes[0].set_title(f"Global {n}")
+    axes[0].spines['left'].set_visible(False)
+    axes[0].spines['right'].set_visible(False)
+    axes[0].spines['top'].set_visible(False)
+    axes[0].set_yticks([])
+    axes[0].xaxis.set_major_locator(plt.MaxNLocator(3)) 
+
+    plt.tight_layout()
+    plt.savefig(f'output/traces/forestplot-{p}.pdf')
+    plt.close()
 
 
 # save the hyperdistributions
