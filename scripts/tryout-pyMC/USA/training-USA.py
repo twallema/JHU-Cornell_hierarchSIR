@@ -555,9 +555,10 @@ with pm.Model(coords=coords) as model:
     rho_state_raw = pm.Normal("rho_state_raw", 0, 1, dims="state")
     rho_state = pm.Deterministic("rho_state", pt.exp(rho_state_sd * rho_state_raw), dims="state")
     ### season
-    rho_season_sd = pm.HalfNormal("rho_season_sd", sigma=1/10)
-    rho_season_raw = pm.Normal("rho_season_raw", 0, 1, dims=("season","state"))
-    log_rho = log_rho_global_mean + rho_state_sd * rho_state_raw[None, :] + rho_season_sd * rho_season_raw
+    rho_season_sd = pm.HalfNormal("rho_season_sd", sigma=1/5)
+    rho_season_raw = pm.Normal("rho_season_raw", 0, 1, dims="season")
+    rho_season = pm.Deterministic("rho_season", pt.exp(rho_season_sd * rho_season_raw), dims="season")
+    log_rho = log_rho_global_mean + rho_state_sd * rho_state_raw[None, :] + rho_season_sd * rho_season_raw[:, None]
     rho = pm.Deterministic("rho", pt.exp(log_rho))
 
     ## initial infected: fI
@@ -569,9 +570,10 @@ with pm.Model(coords=coords) as model:
     fI_state_raw = pm.Normal("fI_state_raw", 0, 1, dims="state")
     fI_state = pm.Deterministic("fI_state", pt.exp(fI_state_sd * fI_state_raw), dims="state")
     ### season
-    fI_season_sd = pm.HalfNormal("fI_season_sd", sigma=1/10)
-    fI_season_raw = pm.Normal("fI_season_raw", 0, 1, dims=("season","state"))
-    log_fI = log_fI_global_mean + fI_state_sd * fI_state_raw[None, :] + fI_season_sd * fI_season_raw
+    fI_season_sd = pm.HalfNormal("fI_season_sd", sigma=1/5)
+    fI_season_raw = pm.Normal("fI_season_raw", 0, 1, dims="season")
+    fI_season = pm.Deterministic("fI_season", pt.exp(fI_season_sd * fI_season_raw), dims="season")
+    log_fI = log_fI_global_mean + fI_state_sd * fI_state_raw[None, :] + fI_season_sd * fI_season_raw[:, None]
     fI = pm.Deterministic("fI", pt.exp(log_fI))
 
     ## initial recovered: fR
@@ -583,9 +585,10 @@ with pm.Model(coords=coords) as model:
     fR_state_raw = pm.Normal("fR_state_raw", 0, 1, dims="state")
     fR_state = pm.Deterministic("fR_state", pt.exp(fR_state_sd * fR_state_raw), dims="state")
     ### season
-    fR_season_sd = pm.HalfNormal("fR_season_sd", sigma=1/10)
-    fR_season_raw = pm.Normal("fR_season_raw", 0, 1, dims=("season","state"))
-    logit_fR = logit_fR_global_mean + fR_state_sd * fR_state_raw[None, :] + fR_season_sd * fR_season_raw
+    fR_season_sd = pm.HalfNormal("fR_season_sd", sigma=1/5)
+    fR_season_raw = pm.Normal("fR_season_raw", 0, 1, dims="season")
+    fR_season = pm.Deterministic("fR_season", pt.exp(fR_season_sd * fR_season_raw), dims="season")
+    logit_fR = logit_fR_global_mean + fR_state_sd * fR_state_raw[None, :] + fR_season_sd * fR_season_raw[:, None]
     fR = pm.Deterministic("fR", pm.math.sigmoid(logit_fR))
 
     # ------- AR-GARCH modifiers -----------
@@ -652,7 +655,7 @@ with pm.Model(coords=coords) as model:
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(14, tune=6, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 7},
+    trace = pm.sample(4, tune=6, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 7},
                      initvals=1*[{'alpha_inv': 0.05 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1,
                                   'log_rho_global_mean': np.log(np.mean(rho_opt)), 'log_fI_global_mean': np.log(np.mean(fI_opt)),
                                   'logit_fR_global_mean':  pm.math.logit(np.mean(fR_opt)), 'logit_psi_global_mean': 0.75},])
@@ -764,28 +767,44 @@ for s in range(n_states):
 # visualise forest plots of state and season effect sizes
 labels_params = [r'$\rho$', r'$f_I$', r'$f_R$', r'$\psi$']
 state_params = ["rho_state", "fI_state", "fR_state", "psi_state"]
+season_params = ["rho_season", "fI_season", "fR_season", "psi_season"]
 global_params = ["rho_global_mean", "fI_global_mean", "fR_global_mean", "psi_global_mean"]
+params = ['rho', 'fI', 'fR', 'psi']
+effect_type = ['Multiplicative', 'Multiplicative', 'Odds-ratio', 'Odds-ratio']
 
-for n, p, g in zip(labels_params, state_params, global_params):
-
-    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(8.7/2, 11.3/2),
-                             gridspec_kw={'height_ratios': [1, 3]})
+for n, p_state, p_season, g, p, e in zip(labels_params, state_params, season_params, global_params, params, effect_type):
     
-    # Bottom panel: state effects ridge plot
-    arviz.plot_forest(trace, var_names=[p], combined=True, hdi_prob=0.95, kind="ridgeplot", ax=axes[1])
-    axes[1].axvline(1, color="black", linestyle="--")
-    axes[1].set_title(f"Multiplicative state effects")
-
-    # Top panel: global mean posterior KDE
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(12, 8),
+                             gridspec_kw={'height_ratios': [1, 3], 'width_ratios': [1, 1]})
+    
+    # ---- Top row: global effect, spanning both columns ----
+    ax_global = axes[0, 0]
+    ax_global2 = axes[0, 1]
+    
+    # hide the second subplot for spacing
+    ax_global2.axis('off')
+    
     global_samples = trace.posterior[g].stack(sample=("chain", "draw")).values
-    axes[0].hist(global_samples, bins=15, density=True, color='black')
-    axes[0].axvline(np.median(global_samples), color='k', linestyle='--', label='Median')
-    axes[0].set_title(f"Global {n}")
-    axes[0].spines['left'].set_visible(False)
-    axes[0].spines['right'].set_visible(False)
-    axes[0].spines['top'].set_visible(False)
-    axes[0].set_yticks([])
-    axes[0].xaxis.set_major_locator(plt.MaxNLocator(3)) 
+    ax_global.hist(global_samples, bins=15, density=True, color='forestgreen', alpha=0.8)
+    ax_global.axvline(np.median(global_samples), color='black', linestyle='--', label='Median')
+    ax_global.set_title(f"Global {n}", fontsize=14)
+    ax_global.spines['left'].set_visible(False)
+    ax_global.spines['right'].set_visible(False)
+    ax_global.spines['top'].set_visible(False)
+    ax_global.set_yticks([])
+    ax_global.xaxis.set_major_locator(plt.MaxNLocator(3)) 
+
+    # ---- Bottom row: state and season forest plots ----
+    arviz.plot_forest(trace, var_names=[p_state], combined=True, hdi_prob=0.95, kind="ridgeplot", ax=axes[1, 0], colors='forestgreen')
+    axes[1, 0].axvline(1, color="black", linestyle="--")
+    axes[1, 0].set_title(f"{e} state effects", fontsize=12)
+
+    if p != 'psi':
+        arviz.plot_forest(trace, var_names=[p_season], combined=True, hdi_prob=0.95, kind="ridgeplot", ax=axes[1, 1], colors='forestgreen')
+        axes[1, 1].axvline(1, color="red", linestyle="--")
+        axes[1, 1].set_title(f"{e} season effects", fontsize=12)
+    else:
+        axes[1, 1].remove()
 
     plt.tight_layout()
     plt.savefig(f'output/traces/forestplot-{p}.pdf')
