@@ -546,12 +546,11 @@ with pm.Model() as model:
     ### state
     rho_state_sd = pm.HalfNormal("rho_state_sd", sigma=1/5)      
     rho_state_raw = pm.Normal("rho_state_raw", 0, 1, shape=n_states)
-    log_rho_state = pm.Deterministic("log_rho_state", log_rho_global_mean + rho_state_sd * rho_state_raw)
-    rho_state = pm.Deterministic("rho_state", pt.exp(log_rho_state))
+    rho_state = pm.Deterministic("rho_state", pt.exp(rho_state_sd * rho_state_raw))
     ### season
     rho_season_sd = pm.HalfNormal("rho_season_sd", sigma=1/10)
     rho_season_raw = pm.Normal("rho_season_raw", 0, 1, shape=(n_seasons, n_states))
-    log_rho = log_rho_state[None, :] + rho_season_sd * rho_season_raw
+    log_rho = log_rho_global_mean + rho_state_sd * rho_state_raw[None, :] + rho_season_sd * rho_season_raw
     rho = pm.Deterministic("rho", pt.exp(log_rho))
 
     ## initial infected: fI
@@ -561,12 +560,11 @@ with pm.Model() as model:
     ### state
     fI_state_sd = pm.HalfNormal("fI_state_sd", sigma=1/5)      
     fI_state_raw = pm.Normal("fI_state_raw", 0, 1, shape=n_states)
-    log_fI_state = pm.Deterministic("log_fI_state", log_fI_global_mean + fI_state_sd * fI_state_raw)
-    I_state = pm.Deterministic("fI_state", pt.exp(log_fI_state))
+    fI_state = pm.Deterministic("fI_state", pt.exp(fI_state_sd * fI_state_raw))
     ### season
     fI_season_sd = pm.HalfNormal("fI_season_sd", sigma=1/10)
     fI_season_raw = pm.Normal("fI_season_raw", 0, 1, shape=(n_seasons, n_states))
-    log_fI = log_fI_state[None, :] + fI_season_sd * fI_season_raw
+    log_fI = log_fI_global_mean + fI_state_sd * fI_state_raw[None, :] + fI_season_sd * fI_season_raw
     fI = pm.Deterministic("fI", pt.exp(log_fI))
 
     ## initial recovered: fR
@@ -576,31 +574,38 @@ with pm.Model() as model:
     ### state
     fR_state_sd = pm.HalfNormal("fR_state_sd", sigma=1/5)
     fR_state_raw = pm.Normal("fR_state_raw", 0, 1, shape=(n_states))
-    logit_fR_state = pm.Deterministic("logit_fR_state", logit_fR_global_mean + fR_state_sd * fR_state_raw)
-    fR_state = pm.Deterministic("fR_state", pm.math.sigmoid(logit_fR_state))
+    fR_state = pm.Deterministic("fR_state", pt.exp(fR_state_sd * fR_state_raw))
     ### season
     fR_season_sd = pm.HalfNormal("fR_season_sd", sigma=1/10)
     fR_season_raw = pm.Normal("fR_season_raw", 0, 1, shape=(n_seasons, n_states))
-    logit_fR = logit_fR_state[None, :] + fR_season_sd * fR_season_raw
+    logit_fR = logit_fR_global_mean + fR_state_sd * fR_state_raw[None, :] + fR_season_sd * fR_season_raw
     fR = pm.Deterministic("fR", pm.math.sigmoid(logit_fR))
 
     # ------- AR-GARCH modifiers -----------
 
     # Hyperparameter for delta_beta_temporal
+    delta_beta_sd = pm.HalfNormal("delta_beta_sd", sigma=0.20/3)
     delta_beta_raw = pm.Normal("delta_beta_raw", mu=0, sigma=1, shape=(n_modifiers, n_states))
-    delta_beta_state_mean = pm.Deterministic("delta_beta_state_mean", 0.1 * delta_beta_raw)
+    delta_beta_state_mean = pm.Deterministic("delta_beta_state_mean", delta_beta_sd * delta_beta_raw)
 
     # --- AR(1) kernel ---
     # Initial position
     z_0 = pt.zeros([n_seasons, n_states])
     eps_0 = pt.zeros([n_seasons, n_states])
     # Total AR strength (controls overall magnitude)
-    psi = pm.Beta("psi", alpha=5, beta=1)
+    ## global
+    logit_psi_global_mean = pm.Normal("logit_psi_global_mean", mu=pm.math.logit(0.5), sigma=0.27)    # 0.3-0.7
+    psi_global_mean = pm.Deterministic("psi_global_mean", pm.math.sigmoid(logit_psi_global_mean))
+    ## state
+    psi_state_sd = pm.HalfNormal("psi_state_sd", sigma=1/2)
+    psi_state_raw = pm.Normal("psi_state_raw", 0, 1, shape=n_states)
+    psi_state = pm.Deterministic("psi_state", pt.exp(psi_state_sd * psi_state_raw))
+    psi = pm.Deterministic("psi", pm.math.sigmoid(logit_psi_global_mean + psi_state_sd * psi_state_raw))
     # sample iid standard normals as shocks
     eta = pm.Normal("eta", mu=0.0, sigma=1.0, shape=(n_modifiers, n_seasons, n_states))
     
     # --- GARCH(1,1) parameters ---                                                                             TO DISABLE GARCH:
-    omega = pm.HalfNormal("omega", sigma=0.01/3, shape=n_states)
+    omega = pm.HalfNormal("omega", sigma=0.01/3)
     kappa = pm.Beta("kappa", 3, 1)                                                              
     phi = pm.Beta("phi", 3, 1)                                                                  
     a_garch = pm.Deterministic("a_garch", kappa * phi)                                                          # (a_garch = pt.constant(0.0))
@@ -633,15 +638,17 @@ with pm.Model() as model:
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    alpha_inv = pm.LogNormal("alpha_inv", mu=pt.log(0.001), sigma=1/3, shape=n_states)
+    alpha_inv = pm.LogNormal("alpha_inv", mu=pt.log(0.005), sigma=1/5, shape=n_states)
     pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
 with model:
-    trace = pm.sample(4, tune=6, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 7},
-                     initvals=1*[{'alpha_inv': 0.01 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1, 'log_rho_global_mean': np.log(np.mean(rho_opt)), 'log_fI_global_mean': np.log(np.mean(fI_opt)), 'logit_fR_global_mean':  pm.math.logit(np.mean(fR_opt))},])
+    trace = pm.sample(50, tune=6, chains=4, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 7},
+                     initvals=4*[{'alpha_inv': 0.05 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1,
+                                  'log_rho_global_mean': np.log(np.mean(rho_opt)), 'log_fI_global_mean': np.log(np.mean(fI_opt)),
+                                  'logit_fR_global_mean':  pm.math.logit(np.mean(fR_opt)), 'logit_psi_global_mean': 0.75},])
 
 # burn some more off
 n_burn = 0
@@ -653,8 +660,9 @@ variables2plot = [
                 'rho_global_mean', 'rho_state_sd', 'rho_state', 'rho_season_sd', 'rho',     # rho
                 'fI_global_mean', 'fI_state_sd', 'fI_state', 'fI_season_sd', 'fI',          # fI
                 'fR_global_mean', 'fR_state_sd', 'fR_state', 'fR_season_sd', 'fR',          # fR
-                'delta_beta_state_mean',                                                    # delta_beta_mu
-                'psi', 'omega', 'kappa', 'phi',                                             # AR-GARCH parameters
+                'delta_beta_state_mean', 'delta_beta_sd',                                   # delta_beta_mu
+                'psi_global_mean', 'psi_state_sd', 'psi',                                   # AR 
+                'omega', 'kappa', 'phi',                                                    # GARCH parameters
                 'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_sigma',
                 ]
 
@@ -744,3 +752,9 @@ for s in range(n_states):
         ax[0].set_title(season)
         plt.savefig(f'output/goodness-fit/{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}/{season}_goodness-fit.pdf')
         plt.close()
+
+
+# compute state effect sizes and their significance for rho, fR, fI and psi
+
+
+# save the hyperdistributions
