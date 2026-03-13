@@ -435,7 +435,7 @@ for s in range(n_states):
     plt.savefig(f'output/initial-optim/state_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf')
     plt.close(fig)
 
-# store 2D vector per variable so we can start the chains easily
+# store 2D vector per variable so we can start the chains easily: shape: (n_seasons, n_states)
 beta_opt = np.array(args_diff[:,:,0])
 rho_opt = np.array(args_diff[:,:,1])
 fI_opt = np.array(args_diff[:,:,2])
@@ -443,8 +443,35 @@ fR_opt = np.array(args_diff[:,:,3])
 delta_beta_opt = np.array(args_diff[:,:,4:])
 delta_beta_mu_opt = np.transpose(np.mean(delta_beta_opt, axis=0))
 
-print(np.mean(rho_opt))
-print(np.mean(fI_opt))
+# transform into estimates of global, state and season effects
+## rho
+log_rho_opt = np.log(rho_opt)
+log_rho_global_init = np.mean(log_rho_opt) # global mean
+rho_state_init = np.mean(log_rho_opt, axis=0) - log_rho_global_init # state effects (average across seasons, zero-mean)
+rho_season_init = np.mean(log_rho_opt, axis=1) - log_rho_global_init # season effects (average across states, zero-mean)
+reconstructed = log_rho_global_init + rho_state_init[None, :] + rho_season_init[:, None]
+print("Mean log-rho:", log_rho_global_init)
+print("Mean reconstruction error:", np.abs(reconstructed - log_rho_opt).mean())
+print("Max reconstruction error:", np.abs(reconstructed - log_rho_opt).max())
+## fI
+log_fI_opt = np.log(fI_opt)
+log_fI_global_init = np.mean(log_fI_opt) # global mean
+fI_state_init = np.mean(log_fI_opt, axis=0) - log_fI_global_init # state effects (average across seasons, zero-mean)
+fI_season_init = np.mean(log_fI_opt, axis=1) - log_fI_global_init # season effects (average across states, zero-mean)
+reconstructed = log_fI_global_init + fI_state_init[None, :] + fI_season_init[:, None]
+print("Mean log-fI:", log_fI_global_init)
+print("Mean reconstruction error:", np.abs(reconstructed - log_fI_opt).mean())
+print("Max reconstruction error:", np.abs(reconstructed - log_fI_opt).max())
+## fR
+from scipy.special import logit
+logit_fR_opt = logit(fR_opt)
+logit_fR_global_init = np.mean(logit_fR_opt) # global mean
+fR_state_init = np.mean(logit_fR_opt, axis=0) - logit_fR_global_init # state effects (average across seasons, zero-mean)
+fR_season_init = np.mean(logit_fR_opt, axis=1) - logit_fR_global_init # season effects (average across states, zero-mean)
+reconstructed = logit_fR_global_init + fR_state_init[None, :] + fR_season_init[:, None]
+print("Mean logit-fR:", logit_fR_global_init)
+print("Mean reconstruction error:", np.abs(reconstructed - logit_fR_opt).mean())
+print("Max reconstruction error:", np.abs(reconstructed - logit_fR_opt).max())
 
 # Build tempored NB distribution
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -602,7 +629,7 @@ with pm.Model(coords=coords) as model:
     # Initial position
     z_0 = pt.zeros([n_seasons, n_states])
     eps_0 = pt.zeros([n_seasons, n_states])
-    # Total AR strength (controls overall magnitude)
+    # Total AR persistence
     ## global
     logit_psi_global_mean = pm.Normal("logit_psi_global_mean", mu=pm.math.logit(0.5), sigma=0.27)    # 0.3-0.7
     psi_global_mean = pm.Deterministic("psi_global_mean", pm.math.sigmoid(logit_psi_global_mean))
@@ -614,14 +641,23 @@ with pm.Model(coords=coords) as model:
     # sample iid standard normals as shocks
     eta = pm.Normal("eta", mu=0.0, sigma=1.0, dims=("modifier","season","state"))
     
-    # --- GARCH(1,1) parameters ---                                                                             TO DISABLE GARCH:
-    omega = pm.HalfNormal("omega", sigma=0.01/3)
-    kappa = pm.Beta("kappa", 3, 1)                                                              
+    # --- GARCH(1,1) parameters ---                                                                             
+    # Total noise persistence
+    ## global
+    logit_kappa_global_mean = pm.Normal("logit_kappa_global_mean", mu=1, sigma=1)
+    kappa_global_mean = pm.Deterministic("kappa_global_mean", pm.math.sigmoid(logit_kappa_global_mean))
+    ## state
+    kappa_state_sd = pm.HalfNormal("kappa_state_sd", sigma=1/2)
+    kappa_state_raw = pm.Normal("kappa_state_raw", 0, 1, dims="state")
+    kappa_state = pm.Deterministic("kappa_state", pt.exp(kappa_state_sd * kappa_state_raw), dims="state")
+    kappa = pm.Deterministic("kappa", pm.math.sigmoid(logit_kappa_global_mean + kappa_state_sd * kappa_state_raw))
+    omega = pm.HalfNormal("omega", sigma=0.01/3)        
+    # Split between a and b                                                   
     phi = pm.Beta("phi", 3, 1)                                                                  
-    a_garch = pm.Deterministic("a_garch", kappa * phi)                                                          # (a_garch = pt.constant(0.0))
-    b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                                                    # (b_garch = pt.constant(0.0))
+    a_garch = pm.Deterministic("a_garch", kappa * phi)                                                          
+    b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                           
     sigma2_0_sigma = pm.HalfNormal('sigma2_0_sigma', sigma=1/3)
-    sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(omega), sigma=sigma2_0_sigma, dims=("season","state"))    # (sigma2_0 = omega * pt.ones(n_seasons))
+    sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(omega), sigma=sigma2_0_sigma, dims=("season","state"))
 
     # Run AR-GARCH scan over T steps
     (z_seq, sigma2_seq, eps_seq), _ = pytensor.scan(
@@ -654,25 +690,33 @@ with pm.Model(coords=coords) as model:
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
-with model:
-    trace = pm.sample(4, tune=6, chains=1, init='adapt_diag', cores=1, progressbar=True, nuts={'target_accept': 0.8, 'max_treedepth': 7},
-                     initvals=1*[{'alpha_inv': 0.05 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1,
-                                  'log_rho_global_mean': np.log(np.mean(rho_opt)), 'log_fI_global_mean': np.log(np.mean(fI_opt)),
-                                  'logit_fR_global_mean':  pm.math.logit(np.mean(fR_opt)), 'logit_psi_global_mean': 0.75},])
+n_chains = 1
 
-# burn some more off
+with model:
+    trace = pm.sample(15, tune=0, chains=n_chains, init='adapt_diag', cores=1, progressbar=True,
+                      nuts={'target_accept': 0.8, 'max_treedepth': 7, 'step_scale': 0.01},
+                        initvals=n_chains*[{'alpha_inv': 0.1 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1,
+                                  'log_rho_global_mean': log_rho_global_init, 'rho_state_sd': 0.2, 'rho_state_raw': rho_state_init / 0.2, 'rho_season_sd': 0.2, 'rho_season_raw': rho_season_init / 0.2,
+                                  'log_fI_global_mean': log_fI_global_init, 'fI_state_sd': 0.2, 'fI_state_raw': fI_state_init / 0.2, 'fI_season_sd': 0.2, 'fI_season_raw': fI_season_init / 0.2,
+                                  'logit_fR_global_mean': logit_fR_global_init, 'fR_state_sd': 0.2, 'fI_state_raw': fR_state_init / 0.2, 'fR_season_sd': 0.2, 'fR_season_raw': fR_season_init / 0.2,
+                                  'logit_psi_global_mean': 0.75, 'logit_kappa_global_mean': 0.75}])
+    
+step_size_bar = trace.sample_stats.step_size_bar.values
+print(step_size_bar)
+
+# manual burn
 n_burn = 0
 trace = trace.isel(draw=slice(n_burn, None))
 
 # Generate traces
 variables2plot = [
-                'alpha_inv',                                                                # overdispersion
-                'rho_global_mean', 'rho_state_sd', 'rho_state', 'rho_season_sd', 'rho',     # rho
-                'fI_global_mean', 'fI_state_sd', 'fI_state', 'fI_season_sd', 'fI',          # fI
-                'fR_global_mean', 'fR_state_sd', 'fR_state', 'fR_season_sd', 'fR',          # fR
-                'delta_beta_state_mean', 'delta_beta_sd',                                   # delta_beta_mu
-                'psi_global_mean', 'psi_state_sd', 'psi',                                   # AR 
-                'omega', 'kappa', 'phi',                                                    # GARCH parameters
+                'alpha_inv',                                                                            # overdispersion
+                'rho_global_mean', 'rho_state_sd', 'rho_state', 'rho_season_sd', 'rho_season', 'rho',   # rho
+                'fI_global_mean', 'fI_state_sd', 'fI_state', 'fI_season_sd', 'fI_season', 'fI',         # fI
+                'fR_global_mean', 'fR_state_sd', 'fR_state', 'fR_season_sd', 'fR_season', 'fR',         # fR
+                'delta_beta_state_mean', 'delta_beta_sd',                                               # delta_beta_mu
+                'psi_global_mean', 'psi_state_sd', 'psi',                                               # AR 
+                'kappa_global_mean', 'kappa_state_sd', 'kappa', 'omega', 'phi',                         # GARCH parameters
                 'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_sigma',
                 ]
 
@@ -765,12 +809,12 @@ for s in range(n_states):
 
 
 # visualise forest plots of state and season effect sizes
-labels_params = [r'$\rho$', r'$f_I$', r'$f_R$', r'$\psi$']
-state_params = ["rho_state", "fI_state", "fR_state", "psi_state"]
-season_params = ["rho_season", "fI_season", "fR_season", "psi_season"]
-global_params = ["rho_global_mean", "fI_global_mean", "fR_global_mean", "psi_global_mean"]
-params = ['rho', 'fI', 'fR', 'psi']
-effect_type = ['Multiplicative', 'Multiplicative', 'Odds-ratio', 'Odds-ratio']
+labels_params = [r'$\rho$', r'$f_I$', r'$f_R$', r'$\psi$', r'$\kappa$']
+state_params = ["rho_state", "fI_state", "fR_state", "psi_state", "kappa_state"]
+season_params = ["rho_season", "fI_season", "fR_season", "psi_season", "kappa_season"]
+global_params = ["rho_global_mean", "fI_global_mean", "fR_global_mean", "psi_global_mean", "kappa_global_mean"]
+params = ['rho', 'fI', 'fR', 'psi', 'kappa']
+effect_type = ['Multiplicative', 'Multiplicative', 'Odds-ratio', 'Odds-ratio', 'Odds-ratio']
 
 for n, p_state, p_season, g, p, e in zip(labels_params, state_params, season_params, global_params, params, effect_type):
     
@@ -799,9 +843,9 @@ for n, p_state, p_season, g, p, e in zip(labels_params, state_params, season_par
     axes[1, 0].axvline(1, color="black", linestyle="--")
     axes[1, 0].set_title(f"{e} state effects", fontsize=12)
 
-    if p != 'psi':
+    if ((p != 'psi') & (p != 'kappa')):
         arviz.plot_forest(trace, var_names=[p_season], combined=True, hdi_prob=0.95, kind="ridgeplot", ax=axes[1, 1], colors='forestgreen')
-        axes[1, 1].axvline(1, color="red", linestyle="--")
+        axes[1, 1].axvline(1, color="black", linestyle="--")
         axes[1, 1].set_title(f"{e} season effects", fontsize=12)
     else:
         axes[1, 1].remove()
