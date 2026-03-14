@@ -632,6 +632,14 @@ with pm.Model(coords=coords) as model:
     delta_beta_raw = pm.Normal("delta_beta_raw", mu=0, sigma=1, dims=("modifier","state"))
     delta_beta_state_mean = pm.Deterministic("delta_beta_state_mean", delta_beta_sd * delta_beta_raw)
 
+    # Spatial correlation
+    psi_spatial = 0.99*pm.Beta("psi_spatial", 3, 3)
+    W = pt.as_tensor_variable(adj.values)
+    D = pt.diag(pt.sum(W, axis=1))
+    Q = D - psi_spatial * W + 1e-6 * pt.eye(n_states)
+    L_Q = pt.slinalg.cholesky(Q)
+    L_cov = pt.slinalg.solve(L_Q, pt.eye(n_states))
+
     # --- AR(1) kernel ---
     # Initial position
     z_0 = pt.zeros([n_seasons, n_states])
@@ -648,8 +656,10 @@ with pm.Model(coords=coords) as model:
     psi_state = pm.Deterministic("psi_state", pt.exp(psi_state_sd * psi_state_raw), dims="state")
     psi = pm.Deterministic("psi", pm.math.sigmoid(logit_psi_global_mean + psi_state_sd * psi_state_raw))
     # sample iid standard normals as shocks
-    eta = pm.Normal("eta", mu=0.0, sigma=1.0, dims=("modifier","season","state"))
-    
+    eta_raw = pm.Normal("eta_raw", mu=0.0, sigma=1.0, dims=("modifier","season","state"))
+    # correlate them across space using the precision matrix
+    eta = pm.Deterministic("eta", pt.einsum("ij,tsj->tsi", L_cov, eta_raw))
+
     # --- GARCH(1,1) parameters ---                                                                             
     # Total noise persistence
     ## global
@@ -698,13 +708,13 @@ with pm.Model(coords=coords) as model:
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
-n_chains = 3
+n_chains = 6
 
 with model:
     # set step size directly
-    step = pm.NUTS(step_scale=0.0025, target_accept=0.8, max_treedepth=11)
+    step = pm.NUTS(step_scale=0.005, target_accept=0.8, max_treedepth=10)   # for US: step_scale: 0.0025 + max_treedepth 12
     # run sampler without tuning
-    trace = pm.sample(50, tune=0, chains=n_chains, init='adapt_diag', cores=1, progressbar=True, step = step,
+    trace = pm.sample(75, tune=0, chains=n_chains, init='adapt_diag', cores=1, progressbar=True, step = step,
                         initvals=n_chains*[{'alpha_inv': 0.1 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1,
                                   'log_rho_global_mean': log_rho_global_init, 'rho_state_sd': 0.2, 'rho_state_raw': rho_state_init / 0.2, 'rho_season_sd': 0.2, 'rho_season_raw': rho_season_init / 0.2,
                                   'log_fI_global_mean': log_fI_global_init, 'fI_state_sd': 0.2, 'fI_state_raw': fI_state_init / 0.2, 'fI_season_sd': 0.2, 'fI_season_raw': fI_season_init / 0.2,
@@ -714,7 +724,7 @@ with model:
 print(f"Step size post-tuning: {trace.sample_stats.step_size_bar.values}")
 
 # manual burn
-n_burn = 0
+n_burn = 25
 trace = trace.isel(draw=slice(n_burn, None))
 
 # Generate traces
@@ -724,6 +734,7 @@ variables2plot = [
                 'fI_global_mean', 'fI_state_sd', 'fI_state', 'fI_season_sd', 'fI_season', 'fI',         # fI
                 'fR_global_mean', 'fR_state_sd', 'fR_state', 'fR_season_sd', 'fR_season', 'fR',         # fR
                 'delta_beta_state_mean', 'delta_beta_sd',                                               # delta_beta_mu
+                'psi_spatial',                                                                          # spatial correlation strength
                 'psi_global_mean', 'psi_state_sd', 'psi',                                               # AR 
                 'kappa_global_mean', 'kappa_state_sd', 'kappa', 'omega', 'phi',                         # GARCH parameters
                 'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_sigma',
@@ -877,6 +888,7 @@ scalar_params = [
     "fR_global_mean",
     "fR_season_sd",
     "omega",
+    "psi_spatial",
     "psi_global_mean",
     "kappa_global_mean",
     "phi",
