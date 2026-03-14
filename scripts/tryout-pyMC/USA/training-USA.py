@@ -28,7 +28,7 @@ abs_dir = os.path.dirname(__file__)
 # global parameters go here
 gamma = 1/3.5
 experiment_name = 'exclude_None'
-regions = ['New England', 'Middle Atlantic']
+regions = ['Pacific',]
 
 # Get US demographics
 # ~~~~~~~~~~~~~~~~~~~
@@ -698,7 +698,7 @@ with model:
     # set step size directly
     step = pm.NUTS(step_scale=0.1, target_accept=0.8, max_treedepth=10)
     # run sampler without tuning
-    trace = pm.sample(15, tune=25, chains=n_chains, init='adapt_diag', cores=1, progressbar=True, step = step,
+    trace = pm.sample(15, tune=15, chains=n_chains, init='adapt_diag', cores=1, progressbar=True, step = step,
                         initvals=n_chains*[{'alpha_inv': 0.1 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1,
                                   'log_rho_global_mean': log_rho_global_init, 'rho_state_sd': 0.2, 'rho_state_raw': rho_state_init / 0.2, 'rho_season_sd': 0.2, 'rho_season_raw': rho_season_init / 0.2,
                                   'log_fI_global_mean': log_fI_global_init, 'fI_state_sd': 0.2, 'fI_state_raw': fI_state_init / 0.2, 'fI_season_sd': 0.2, 'fI_season_raw': fI_season_init / 0.2,
@@ -821,7 +821,7 @@ effect_type = ['Multiplicative', 'Multiplicative', 'Odds-ratio', 'Odds-ratio', '
 
 for n, p_state, p_season, g, p, e in zip(labels_params, state_params, season_params, global_params, params, effect_type):
     
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(12, 8),
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(11.7, 8.3),
                              gridspec_kw={'height_ratios': [1, 3], 'width_ratios': [1, 1]})
     
     # ---- Top row: global effect, spanning both columns ----
