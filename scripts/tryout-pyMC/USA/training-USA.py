@@ -28,7 +28,7 @@ abs_dir = os.path.dirname(__file__)
 # global parameters go here
 gamma = 1/3.5
 experiment_name = 'exclude_None'
-regions = ['Pacific',]
+regions = ['New England', 'Middle Atlantic']
 
 # Get US demographics
 # ~~~~~~~~~~~~~~~~~~~
@@ -61,6 +61,20 @@ def get_demography(regions=None):
 state_fips_index, demo = get_demography(regions)
 n_states = len(demo)
 
+# Get state adjacency matrix
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# get and slice
+adj = pd.read_csv(os.path.join(abs_dir, 'adjacency_matrix.csv'), index_col=0)
+adj = adj.loc[state_fips_index['abbreviation_state'].values, state_fips_index['abbreviation_state'].values]
+
+# compute precision matrix
+tau = 0.9                                             # ICAR
+D = np.diag(np.sum(adj, axis=1))                    # degree matrix
+jitter = 1e-6 * np.eye(n_states)                    # small jitter to stabilize computation
+Q = D - tau * adj + jitter                          # build precision matrix Q = D - a * W + jitter  (shape: n_clusters x n_clusters)
+L_Q = np.linalg.cholesky(Q)                        # Cholesky of precision: Q = L_Q @ L_Q.T  (lower-triangular)
+L_cov = np.linalg.solve(L_Q, np.eye(n_states))     # Compute L_cov = L_Q^{-1} such that Sigma = L_cov @ L_cov.T = Q^{-1}
 
 # Get US incidences
 # ~~~~~~~~~~~~~~~~~
@@ -692,13 +706,13 @@ with pm.Model(coords=coords) as model:
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
-n_chains = 1
+n_chains = 3
 
 with model:
     # set step size directly
-    step = pm.NUTS(step_scale=0.1, target_accept=0.8, max_treedepth=10)
+    step = pm.NUTS(step_scale=0.0025, target_accept=0.8, max_treedepth=11)
     # run sampler without tuning
-    trace = pm.sample(15, tune=15, chains=n_chains, init='adapt_diag', cores=1, progressbar=True, step = step,
+    trace = pm.sample(50, tune=0, chains=n_chains, init='adapt_diag', cores=1, progressbar=True, step = step,
                         initvals=n_chains*[{'alpha_inv': 0.1 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1,
                                   'log_rho_global_mean': log_rho_global_init, 'rho_state_sd': 0.2, 'rho_state_raw': rho_state_init / 0.2, 'rho_season_sd': 0.2, 'rho_season_raw': rho_season_init / 0.2,
                                   'log_fI_global_mean': log_fI_global_init, 'fI_state_sd': 0.2, 'fI_state_raw': fI_state_init / 0.2, 'fI_season_sd': 0.2, 'fI_season_raw': fI_season_init / 0.2,
@@ -900,4 +914,4 @@ for i in range(n_modifiers):
 
 # save to csv
 df.index.name = "state"
-df.to_csv(f"output/hyperparameters_{experiment_name}.csv")
+df.to_csv(f"output/hyperparameters-{experiment_name}.csv")
