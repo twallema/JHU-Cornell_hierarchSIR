@@ -27,6 +27,7 @@ abs_dir = os.path.dirname(__file__)
 
 # global parameters go here
 gamma = 1/3.5
+experiment_name = 'exclude_None'
 regions = ['New England', 'Middle Atlantic']
 
 # Get US demographics
@@ -629,6 +630,8 @@ with pm.Model(coords=coords) as model:
     # Initial position
     z_0 = pt.zeros([n_seasons, n_states])
     eps_0 = pt.zeros([n_seasons, n_states])
+    # Steady state noise
+    omega = pm.LogNormal("omega", mu=pt.log(0.01/3), sigma=1/5)  
     # Total AR persistence
     ## global
     logit_psi_global_mean = pm.Normal("logit_psi_global_mean", mu=pm.math.logit(0.5), sigma=0.27)    # 0.3-0.7
@@ -650,8 +653,7 @@ with pm.Model(coords=coords) as model:
     kappa_state_sd = pm.HalfNormal("kappa_state_sd", sigma=1/2)
     kappa_state_raw = pm.Normal("kappa_state_raw", 0, 1, dims="state")
     kappa_state = pm.Deterministic("kappa_state", pt.exp(kappa_state_sd * kappa_state_raw), dims="state")
-    kappa = pm.Deterministic("kappa", pm.math.sigmoid(logit_kappa_global_mean + kappa_state_sd * kappa_state_raw))
-    omega = pm.HalfNormal("omega", sigma=0.01/3)        
+    kappa = pm.Deterministic("kappa", pm.math.sigmoid(logit_kappa_global_mean + kappa_state_sd * kappa_state_raw))      
     # Split between a and b                                                   
     phi = pm.Beta("phi", 3, 1)                                                                  
     a_garch = pm.Deterministic("a_garch", kappa * phi)                                                          
@@ -693,16 +695,17 @@ with pm.Model(coords=coords) as model:
 n_chains = 1
 
 with model:
-    trace = pm.sample(15, tune=0, chains=n_chains, init='adapt_diag', cores=1, progressbar=True,
-                      nuts={'target_accept': 0.8, 'max_treedepth': 7, 'step_scale': 0.01},
+    # set step size directly
+    step = pm.NUTS(step_scale=0.1, target_accept=0.8, max_treedepth=10)
+    # run sampler without tuning
+    trace = pm.sample(15, tune=25, chains=n_chains, init='adapt_diag', cores=1, progressbar=True, step = step,
                         initvals=n_chains*[{'alpha_inv': 0.1 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.1,
                                   'log_rho_global_mean': log_rho_global_init, 'rho_state_sd': 0.2, 'rho_state_raw': rho_state_init / 0.2, 'rho_season_sd': 0.2, 'rho_season_raw': rho_season_init / 0.2,
                                   'log_fI_global_mean': log_fI_global_init, 'fI_state_sd': 0.2, 'fI_state_raw': fI_state_init / 0.2, 'fI_season_sd': 0.2, 'fI_season_raw': fI_season_init / 0.2,
                                   'logit_fR_global_mean': logit_fR_global_init, 'fR_state_sd': 0.2, 'fI_state_raw': fR_state_init / 0.2, 'fR_season_sd': 0.2, 'fR_season_raw': fR_season_init / 0.2,
                                   'logit_psi_global_mean': 0.75, 'logit_kappa_global_mean': 0.75}])
     
-step_size_bar = trace.sample_stats.step_size_bar.values
-print(step_size_bar)
+print(f"Step size post-tuning: {trace.sample_stats.step_size_bar.values}")
 
 # manual burn
 n_burn = 0
@@ -839,12 +842,12 @@ for n, p_state, p_season, g, p, e in zip(labels_params, state_params, season_par
     ax_global.xaxis.set_major_locator(plt.MaxNLocator(3)) 
 
     # ---- Bottom row: state and season forest plots ----
-    arviz.plot_forest(trace, var_names=[p_state], combined=True, hdi_prob=0.95, kind="ridgeplot", ax=axes[1, 0], colors='forestgreen')
+    arviz.plot_forest(trace, var_names=[p_state], combined=True, hdi_prob=0.95, ax=axes[1, 0], colors='forestgreen')
     axes[1, 0].axvline(1, color="black", linestyle="--")
     axes[1, 0].set_title(f"{e} state effects", fontsize=12)
 
     if ((p != 'psi') & (p != 'kappa')):
-        arviz.plot_forest(trace, var_names=[p_season], combined=True, hdi_prob=0.95, kind="ridgeplot", ax=axes[1, 1], colors='forestgreen')
+        arviz.plot_forest(trace, var_names=[p_season], combined=True, hdi_prob=0.95, ax=axes[1, 1], colors='forestgreen')
         axes[1, 1].axvline(1, color="black", linestyle="--")
         axes[1, 1].set_title(f"{e} season effects", fontsize=12)
     else:
@@ -856,3 +859,45 @@ for n, p_state, p_season, g, p, e in zip(labels_params, state_params, season_par
 
 
 # save the hyperdistributions
+med = trace.posterior.median(dim=("chain", "draw")) # take median across chains and draws
+df = pd.DataFrame(index=model.coords["state"])
+
+# scalar parameters (repeat per state)
+scalar_params = [
+    "rho_global_mean",
+    "rho_season_sd",
+    "fI_global_mean",
+    "fI_season_sd",
+    "fR_global_mean",
+    "fR_season_sd",
+    "omega",
+    "psi_global_mean",
+    "kappa_global_mean",
+    "phi",
+    "sigma2_0_sigma"
+]
+for p in scalar_params:
+    df[p] = float(med[p].values)
+
+# state parameters
+state_params = [
+    "alpha_inv",
+    "rho_state",
+    "fI_state",
+    "fR_state",
+    "psi_state",
+    "kappa_state",
+]
+for p in state_params:
+    df[p] = med[p].values
+
+
+# delta_beta_state_mean (modifier x state)
+delta = med["delta_beta_state_mean"].values
+n_modifiers = delta.shape[0]
+for i in range(n_modifiers):
+    df[f"delta_beta_state_mean_{i}"] = delta[i, :]
+
+# save to csv
+df.index.name = "state"
+df.to_csv(f"output/hyperparameters_{experiment_name}.csv")
