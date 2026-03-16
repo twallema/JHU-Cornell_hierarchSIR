@@ -629,7 +629,7 @@ with pm.Model(coords=coords) as model:
 
     # Spatial correlation
     psi_spatial_shocks = 0.99*pm.Beta("psi_spatial_shocks", 3, 1)
-    psi_spatial_modifiers = 0.99*pm.Beta("psi_spatial_modifiers", 3, 1)
+    psi_spatial_modifiers = 0.99*pm.Beta("psi_spatial_modifiers", 3, 3)
     W = pt.as_tensor_variable(adj.values)
     D = pt.diag(pt.sum(W, axis=1))
     Q_shocks = D - psi_spatial_shocks * W + 1e-6 * pt.eye(n_states)
@@ -704,29 +704,29 @@ with pm.Model(coords=coords) as model:
     ys = pt.math.softplus(ys)
 
     # Compute likelihood
-    alpha_inv = pm.LogNormal("alpha_inv", mu=pt.log(0.005), sigma=1/5, dims="state")
+    alpha_inv = pm.LogNormal("alpha_inv", mu=pt.log(0.0025), sigma=1/5, dims="state")
     pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
-n_chains = 1
+n_chains = 10
 
 with model:
     # set step size directly
     step = pm.NUTS(step_scale=0.005, target_accept=0.8, max_treedepth=10)   # for US: step_scale: 0.0025 + max_treedepth 12
     # run sampler without tuning
-    trace = pm.sample(10, tune=0, chains=n_chains, init='adapt_diag', cores=1, progressbar=True, step = step,
-                        initvals=n_chains*[{'alpha_inv': 0.05 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.2,
+    trace = pm.sample(200, tune=0, chains=n_chains, init='adapt_diag', cores=1, progressbar=True, step = step,
+                        initvals=n_chains*[{'alpha_inv': 0.05 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.25,
                                   'log_rho_global_mean': log_rho_global_init, 'rho_state_sd': 0.2, 'rho_state_raw': rho_state_init / 0.2, 'rho_season_sd': 0.2, 'rho_season_raw': rho_season_init / 0.2,
                                   'log_fI_global_mean': log_fI_global_init, 'fI_state_sd': 0.2, 'fI_state_raw': fI_state_init / 0.2, 'fI_season_sd': 0.2, 'fI_season_raw': fI_season_init / 0.2,
                                   'logit_fR_global_mean': logit_fR_global_init, 'fR_state_sd': 0.2, 'fI_state_raw': fR_state_init / 0.2, 'fR_season_sd': 0.2, 'fR_season_raw': fR_season_init / 0.2,
                                   'logit_psi_global_mean': 0.75, 'logit_kappa_global_mean': 0.75}])
-    
+       
 print(f"Step size post-tuning: {trace.sample_stats.step_size_bar.values}")
 
 # manual burn
-n_burn = 0
+n_burn = 50
 trace = trace.isel(draw=slice(n_burn, None))
 
 # Generate traces
