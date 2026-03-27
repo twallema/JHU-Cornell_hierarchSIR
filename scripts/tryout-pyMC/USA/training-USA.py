@@ -27,7 +27,8 @@ abs_dir = os.path.dirname(__file__)
 
 # global parameters go here
 gamma = 1/3.5
-experiment_name = 'exclude_None'
+output_folder = os.path.join(abs_dir, 'output/training')
+training_name = 'exclude_None'
 regions = ['New England', 'Middle Atlantic']
 
 # Get US demographics
@@ -437,8 +438,8 @@ for s in range(n_states):
         ax.scatter(dt[i, :], 7*data[i, s, :], marker='o', color='black', label='obs')
     fig.suptitle(f'{state_fips_index.iloc[s]['abbreviation_state']}')
     fig.tight_layout()
-    os.makedirs('output/training/initial-optim', exist_ok=True)
-    plt.savefig(f'output/training/initial-optim/state_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf')
+    os.makedirs(os.path.join(output_folder, 'initial-optim'), exist_ok=True)
+    plt.savefig(os.path.join(output_folder,f'initial-optim/state_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf'))
     plt.close(fig)
 
 # store 2D vector per variable so we can start the chains easily: shape: (n_seasons, n_states)
@@ -742,15 +743,15 @@ variables2plot = [
                 ]
 
 # Save original traces
-os.makedirs('output/training/traces', exist_ok=True)
+os.makedirs(os.path.join(output_folder,'traces'), exist_ok=True)
 for var in variables2plot:
     arviz.plot_trace(trace, var_names=[var]) 
-    plt.savefig(f'output/training/traces/trace-{var}.pdf')
+    plt.savefig(os.path.join(output_folder,f'traces/trace-{var}.pdf'))
     plt.close()
 
 # Build pair plots
 arviz.plot_pair(trace, var_names=["kappa", "phi", "omega", "psi"], divergences=True)
-plt.savefig('output/training/traces/pairplot-ARGARCH.pdf')
+plt.savefig(os.path.join(output_folder,'traces/pairplot-ARGARCH.pdf'))
 plt.close()
 
 
@@ -762,11 +763,11 @@ with model:
     posterior_predictive = pm.sample_posterior_predictive(trace)
 
 # Save traces and posterior predictive
-arviz.to_netcdf(trace, "output/training/trace.nc")
-arviz.to_netcdf(posterior_predictive, "output/training/posterior_predictive.nc")
+arviz.to_netcdf(trace, os.path.join(output_folder,"trace.nc"))
+arviz.to_netcdf(posterior_predictive, os.path.join(output_folder,"posterior_predictive.nc"))
 
 # Visualise across-season modifier trend + within-season median per state
-os.makedirs('output/training/modifiers', exist_ok=True)
+os.makedirs(os.path.join(output_folder,'modifiers'), exist_ok=True)
 # make dates
 x = pd.date_range(start=datetime(2000,10,15), periods=n_modifiers, freq='W')
 for s in range(n_states):
@@ -787,13 +788,13 @@ for s in range(n_states):
     ax.set_ylim([0.65, 1.35])
     ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
-    plt.savefig(f'output/training/modifiers/modifiers_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf')
+    plt.savefig(os.path.join(output_folder,f'modifiers/modifiers_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf'))
     plt.close()
 
 
 # Visualise goodness-of-fit, delta_beta, z, sigma2 and eps per state and per season
 for s in range(n_states):
-    os.makedirs(f'output/training/goodness-fit/{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}/', exist_ok=True)
+    os.makedirs(os.path.join(output_folder,f'goodness-fit/{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}/'), exist_ok=True)
     for i, season in enumerate(seasons):
         
         fig,ax=plt.subplots(nrows=5, figsize=(8.3, 11.7))
@@ -825,7 +826,7 @@ for s in range(n_states):
                     color='black', alpha=0.15)
             ax[j+1].set_ylabel(par)
         ax[0].set_title(season)
-        plt.savefig(f'output/training/goodness-fit/{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}/{season}_goodness-fit.pdf')
+        plt.savefig(os.path.join(output_folder,f'goodness-fit/{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}/{season}_goodness-fit.pdf'))
         plt.close()
 
 
@@ -872,7 +873,7 @@ for n, p_state, p_season, g, p, e in zip(labels_params, state_params, season_par
         axes[1, 1].remove()
 
     plt.tight_layout()
-    plt.savefig(f'output/training/traces/forestplot-{p}.pdf')
+    plt.savefig(os.path.join(output_folder,f'traces/forestplot-{p}.pdf'))
     plt.close()
 
 
@@ -920,4 +921,4 @@ for i in range(n_modifiers):
 
 # save to csv
 df.index.name = "state"
-df.to_csv(f"output/training/hyperparameters-{experiment_name}.csv")
+df.to_csv(os.path.join(output_folder,f"hyperparameters-{training_name}.csv"))
