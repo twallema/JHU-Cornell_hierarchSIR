@@ -728,10 +728,10 @@ with pm.Model(coords=coords) as model:
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
-n_chains = 3
+n_chains = 6
 with model:
     # run sampler without tuning
-    trace = pm.sample(10, tune=10, chains=n_chains, init='adapt_diag', cores=1, progressbar=True)
+    trace = pm.sample(100, tune=100, chains=n_chains, init='adapt_diag', cores=1, progressbar=True)
 
 print(f"Step size post-tuning: {trace.sample_stats.step_size_bar.values}")
 
