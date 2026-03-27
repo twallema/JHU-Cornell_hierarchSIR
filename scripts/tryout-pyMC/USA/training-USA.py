@@ -72,11 +72,12 @@ adj = adj.loc[state_fips_index['abbreviation_state'].values, state_fips_index['a
 # ~~~~~~~~~~~~~~~~~
 
 # convert to a list of start and enddates (datetime)
-n_modifiers = 26
-modifier_length = 7
 seasons = ['2023-2024', '2024-2025', '2025-2026']        # pyMC AR-GARCH scan doesn't work with only one season but forward simulating model does
 n_seasons = len(seasons)
 n_observations = 23
+# the following variables must match the forecasting script
+n_modifiers = 26
+modifier_length = 7
 start_calibration_month = 10    # (year X)
 start_calibrations = [datetime(int(season[0:4]), start_calibration_month, 1) for season in seasons]
 modifier_reference_dates = [datetime(int(season[0:4]), 10, 15) for season in seasons]
