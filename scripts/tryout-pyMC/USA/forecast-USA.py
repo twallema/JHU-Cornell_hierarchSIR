@@ -754,9 +754,9 @@ for var in variables2plot:
 
 with model:
 
-    # geometric random walk
-    grw_innov = pm.Normal("grw_innov", mu=0, sigma=1, shape=(forecast_horizon,))
-    ys_future_rw = ys[:, :, n_observations:] * pt.exp(pt.cumsum(grw_innov)[None, None, :])
+    # geometric random walk per state
+    grw_innov = pm.Normal("grw_innov", mu=0, sigma=0.375, shape=(n_states, forecast_horizon))         # tune by LOOCV on WIS (currently set to NC stationary GRW baseline model optimal)
+    ys_future_rw = ys[:, :, n_observations:] * pt.exp(pt.cumsum(grw_innov, axis=1)[None, :, :])
 
     # forecast 
     pred = pm.NegativeBinomial("pred", mu=ys_future_rw, alpha=1/alpha_inv[None, :, None])
@@ -783,6 +783,10 @@ for s in range(n_states):
                     posterior_predictive.posterior_predictive['obs'].quantile(dim=['chain', 'draw'], q=0.025).values[0,s,:],
                     posterior_predictive.posterior_predictive['obs'].quantile(dim=['chain', 'draw'], q=0.975).values[0,s,:],
                     color='black', alpha=0.1)
+    ax.fill_between(dates_obs,
+                    posterior_predictive.posterior_predictive['obs'].quantile(dim=['chain', 'draw'], q=0.025).values[0,s,:],
+                    posterior_predictive.posterior_predictive['obs'].quantile(dim=['chain', 'draw'], q=0.75).values[0,s,:],
+                    color='black', alpha=0.1)    
     ax.scatter(dates_obs, posterior_predictive.observed_data['obs'].values[0,s,:], marker='o', color='black')
     ## forecast
     ax.plot(dates_pred, posterior_predictive.posterior_predictive['pred'].median(dim=['chain', 'draw']).values[0,s,:], linewidth=1, color='red')
