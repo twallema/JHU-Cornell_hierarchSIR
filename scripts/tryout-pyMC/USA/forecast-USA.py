@@ -76,7 +76,7 @@ adj = adj.loc[state_fips_index['abbreviation_state'].values, state_fips_index['a
 # convert to a list of start and enddates (datetime)
 seasons = ['2025-2026',]        # script works with only one season
 n_seasons = len(seasons)
-n_observations = 14             # use all data available in the forecast season
+n_observations = 12             # use all data available in the forecast season
 forecast_horizon = 4
 # the following variables must match the training script
 n_modifiers = 26
@@ -707,7 +707,7 @@ with pm.Model(coords=coords) as model:
     )
 
     # Register deterministic variables to inspect later
-    delta_beta = pm.Deterministic("delta_beta", z_seq + delta_beta_state_mean)
+    delta_beta = pm.Deterministic("delta_beta", delta_beta_state_mean + z_seq)
     z = pm.Deterministic("z", z_seq)
     sigma2 = pm.Deterministic("sigma2", sigma2_seq)
     eps = pm.Deterministic("eps", eps_seq)
@@ -730,10 +730,8 @@ with pm.Model(coords=coords) as model:
 
 n_chains = 3
 with model:
-    # set step size directly
-    step = pm.NUTS(step_scale=0.005, target_accept=0.8, max_treedepth=10)   # for US: step_scale: 0.0025 + max_treedepth 12
     # run sampler without tuning
-    trace = pm.sample(10, tune=10, chains=n_chains, init='adapt_diag', cores=1, progressbar=True)# , step = step)
+    trace = pm.sample(10, tune=10, chains=n_chains, init='adapt_diag', cores=1, progressbar=True)
 
 print(f"Step size post-tuning: {trace.sample_stats.step_size_bar.values}")
 
