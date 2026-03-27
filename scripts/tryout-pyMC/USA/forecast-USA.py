@@ -784,6 +784,10 @@ for s in range(n_states):
                     posterior_predictive.posterior_predictive['pred'].quantile(dim=['chain', 'draw'], q=0.025).values[0,s,:],
                     posterior_predictive.posterior_predictive['pred'].quantile(dim=['chain', 'draw'], q=0.975).values[0,s,:],
                     color='red', alpha=0.1)
+    ax.fill_between(dates_pred,
+                    posterior_predictive.posterior_predictive['pred'].quantile(dim=['chain', 'draw'], q=0.25).values[0,s,:],
+                    posterior_predictive.posterior_predictive['pred'].quantile(dim=['chain', 'draw'], q=0.75).values[0,s,:],
+                    color='red', alpha=0.1)    
     fig.suptitle(f'{state_fips_index.iloc[s]['abbreviation_state']}')
     fig.tight_layout()
     os.makedirs(os.path.join(output_folder, 'goodness-fit'), exist_ok=True)
