@@ -720,7 +720,7 @@ with model:
                         initvals=n_chains*[{'alpha_inv': 0.05 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.25,
                                   'log_rho_global_mean': log_rho_global_init, 'rho_state_sd': 0.2, 'rho_state_raw': rho_state_init / 0.2, 'rho_season_sd': 0.2, 'rho_season_raw': rho_season_init / 0.2,
                                   'log_fI_global_mean': log_fI_global_init, 'fI_state_sd': 0.2, 'fI_state_raw': fI_state_init / 0.2, 'fI_season_sd': 0.2, 'fI_season_raw': fI_season_init / 0.2,
-                                  'logit_fR_global_mean': logit_fR_global_init, 'fR_state_sd': 0.2, 'fI_state_raw': fR_state_init / 0.2, 'fR_season_sd': 0.2, 'fR_season_raw': fR_season_init / 0.2,
+                                  'logit_fR_global_mean': logit_fR_global_init, 'fR_state_sd': 0.2, 'fR_state_raw': fR_state_init / 0.2, 'fR_season_sd': 0.2, 'fR_season_raw': fR_season_init / 0.2,
                                   'logit_psi_global_mean': 0.75, 'logit_kappa_global_mean': 0.75}])
        
 print(f"Step size post-tuning: {trace.sample_stats.step_size_bar.values}")
