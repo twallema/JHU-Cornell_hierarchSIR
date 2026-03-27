@@ -78,7 +78,6 @@ seasons = ['2023-2024', '2024-2025', '2025-2026']        # pyMC AR-GARCH scan do
 n_seasons = len(seasons)
 n_observations = 23
 start_calibration_month = 10    # (year X)
-end_calibration_month = 3       # (year X+1)
 start_calibrations = [datetime(int(season[0:4]), start_calibration_month, 1) for season in seasons]
 modifier_reference_dates = [datetime(int(season[0:4]), 10, 15) for season in seasons]
 start_simulation = -15 # (October 1)
