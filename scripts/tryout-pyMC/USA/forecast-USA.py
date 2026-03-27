@@ -76,7 +76,7 @@ adj = adj.loc[state_fips_index['abbreviation_state'].values, state_fips_index['a
 # convert to a list of start and enddates (datetime)
 seasons = ['2025-2026',]        # script works with only one season
 n_seasons = len(seasons)
-n_observations = 12             # use all data available in the forecast season
+n_observations = 52             # use all data available in the forecast season
 forecast_horizon = 4
 # the following variables must match the training script
 n_modifiers = 26
@@ -752,10 +752,18 @@ for var in variables2plot:
 # Make posterior predictive
 # ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# Predict
 with model:
-    pred = pm.NegativeBinomial("pred", mu=ys[:, :, n_observations:], alpha=1/alpha_inv[None, :, None])
+
+    # geometric random walk
+    grw_innov = pm.Normal("grw_innov", mu=0, sigma=1, shape=(forecast_horizon,))
+    ys_future_rw = ys[:, :, n_observations:] * pt.exp(pt.cumsum(grw_innov)[None, None, :])
+
+    # forecast 
+    pred = pm.NegativeBinomial("pred", mu=ys_future_rw, alpha=1/alpha_inv[None, :, None])
+
+    # sample
     posterior_predictive = pm.sample_posterior_predictive(trace, var_names=["obs", "pred"])
+
 
 # Save traces and posterior predictive
 arviz.to_netcdf(trace, os.path.join(output_folder, "trace.nc"))
