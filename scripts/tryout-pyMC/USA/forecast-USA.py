@@ -27,8 +27,9 @@ abs_dir = os.path.dirname(__file__)
 
 # global parameters go here
 gamma = 1/3.5
-output_folder = os.path.join(abs_dir, 'output/training')
 training_name = 'exclude_None'
+training_folder = os.path.join(abs_dir, 'output/training')
+output_folder = os.path.join(abs_dir, 'output/forecasting')
 regions = ['New England', 'Middle Atlantic']
 
 # Get US demographics
@@ -69,14 +70,15 @@ n_states = len(demo)
 adj = pd.read_csv(os.path.join(abs_dir, 'adjacency_matrix.csv'), index_col=0)
 adj = adj.loc[state_fips_index['abbreviation_state'].values, state_fips_index['abbreviation_state'].values]
 
-# Get US incidences
-# ~~~~~~~~~~~~~~~~~
+# Get US incidence data
+# ~~~~~~~~~~~~~~~~~~~~~
 
 # convert to a list of start and enddates (datetime)
-seasons = ['2023-2024', '2024-2025', '2025-2026']        # pyMC AR-GARCH scan doesn't work with only one season but forward simulating model does
+seasons = ['2025-2026',]        # script works with only one season
 n_seasons = len(seasons)
-n_observations = 23
-# the following variables must match the forecasting script
+n_observations = 52             # use all data available in the forecast season
+forecast_horizon = 4
+# the following variables must match the training script
 n_modifiers = 26
 modifier_length = 7
 start_calibration_month = 10    # (year X)
@@ -84,7 +86,7 @@ start_calibrations = [datetime(int(season[0:4]), start_calibration_month, 1) for
 modifier_reference_dates = [datetime(int(season[0:4]), 10, 15) for season in seasons]
 start_simulation = -15 # (October 1)
 
-def get_data(start_calibrations, modifier_reference_dates, n_observations, state_fips=None):
+def get_data(start_calibrations, modifier_reference_dates, n_observations, forecast_horizon, state_fips=None):
     """
     A function formatting the model's input data
 
@@ -109,10 +111,22 @@ def get_data(start_calibrations, modifier_reference_dates, n_observations, state
         df = df[df['fips_state'].isin(state_fips)]
         # slice out variables of interest
         df = df[['date', 'fips_state', 'influenza admissions']]
-        # trim temporally
-        df = df[((df['date'] > start_calibration) & (df['date'] <= start_calibration+timedelta(weeks=n_observations)))]
+        # trim the bottom temporally
+        df = df[df['date'] > start_calibration]
         # Backward fill per state (Happens first week of season 2024-2025 in 3 states)
         df['influenza admissions'] = df.groupby('fips_state')['influenza admissions'].bfill()
+        # determine the data's end date
+        last_existing_date = df['date'].max()
+        user_end_date = start_calibration+timedelta(weeks=n_observations)
+        if user_end_date <= last_existing_date:
+            target_end_date = user_end_date + pd.Timedelta(weeks=forecast_horizon)
+        else:
+            target_end_date = last_existing_date + pd.Timedelta(weeks=forecast_horizon)
+        # generate dataframe encompassing calibration + forecast ranges
+        all_dates = pd.date_range(start=df['date'].min(), end=target_end_date, freq='7D')
+        all_fips = df['fips_state'].unique()
+        full_index = pd.MultiIndex.from_product([all_dates, all_fips], names=['date','fips_state'])
+        df = df.set_index(['date', 'fips_state']).reindex(full_index).reset_index()
         # save the data's time index relative to the forward simulation model's t=0 (per season) + dates
         dates.append(df['date'].unique())
         timesteps.append([(d - modifier_reference_date)/timedelta(days=1) for d in df['date'].unique()])
@@ -126,8 +140,43 @@ def get_data(start_calibrations, modifier_reference_dates, n_observations, state
     return data/7, dates, timesteps
 
 # get the data
-data, dt, ts = get_data(start_calibrations, modifier_reference_dates, n_observations, state_fips_index['fips_state'].values) # (n_season, n_variables, n_observations)
+data, dt, ts = get_data(start_calibrations, modifier_reference_dates, n_observations, forecast_horizon, state_fips_index['fips_state'].values) # (n_season, n_variables, n_observations)
 
+# compute the actual number of observations
+n_observations = len(dt[0]) - forecast_horizon
+
+# Get the hyperparameters
+# ~~~~~~~~~~~~~~~~~~~~~~~
+
+# get
+hyperpars = pd.read_csv(os.path.join(training_folder, f'hyperparameters-{training_name}.csv'))
+
+# unpack
+## (global) scalar
+rho_global_mean         = hyperpars['rho_global_mean'].unique()[0]
+rho_season_sd           = hyperpars['rho_season_sd'].unique()[0]
+fI_global_mean          = hyperpars['fI_global_mean'].unique()[0]
+fI_season_sd            = hyperpars['fI_season_sd'].unique()[0]
+fR_global_mean          = hyperpars['fR_global_mean'].unique()[0]
+fR_season_sd            = hyperpars['fR_season_sd'].unique()[0]
+omega                   = hyperpars['omega'].unique()[0]
+psi_spatial_shocks      = hyperpars['psi_spatial_shocks'].unique()[0]
+psi_spatial_modifiers   = hyperpars['psi_spatial_modifiers'].unique()[0]
+psi_global_mean         = hyperpars['psi_global_mean'].unique()[0]
+kappa_global_mean       = hyperpars['kappa_global_mean'].unique()[0]
+phi                     = hyperpars['phi'].unique()[0]
+sigma2_0_sigma          = hyperpars['sigma2_0_sigma'].unique()[0]
+## (state) vectors
+alpha_inv               = hyperpars['alpha_inv'].values
+rho_state               = hyperpars['rho_state'].values
+fI_state                = hyperpars['fI_state'].values
+fR_state                = hyperpars['fR_state'].values
+psi_state               = hyperpars['psi_state'].values
+kappa_state             = hyperpars['kappa_state'].values
+
+## hypermodifiers
+modifier_cols = [c for c in hyperpars.columns if c.startswith("delta_beta_state_mean_")]
+delta_beta_state_mean = np.transpose(hyperpars[modifier_cols].to_numpy())
 
 # Define a jax-jitted diffrax differential equation model
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -351,21 +400,13 @@ def vjp_sol_op_jax_funcify(op, **kwargs):
     return lambda args_diff, gz, args_nodiff: jitted_vjp_sol_op_multi(args_diff, gz, args_nodiff, op.args_static)
 
 
-# Register with pyMC
-# ~~~~~~~~~~~~~~~~~~
-
-# static arguments
-args_static = (start_simulation, max(ts[:,-1]), modifier_length)
-
-# Compile forward simulation model
-sol_op = SolOp(args_static)
-vjp_sol_op = VJPSolOp(args_static)
-
-
 # Pre-optimize the forward simulation model's parameters
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# args diff initial guesses (ballpark estimates)
+# static arguments
+args_static = (start_simulation, float(max(ts[:,:n_observations][:,-1])), modifier_length)
+
+# args diff initial guesses (ballpark estimates) --> #TODO: average out hyperparameters 
 beta = 0.455
 rho = 0.0025
 fI = 1e-4
@@ -395,7 +436,7 @@ args_diff = jnp.broadcast_to(single_args_diff, (n_seasons, n_states, single_args
 # stack args_nodiff so two leading axes are seasons, states and the third axes gives the arguments for the season-state combination
 gamma_vec = jnp.full((n_seasons, n_states, 1), gamma)
 pop_mat = jnp.broadcast_to(jnp.asarray(demo)[None, :, None], (n_seasons, n_states, 1))
-ts_mat = jnp.broadcast_to(ts[:, None, :], (n_seasons, n_states, ts.shape[1]))
+ts_mat = jnp.broadcast_to(ts[:, None, :n_observations], (n_seasons, n_states, ts[:,:n_observations].shape[1]))
 args_nodiff = np.array(jnp.concatenate([gamma_vec, pop_mat, ts_mat], axis=2))     # shape: (n_seasons, n_states, )  --> convert to numpy otherwise error in pt.as_tensor_variable(args_nodiff) in make_node of pyMC model
 
 # define SSE likelihood
@@ -409,7 +450,7 @@ def neg_log_likelihood(args_diff):
     # 3. run simulation
     pred = jitted_sol_op_multi(args_diff, args_nodiff, args_static)
     # 4. compute SSE loss
-    return jnp.sum((data - pred)**2)
+    return jnp.sum((data[:,:,:n_observations] - pred)**2)
 
 # optimize
 optimizer = optax.adam(1e-2)
@@ -434,8 +475,8 @@ out = jitted_sol_op_multi(args_diff, args_nodiff, args_static)
 for s in range(n_states):
     fig, ax = plt.subplots(nrows=1, figsize=(8.7, 11.3/4))
     for i in range(n_seasons):
-        ax.plot(dt[i, :], 7*out[i, s, :], color='red', label='pred')
-        ax.scatter(dt[i, :], 7*data[i, s, :], marker='o', color='black', label='obs')
+        ax.plot(dt[i, :n_observations], 7*out[i, s, :], color='red', label='pred')
+        ax.scatter(dt[i, :n_observations], 7*data[i, s, :n_observations], marker='o', color='black', label='obs')
     fig.suptitle(f'{state_fips_index.iloc[s]['abbreviation_state']}')
     fig.tight_layout()
     os.makedirs(os.path.join(output_folder, 'initial-optim'), exist_ok=True)
@@ -480,6 +521,25 @@ print("Mean logit-fR:", logit_fR_global_init)
 print("Mean reconstruction error:", np.abs(reconstructed - logit_fR_opt).mean())
 print("Max reconstruction error:", np.abs(reconstructed - logit_fR_opt).max())
 
+# Register with pyMC
+# ~~~~~~~~~~~~~~~~~~
+
+# (make it so that it runs to end of forecast horizon)
+ 
+# static arguments
+args_static = (start_simulation, float(max(ts[:,-1])), modifier_length)
+
+# non-differentiable arguments
+gamma_vec = jnp.full((n_seasons, n_states, 1), gamma)
+pop_mat = jnp.broadcast_to(jnp.asarray(demo)[None, :, None], (n_seasons, n_states, 1))
+ts_mat = jnp.broadcast_to(ts[:, None, :], (n_seasons, n_states, ts.shape[1]))
+args_nodiff = np.array(jnp.concatenate([gamma_vec, pop_mat, ts_mat], axis=2))     # shape: (n_seasons, n_states, )  --> convert to numpy otherwise error in pt.as_tensor_variable(args_nodiff) in make_node of pyMC model
+
+# Compile forward simulation model as a pyMC probablistic node
+sol_op = SolOp(args_static)
+vjp_sol_op = VJPSolOp(args_static)
+
+
 # Build tempored NB distribution
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -504,8 +564,7 @@ def compute_season_weights(data):
     # expand dims for broadcasting across observations
     return normalized[:, :, None]
 
-weights = compute_season_weights(data)
-
+weights = compute_season_weights(data[:,:,:n_observations])
 
 # tempered negative binomial likelihood
 def weighted_nb_logp(value, mu, alpha, weights):
@@ -581,103 +640,63 @@ with pm.Model(coords=coords) as model:
     beta = pt.as_tensor_variable(0.455*np.ones(shape=(n_seasons,n_states)))
 
     ## ascertainment: rho
-    ### global
-    log_rho_global_mean = pm.Normal("log_rho_global_mean", mu=np.log(np.mean(rho_opt)), sigma=1/3)    
-    rho_global_mean = pm.Deterministic("rho_global_mean", pt.exp(log_rho_global_mean))
-    ### state
-    rho_state_sd = pm.HalfNormal("rho_state_sd", sigma=1/5)      
-    rho_state_raw = pm.Normal("rho_state_raw", 0, 1, dims="state")
-    rho_state = pm.Deterministic("rho_state", pt.exp(rho_state_sd * rho_state_raw), dims="state")
-    ### season
-    rho_season_sd = pm.HalfNormal("rho_season_sd", sigma=1/5)
+    ### global (rho_global_mean)
+    ### state (rho_state)
+    ### season (rho_season_sd)
     rho_season_raw = pm.Normal("rho_season_raw", 0, 1, dims="season")
-    rho_season = pm.Deterministic("rho_season", pt.exp(rho_season_sd * rho_season_raw), dims="season")
-    log_rho = log_rho_global_mean + rho_state_sd * rho_state_raw[None, :] + rho_season_sd * rho_season_raw[:, None]
+    log_rho = pt.log(rho_global_mean) + pt.log(rho_state)[None, :] + rho_season_sd * rho_season_raw[:, None]
     rho = pm.Deterministic("rho", pt.exp(log_rho))
 
     ## initial infected: fI
-    ### global
-    log_fI_global_mean = pm.Normal("log_fI_global_mean", mu=np.log(np.mean(fI_opt)), sigma=1/3)    
-    fI_global_mean = pm.Deterministic("fI_global_mean", pt.exp(log_fI_global_mean))
-    ### state
-    fI_state_sd = pm.HalfNormal("fI_state_sd", sigma=1/5)      
-    fI_state_raw = pm.Normal("fI_state_raw", 0, 1, dims="state")
-    fI_state = pm.Deterministic("fI_state", pt.exp(fI_state_sd * fI_state_raw), dims="state")
-    ### season
-    fI_season_sd = pm.HalfNormal("fI_season_sd", sigma=1/5)
+    ### global (fI_global_mean)
+    ### state (fI_state)
+    ### season (fI_season_sd)
     fI_season_raw = pm.Normal("fI_season_raw", 0, 1, dims="season")
-    fI_season = pm.Deterministic("fI_season", pt.exp(fI_season_sd * fI_season_raw), dims="season")
-    log_fI = log_fI_global_mean + fI_state_sd * fI_state_raw[None, :] + fI_season_sd * fI_season_raw[:, None]
+    log_fI = pt.log(fI_global_mean) + pt.log(fI_state)[None, :] + fI_season_sd * fI_season_raw[:, None]
     fI = pm.Deterministic("fI", pt.exp(log_fI))
 
     ## initial recovered: fR
-    ### global
-    logit_fR_global_mean = pm.Normal("logit_fR_global_mean", mu=pm.math.logit(0.4), sigma=1.0)
-    fR_global_mean = pm.Deterministic("fR_global_mean", pm.math.sigmoid(logit_fR_global_mean))
-    ### state
-    fR_state_sd = pm.HalfNormal("fR_state_sd", sigma=1/5)
-    fR_state_raw = pm.Normal("fR_state_raw", 0, 1, dims="state")
-    fR_state = pm.Deterministic("fR_state", pt.exp(fR_state_sd * fR_state_raw), dims="state")
-    ### season
-    fR_season_sd = pm.HalfNormal("fR_season_sd", sigma=1/5)
+    ### global (fR_global_mean)
+    ### state (fR_state)
+    ### season (fR_season_sd)
     fR_season_raw = pm.Normal("fR_season_raw", 0, 1, dims="season")
-    fR_season = pm.Deterministic("fR_season", pt.exp(fR_season_sd * fR_season_raw), dims="season")
-    logit_fR = logit_fR_global_mean + fR_state_sd * fR_state_raw[None, :] + fR_season_sd * fR_season_raw[:, None]
+    logit_fR = pm.math.logit(fR_global_mean) + pt.log(fR_state)[None, :] + fR_season_sd * fR_season_raw[:, None]
     fR = pm.Deterministic("fR", pm.math.sigmoid(logit_fR))
 
     # ------- AR-GARCH modifiers -----------
 
-    # Spatial correlation
-    psi_spatial_shocks = 0.99*pm.Beta("psi_spatial_shocks", 3, 1)
-    psi_spatial_modifiers = 0.99*pm.Beta("psi_spatial_modifiers", 3, 3)
+    # Spatial correlation ('psi_spatial_shocks' hyperparameter)
     W = pt.as_tensor_variable(adj.values)
     D = pt.diag(pt.sum(W, axis=1))
     Q_shocks = D - psi_spatial_shocks * W + 1e-6 * pt.eye(n_states)
     L_Q_shocks = pt.slinalg.cholesky(Q_shocks)
     L_cov_shocks = pt.slinalg.solve(L_Q_shocks, pt.eye(n_states))
-    Q_modifiers = D - psi_spatial_modifiers * W + 1e-6 * pt.eye(n_states)
-    L_Q_modifiers = pt.slinalg.cholesky(Q_modifiers)
-    L_cov_modifiers = pt.slinalg.solve(L_Q_modifiers, pt.eye(n_states))
-    # Hyperparameter for delta_beta_temporal
-    delta_beta_raw = pm.Normal("delta_beta_raw", 0, 1, dims=("modifier","state"))
-    delta_beta_state_mean = pm.Deterministic("delta_beta_state_mean", (1/4) * pt.einsum("ij,mj->mi", L_cov_modifiers, delta_beta_raw), dims=("modifier","state"))
 
-    # --- AR(1) kernel ---
+    # Hyperparameter for delta_beta_temporal (delta_beta_state_mean hyperparameter, shape: n_modifiers x n_states)
+
+    # --- AR(1) kernel (season axis removed) ---
     # Initial position
-    z_0 = pt.zeros([n_seasons, n_states])
-    eps_0 = pt.zeros([n_seasons, n_states])
-    # Steady state noise
-    omega = pm.LogNormal("omega", mu=pt.log(0.01/3), sigma=1/5)  
+    z_0 = pt.zeros([n_states,])
+    eps_0 = pt.zeros([n_states,])
+    # Steady state noise ('omega' hyperparameter)
     # Total AR persistence
-    ## global
-    logit_psi_global_mean = pm.Normal("logit_psi_global_mean", mu=-1, sigma=1)
-    psi_global_mean = pm.Deterministic("psi_global_mean", pm.math.sigmoid(logit_psi_global_mean))
-    ## state
-    psi_state_sd = pm.HalfNormal("psi_state_sd", sigma=1/2)
-    psi_state_raw = pm.Normal("psi_state_raw", 0, 1, dims="state")
-    psi_state = pm.Deterministic("psi_state", pt.exp(psi_state_sd * psi_state_raw), dims="state")
-    psi = pm.Deterministic("psi", pm.math.sigmoid(logit_psi_global_mean + psi_state_sd * psi_state_raw))
+    ## global (psi_global_mean)
+    ## state (psi_state)
+    psi = pm.Deterministic("psi", pm.math.sigmoid(pm.math.logit(psi_global_mean) + pt.log(psi_state)))
     # sample iid standard normals as shocks
-    eta_raw = pm.Normal("eta_raw", mu=0.0, sigma=1.0, dims=("modifier","season","state"))
-    # correlate them across space using the precision matrix
-    eta = pm.Deterministic("eta", pt.einsum("ij,tsj->tsi", L_cov_shocks, eta_raw))
+    eta_raw = pm.Normal("eta_raw", mu=0.0, sigma=1.0, dims=("modifier","state"))
+    # correlate them across space using the precision matrix 
+    eta = pm.Deterministic("eta", pt.einsum("ij,mj->mi", L_cov_shocks, eta_raw))    # shape: (modifier x state)
 
     # --- GARCH(1,1) parameters ---                                                                             
     # Total noise persistence
-    ## global
-    logit_kappa_global_mean = pm.Normal("logit_kappa_global_mean", mu=-1, sigma=1)
-    kappa_global_mean = pm.Deterministic("kappa_global_mean", pm.math.sigmoid(logit_kappa_global_mean))
-    ## state
-    kappa_state_sd = pm.HalfNormal("kappa_state_sd", sigma=1/2)
-    kappa_state_raw = pm.Normal("kappa_state_raw", 0, 1, dims="state")
-    kappa_state = pm.Deterministic("kappa_state", pt.exp(kappa_state_sd * kappa_state_raw), dims="state")
-    kappa = pm.Deterministic("kappa", pm.math.sigmoid(logit_kappa_global_mean + kappa_state_sd * kappa_state_raw))      
-    # Split between a and b                                                   
-    phi = pm.Beta("phi", 5, 1)                                                                  
+    ## global (kappa_global_mean)
+    ## state (kappa_state)
+    kappa = pm.Deterministic("kappa", pm.math.sigmoid(pm.math.logit(kappa_global_mean) + pt.log(kappa_state)))      
+    # Split between a and b (phi & sigma2_0_sigma hyperparameter)                                                                                                             
     a_garch = pm.Deterministic("a_garch", kappa * phi)                                                          
     b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                           
-    sigma2_0_sigma = pm.HalfNormal('sigma2_0_sigma', sigma=1/5)
-    sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(omega/(1-kappa)), sigma=sigma2_0_sigma, dims=("season","state"))
+    sigma2_0 = pm.LogNormal("sigma2_0", mu=pt.log(omega/(1-kappa)), sigma=sigma2_0_sigma, dims="state")
 
     # Run AR-GARCH scan over T steps
     (z_seq, sigma2_seq, eps_seq), _ = pytensor.scan(
@@ -688,14 +707,14 @@ with pm.Model(coords=coords) as model:
     )
 
     # Register deterministic variables to inspect later
-    delta_beta = pm.Deterministic("delta_beta", z_seq + delta_beta_state_mean[:, None, :])
+    delta_beta = pm.Deterministic("delta_beta", delta_beta_state_mean + z_seq)
     z = pm.Deterministic("z", z_seq)
     sigma2 = pm.Deterministic("sigma2", sigma2_seq)
     eps = pm.Deterministic("eps", eps_seq)
 
-    # concatenate parameters along the last axis
+    # concatenate parameters along last axis (n_seasons, n_states, n_parameters)
     args_diff = pt.concatenate(
-        [beta[:, :, None], rho[:, :, None], fI[:, :, None], fR[:, :, None], pt.transpose(delta_beta, (1, 2, 0))],
+        [beta[:, :, None], rho[:, :, None], fI[:, :, None], fR[:, :, None], pt.transpose(delta_beta, (1, 0))[None, :, :]],
         axis=2
     )
 
@@ -703,222 +722,84 @@ with pm.Model(coords=coords) as model:
     ys = 7*sol_op(args_diff, args_nodiff)
     ys = pt.math.softplus(ys)
 
-    # Compute likelihood
-    alpha_inv = pm.LogNormal("alpha_inv", mu=pt.log(0.0025), sigma=1/5, dims="state")
-    pm.CustomDist("data", ys, 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data)
+    # Compute likelihood (alpha_inv hyperparameter)
+    pm.CustomDist("obs", ys[:,:,:n_observations], 1/alpha_inv, weights, logp=weighted_nb_logp, random=weighted_nb_random, observed=7*data[:,:,:n_observations])
 
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
-n_chains = 3
-
+n_chains = 6
 with model:
-    # set step size directly
-    step = pm.NUTS(step_scale=0.002, target_accept=0.8, max_treedepth=12)   # for US: step_scale: 0.002 + max_treedepth 12
     # run sampler without tuning
-    trace = pm.sample(100, tune=0, chains=n_chains, init='adapt_diag', cores=1, progressbar=True, step = step,
-                        initvals=n_chains*[{'alpha_inv': 0.05 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.25,
-                                  'log_rho_global_mean': log_rho_global_init, 'rho_state_sd': 0.2, 'rho_state_raw': rho_state_init / 0.2, 'rho_season_sd': 0.2, 'rho_season_raw': rho_season_init / 0.2,
-                                  'log_fI_global_mean': log_fI_global_init, 'fI_state_sd': 0.2, 'fI_state_raw': fI_state_init / 0.2, 'fI_season_sd': 0.2, 'fI_season_raw': fI_season_init / 0.2,
-                                  'logit_fR_global_mean': logit_fR_global_init, 'fR_state_sd': 0.2, 'fR_state_raw': fR_state_init / 0.2, 'fR_season_sd': 0.2, 'fR_season_raw': fR_season_init / 0.2,
-                                  'logit_psi_global_mean': 0.75, 'logit_kappa_global_mean': 0.75}])
-       
+    trace = pm.sample(100, tune=100, chains=n_chains, init='adapt_diag', cores=1, progressbar=True)
+
 print(f"Step size post-tuning: {trace.sample_stats.step_size_bar.values}")
 
 # manual burn
-n_burn = 50
+n_burn = 0
 trace = trace.isel(draw=slice(n_burn, None))
 
 # Generate traces
-variables2plot = [
-                'alpha_inv',                                                                            # overdispersion
-                'rho_global_mean', 'rho_state_sd', 'rho_state', 'rho_season_sd', 'rho_season', 'rho',   # rho
-                'fI_global_mean', 'fI_state_sd', 'fI_state', 'fI_season_sd', 'fI_season', 'fI',         # fI
-                'fR_global_mean', 'fR_state_sd', 'fR_state', 'fR_season_sd', 'fR_season', 'fR',         # fR
-                'delta_beta_state_mean',                                                    # delta_beta_mu
-                'psi_spatial_shocks', 'psi_spatial_modifiers',                                                                          # spatial correlation strength
-                'psi_global_mean', 'psi_state_sd', 'psi',                                               # AR 
-                'kappa_global_mean', 'kappa_state_sd', 'kappa', 'omega', 'phi',                         # GARCH parameters
-                'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_sigma',
-                ]
+variables2plot = ['rho', 'fI', 'fR', 'psi', 'kappa', 'sigma2_0']
 
 # Save original traces
-os.makedirs(os.path.join(output_folder,'traces'), exist_ok=True)
+os.makedirs(os.path.join(output_folder, 'traces'), exist_ok=True)
 for var in variables2plot:
     arviz.plot_trace(trace, var_names=[var]) 
-    plt.savefig(os.path.join(output_folder,f'traces/trace-{var}.pdf'))
+    plt.savefig(os.path.join(output_folder, f'traces/trace-{var}.pdf'))
     plt.close()
-
-# Build pair plots
-arviz.plot_pair(trace, var_names=["kappa", "phi", "omega", "psi"], divergences=True)
-plt.savefig(os.path.join(output_folder,'traces/pairplot-ARGARCH.pdf'))
-plt.close()
-
 
 # Make posterior predictive
 # ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# Predict
 with model:
-    posterior_predictive = pm.sample_posterior_predictive(trace)
+
+    # geometric random walk per state
+    grw_innov = pm.Normal("grw_innov", mu=0, sigma=0.375, shape=(n_states, forecast_horizon))         # tune by LOOCV on WIS (currently set to NC stationary GRW baseline model optimal)
+    ys_future_rw = ys[:, :, n_observations:] * pt.exp(pt.cumsum(grw_innov, axis=1)[None, :, :])
+
+    # forecast 
+    pred = pm.NegativeBinomial("pred", mu=ys_future_rw, alpha=1/alpha_inv[None, :, None])
+
+    # sample
+    posterior_predictive = pm.sample_posterior_predictive(trace, var_names=["obs", "pred"])
+
 
 # Save traces and posterior predictive
-arviz.to_netcdf(trace, os.path.join(output_folder,"trace.nc"))
-arviz.to_netcdf(posterior_predictive, os.path.join(output_folder,"posterior_predictive.nc"))
+arviz.to_netcdf(trace, os.path.join(output_folder, "trace.nc"))
+arviz.to_netcdf(posterior_predictive, os.path.join(output_folder, "posterior_predictive.nc"))
 
-# Visualise across-season modifier trend + within-season median per state
-os.makedirs(os.path.join(output_folder,'modifiers'), exist_ok=True)
-# make dates
-x = pd.date_range(start=datetime(2000,10,15), periods=n_modifiers, freq='W')
+# Visualise goodness-of-fit
+# ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Visualise
+dates_obs = dt[0,:n_observations]
+dates_pred = dt[0,n_observations:]
 for s in range(n_states):
-    fig,ax=plt.subplots(figsize=(8.3, 11.7/5))
-    # average trend
-    ax.plot(x, 1+trace.posterior['delta_beta_state_mean'].median(dim=['chain', 'draw']).values[:,s], color='green')
-    ax.fill_between(x,
-                    1+trace.posterior['delta_beta_state_mean'].quantile(dim=['chain', 'draw'], q=0.025).values[:,s],
-                    1+trace.posterior['delta_beta_state_mean'].quantile(dim=['chain', 'draw'], q=0.975).values[:,s],
-                    color='green', alpha=0.15)
-    # individual seasons
-    for i in range(n_seasons):
-        ax.plot(x, 1+trace.posterior['delta_beta'].median(dim=['chain', 'draw']).values[:,i,s], color='black', alpha=0.3, linewidth=0.5)
-    ax.axhline(y=1, color='red', linewidth=0.5)
-    # decorations
+    fig,ax=plt.subplots()
+    ## training
+    ax.plot(dates_obs, posterior_predictive.posterior_predictive['obs'].median(dim=['chain', 'draw']).values[0,s,:], linewidth=1, color='black')
+    ax.fill_between(dates_obs,
+                    posterior_predictive.posterior_predictive['obs'].quantile(dim=['chain', 'draw'], q=0.025).values[0,s,:],
+                    posterior_predictive.posterior_predictive['obs'].quantile(dim=['chain', 'draw'], q=0.975).values[0,s,:],
+                    color='black', alpha=0.1)
+    ax.fill_between(dates_obs,
+                    posterior_predictive.posterior_predictive['obs'].quantile(dim=['chain', 'draw'], q=0.025).values[0,s,:],
+                    posterior_predictive.posterior_predictive['obs'].quantile(dim=['chain', 'draw'], q=0.75).values[0,s,:],
+                    color='black', alpha=0.1)    
+    ax.scatter(dates_obs, posterior_predictive.observed_data['obs'].values[0,s,:], marker='o', color='black')
+    ## forecast
+    ax.plot(dates_pred, posterior_predictive.posterior_predictive['pred'].median(dim=['chain', 'draw']).values[0,s,:], linewidth=1, color='red')
+    ax.fill_between(dates_pred,
+                    posterior_predictive.posterior_predictive['pred'].quantile(dim=['chain', 'draw'], q=0.025).values[0,s,:],
+                    posterior_predictive.posterior_predictive['pred'].quantile(dim=['chain', 'draw'], q=0.975).values[0,s,:],
+                    color='red', alpha=0.1)
+    ax.fill_between(dates_pred,
+                    posterior_predictive.posterior_predictive['pred'].quantile(dim=['chain', 'draw'], q=0.25).values[0,s,:],
+                    posterior_predictive.posterior_predictive['pred'].quantile(dim=['chain', 'draw'], q=0.75).values[0,s,:],
+                    color='red', alpha=0.1)    
     fig.suptitle(f'{state_fips_index.iloc[s]['abbreviation_state']}')
-    ax.set_ylabel(r'$\Delta \beta_t$')
-    ax.set_ylim([0.65, 1.35])
-    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
-    plt.savefig(os.path.join(output_folder,f'modifiers/modifiers_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf'))
-    plt.close()
-
-
-# Visualise goodness-of-fit, delta_beta, z, sigma2 and eps per state and per season
-for s in range(n_states):
-    os.makedirs(os.path.join(output_folder,f'goodness-fit/{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}/'), exist_ok=True)
-    for i, season in enumerate(seasons):
-        
-        fig,ax=plt.subplots(nrows=5, figsize=(8.3, 11.7))
-        # observed versus modeled
-        ax[0].plot(dt[i, :], posterior_predictive.posterior_predictive['data'].median(dim=['chain', 'draw']).values[i,s,:], linewidth=1, color='green')
-        ax[0].fill_between(dt[i, :],
-                        posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.025).values[i,s,:],
-                        posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.975).values[i,s,:],
-                        color='green', alpha=0.1)
-        ax[0].fill_between(dt[i, :],
-                        posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.25).values[i,s,:],
-                        posterior_predictive.posterior_predictive['data'].quantile(dim=['chain', 'draw'], q=0.75).values[i,s,:],
-                        color='green', alpha=0.2)
-        ax[0].scatter(dt[i, :], posterior_predictive.observed_data['data'].values[i,s,:], marker='o', color='black')
-
-        # across-season delta_beta trend
-        ax[1].plot(range(n_modifiers), trace.posterior['delta_beta_state_mean'].median(dim=['chain', 'draw']).values[:,s], color='green')
-        ax[1].fill_between(range(n_modifiers),
-                        trace.posterior['delta_beta_state_mean'].quantile(dim=['chain', 'draw'], q=0.025).values[:,s],
-                        trace.posterior['delta_beta_state_mean'].quantile(dim=['chain', 'draw'], q=0.975).values[:,s],
-                        color='green', alpha=0.15)
-        
-        # within-season delta_beta, z, sigma2, eps
-        for j, par in enumerate(['delta_beta', 'z', 'sigma2', 'eps']):
-            ax[j+1].plot(range(n_modifiers), trace.posterior[par].median(dim=['chain', 'draw']).values[:,i,s], color='black', linewidth=0.5)
-            ax[j+1].fill_between(range(n_modifiers),
-                    trace.posterior[par].quantile(dim=['chain', 'draw'], q=0.025).values[:,i,s],
-                    trace.posterior[par].quantile(dim=['chain', 'draw'], q=0.975).values[:,i,s],
-                    color='black', alpha=0.15)
-            ax[j+1].set_ylabel(par)
-        ax[0].set_title(season)
-        plt.savefig(os.path.join(output_folder,f'goodness-fit/{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}/{season}_goodness-fit.pdf'))
-        plt.close()
-
-
-# visualise forest plots of state and season effect sizes
-labels_params = [r'$\rho$', r'$f_I$', r'$f_R$', r'$\psi$', r'$\kappa$']
-state_params = ["rho_state", "fI_state", "fR_state", "psi_state", "kappa_state"]
-season_params = ["rho_season", "fI_season", "fR_season", "psi_season", "kappa_season"]
-global_params = ["rho_global_mean", "fI_global_mean", "fR_global_mean", "psi_global_mean", "kappa_global_mean"]
-params = ['rho', 'fI', 'fR', 'psi', 'kappa']
-effect_type = ['Multiplicative', 'Multiplicative', 'Odds-ratio', 'Odds-ratio', 'Odds-ratio']
-
-for n, p_state, p_season, g, p, e in zip(labels_params, state_params, season_params, global_params, params, effect_type):
-    
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(11.7, 8.3),
-                             gridspec_kw={'height_ratios': [1, 3], 'width_ratios': [1, 1]})
-    
-    # ---- Top row: global effect, spanning both columns ----
-    ax_global = axes[0, 0]
-    ax_global2 = axes[0, 1]
-    
-    # hide the second subplot for spacing
-    ax_global2.axis('off')
-    
-    global_samples = trace.posterior[g].stack(sample=("chain", "draw")).values
-    ax_global.hist(global_samples, bins=15, density=True, color='forestgreen', alpha=0.8)
-    ax_global.axvline(np.median(global_samples), color='black', linestyle='--', label='Median')
-    ax_global.set_title(f"Global {n}", fontsize=14)
-    ax_global.spines['left'].set_visible(False)
-    ax_global.spines['right'].set_visible(False)
-    ax_global.spines['top'].set_visible(False)
-    ax_global.set_yticks([])
-    ax_global.xaxis.set_major_locator(plt.MaxNLocator(3)) 
-
-    # ---- Bottom row: state and season forest plots ----
-    arviz.plot_forest(trace, var_names=[p_state], combined=True, hdi_prob=0.95, ax=axes[1, 0], colors='forestgreen')
-    axes[1, 0].axvline(1, color="black", linestyle="--")
-    axes[1, 0].set_title(f"{e} state effects", fontsize=12)
-
-    if ((p != 'psi') & (p != 'kappa')):
-        arviz.plot_forest(trace, var_names=[p_season], combined=True, hdi_prob=0.95, ax=axes[1, 1], colors='forestgreen')
-        axes[1, 1].axvline(1, color="black", linestyle="--")
-        axes[1, 1].set_title(f"{e} season effects", fontsize=12)
-    else:
-        axes[1, 1].remove()
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_folder,f'traces/forestplot-{p}.pdf'))
-    plt.close()
-
-
-# save the hyperdistributions
-med = trace.posterior.median(dim=("chain", "draw")) # take median across chains and draws
-df = pd.DataFrame(index=model.coords["state"])
-
-# scalar parameters (repeat per state)
-scalar_params = [
-    "rho_global_mean",
-    "rho_season_sd",
-    "fI_global_mean",
-    "fI_season_sd",
-    "fR_global_mean",
-    "fR_season_sd",
-    "omega",
-    "psi_spatial_shocks",
-    "psi_spatial_modifiers",
-    "psi_global_mean",
-    "kappa_global_mean",
-    "phi",
-    "sigma2_0_sigma"
-]
-for p in scalar_params:
-    df[p] = float(med[p].values)
-
-# state parameters
-state_params = [
-    "alpha_inv",
-    "rho_state",
-    "fI_state",
-    "fR_state",
-    "psi_state",
-    "kappa_state",
-]
-for p in state_params:
-    df[p] = med[p].values
-
-
-# delta_beta_state_mean (modifier x state)
-delta = med["delta_beta_state_mean"].values
-n_modifiers = delta.shape[0]
-for i in range(n_modifiers):
-    df[f"delta_beta_state_mean_{i}"] = delta[i, :]
-
-# save to csv
-df.index.name = "state"
-df.to_csv(os.path.join(output_folder,f"hyperparameters-{training_name}.csv"))
+    fig.tight_layout()
+    os.makedirs(os.path.join(output_folder, 'goodness-fit'), exist_ok=True)
+    plt.savefig(os.path.join(output_folder,f'goodness-fit/state_{state_fips_index.iloc[s]['fips_state']}_{state_fips_index.iloc[s]['abbreviation_state']}.pdf'))
+    plt.close(fig)
