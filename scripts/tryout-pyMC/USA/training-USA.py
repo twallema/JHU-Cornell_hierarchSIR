@@ -650,22 +650,32 @@ with pm.Model(coords=coords) as model:
     omega = pm.LogNormal("omega", mu=pt.log(0.01/3), sigma=1/5)  
     # Total AR persistence
     ## global
-    logit_psi_global_mean = pm.Normal("logit_psi_global_mean", mu=-1, sigma=1)
+    logit_psi_global_mean = pm.Normal("logit_psi_global_mean", mu=0, sigma=1)
     psi_global_mean = pm.Deterministic("psi_global_mean", pm.math.sigmoid(logit_psi_global_mean))
     ## state
     psi_state_sd = pm.HalfNormal("psi_state_sd", sigma=1/2)
     psi_state_raw = pm.Normal("psi_state_raw", 0, 1, dims="state")
     psi_state = pm.Deterministic("psi_state", pt.exp(psi_state_sd * psi_state_raw), dims="state")
     psi = pm.Deterministic("psi", pm.math.sigmoid(logit_psi_global_mean + psi_state_sd * psi_state_raw))
+    ### BYM2 in space
+    phi_eta = pm.Beta("phi_eta", 3, 3)  # controls how much variation is spatial
     # sample iid standard normals as shocks
-    eta_raw = pm.Normal("eta_raw", mu=0.0, sigma=1.0, dims=("modifier","season","state"))
-    # correlate them across space using the precision matrix
-    eta = pm.Deterministic("eta", pt.einsum("ij,tsj->tsi", L_cov_shocks, eta_raw))
+    eta_raw_iid = pm.Normal("eta_raw_iid", 0, 1, dims=("modifier", "season", "state"))
+    eta_raw_spatial = pm.Normal("eta_raw_spatial", 0, 1, dims=("modifier", "season", "state"))
+    # spatial component
+    eta_spatial = pt.einsum("ij,tsj->tsi", L_cov_shocks, eta_raw_spatial)
+    # scale to unit variance
+    Q_inv = pt.slinalg.solve(Q_shocks, pt.eye(n_states))
+    scaling = pt.sqrt(pt.mean(pt.diag(Q_inv)))
+    eta_spatial = eta_spatial / scaling
+    # combine into a BYM2
+    eta = pm.Deterministic("eta", pt.sqrt(phi_eta) * eta_spatial + pt.sqrt(1 - phi_eta) * eta_raw_iid)
+
 
     # --- GARCH(1,1) parameters ---                                                                             
     # Total noise persistence
     ## global
-    logit_kappa_global_mean = pm.Normal("logit_kappa_global_mean", mu=-1, sigma=1)
+    logit_kappa_global_mean = pm.Normal("logit_kappa_global_mean", mu=0, sigma=1)
     kappa_global_mean = pm.Deterministic("kappa_global_mean", pm.math.sigmoid(logit_kappa_global_mean))
     ## state
     kappa_state_sd = pm.HalfNormal("kappa_state_sd", sigma=1/2)
@@ -673,7 +683,7 @@ with pm.Model(coords=coords) as model:
     kappa_state = pm.Deterministic("kappa_state", pt.exp(kappa_state_sd * kappa_state_raw), dims="state")
     kappa = pm.Deterministic("kappa", pm.math.sigmoid(logit_kappa_global_mean + kappa_state_sd * kappa_state_raw))      
     # Split between a and b                                                   
-    phi = pm.Beta("phi", 5, 1)                                                                  
+    phi = pm.Beta("phi", 10, 1)                                                                  
     a_garch = pm.Deterministic("a_garch", kappa * phi)                                                          
     b_garch = pm.Deterministic("b_garch", kappa * (1 - phi))                           
     sigma2_0_sigma = pm.HalfNormal('sigma2_0_sigma', sigma=1/5)
@@ -710,11 +720,11 @@ with pm.Model(coords=coords) as model:
 # Sample pyMC model
 # ~~~~~~~~~~~~~~~~~
 
-n_chains = 3
+n_chains = 5
 
 with model:
     # set step size directly
-    step = pm.NUTS(step_scale=0.002, target_accept=0.8, max_treedepth=12)   # for US: step_scale: 0.002 + max_treedepth 12
+    step = pm.NUTS(step_scale=0.005, target_accept=0.8, max_treedepth=10)   # for US: step_scale: 0.002 + max_treedepth 12
     # run sampler without tuning
     trace = pm.sample(100, tune=0, chains=n_chains, init='adapt_diag', cores=1, progressbar=True, step = step,
                         initvals=n_chains*[{'alpha_inv': 0.05 * pt.ones(n_states), 'delta_beta_raw': delta_beta_mu_opt / 0.25,
@@ -726,7 +736,7 @@ with model:
 print(f"Step size post-tuning: {trace.sample_stats.step_size_bar.values}")
 
 # manual burn
-n_burn = 50
+n_burn = 0
 trace = trace.isel(draw=slice(n_burn, None))
 
 # Generate traces
@@ -735,8 +745,8 @@ variables2plot = [
                 'rho_global_mean', 'rho_state_sd', 'rho_state', 'rho_season_sd', 'rho_season', 'rho',   # rho
                 'fI_global_mean', 'fI_state_sd', 'fI_state', 'fI_season_sd', 'fI_season', 'fI',         # fI
                 'fR_global_mean', 'fR_state_sd', 'fR_state', 'fR_season_sd', 'fR_season', 'fR',         # fR
-                'delta_beta_state_mean',                                                    # delta_beta_mu
-                'psi_spatial_shocks', 'psi_spatial_modifiers',                                                                          # spatial correlation strength
+                'delta_beta_state_mean',                                                                # delta_beta_mu
+                'psi_spatial_shocks', 'psi_spatial_modifiers', 'phi_eta',                               # spatial correlation strength
                 'psi_global_mean', 'psi_state_sd', 'psi',                                               # AR 
                 'kappa_global_mean', 'kappa_state_sd', 'kappa', 'omega', 'phi',                         # GARCH parameters
                 'a_garch', 'b_garch', 'sigma2_0', 'sigma2_0_sigma',
