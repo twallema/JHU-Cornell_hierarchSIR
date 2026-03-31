@@ -116,7 +116,7 @@ collect_seasons['model'] = 'GRW_nonstationary'
 # Save results
 baselineModels_accuracy = pd.concat([WIS_optim, collect_seasons], axis=0)
 baselineModels_accuracy = baselineModels_accuracy.set_index(['model', 'season', 'reference_date', 'horizon'])
-baselineModels_accuracy.to_csv('../../../data/interim/calibration/baselineModels-accuracy.csv')
+baselineModels_accuracy.to_csv('../../../../data/interim/calibration/baselineModels-accuracy.csv')
 
 print(baselineModels_accuracy.groupby(by=['model'])['WIS'].mean())
 print(baselineModels_accuracy.groupby(by=['model', 'season'])['WIS'].mean())
