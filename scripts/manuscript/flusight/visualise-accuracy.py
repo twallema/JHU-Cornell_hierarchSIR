@@ -5,16 +5,14 @@ Uses the output of `compute-accuracy_flusight.py` as input.
 """
 
 # packages needed
-import os
 import numpy as np
 import pandas as pd
-from scipy.stats import gmean
-from datetime import datetime, timedelta
+from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-# define baseline model
-log = False
+# define baseline modelx
+log = True
 baseline = 'FluSight-baseline'
 
 # load in data
