@@ -109,5 +109,5 @@ else:
 ax.legend(handles=legend_elements, frameon=False, loc='upper right')
 
 fig.tight_layout()
-plt.show()
+fig.savefig('accuracy_flusight.pdf')
 plt.close()
