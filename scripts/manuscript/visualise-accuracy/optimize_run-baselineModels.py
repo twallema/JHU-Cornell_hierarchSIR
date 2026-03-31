@@ -36,8 +36,7 @@ def objective_func(sigma, start_baseline_month, start_baseline_day, end_baseline
     for season in seasons:
         ## get the data
         data = 7*get_NC_influenza_data(datetime(int(season[0:4]), start_baseline_month, start_baseline_day) - timedelta(weeks=1),
-                                       datetime(int(season[0:4])+1, end_baseline_month, end_baseline_day)+timedelta(weeks=4),
-                                       season)['H_inc']
+                                       datetime(int(season[0:4])+1, end_baseline_month, end_baseline_day)+timedelta(weeks=4))['H_inc']
         ## LOOP weeks
         collect_weeks=[]
         for date in data.index[:-4]:
@@ -78,7 +77,7 @@ plt.savefig('optimization-baseline-model.pdf')
 plt.close()
 
 ## add model name
-WIS_optim['model'] = 'GRW_nodrift'
+WIS_optim['model'] = 'GRW_stationary'
 
 ############################
 ## Part 2: GRW with drift ##
@@ -89,8 +88,7 @@ collect_seasons=[]
 for focal_season in seasons:
     ## get the current season's data
     data = 7*get_NC_influenza_data(datetime(int(focal_season[0:4]), start_baseline_month, start_baseline_day) - timedelta(weeks=1),
-                                    datetime(int(focal_season[0:4])+1, end_baseline_month, end_baseline_day)+timedelta(weeks=4),
-                                    focal_season)['H_inc']
+                                    datetime(int(focal_season[0:4])+1, end_baseline_month, end_baseline_day)+timedelta(weeks=4))['H_inc']
     ## LOOP weeks
     collect_weeks=[]
     for date in data.index[:-4]:
@@ -113,7 +111,7 @@ for focal_season in seasons:
 collect_seasons = pd.concat(collect_seasons, axis=0)
 
 ## add model name
-collect_seasons['model'] = 'GRW_drift'
+collect_seasons['model'] = 'GRW_nonstationary'
 
 # Save results
 baselineModels_accuracy = pd.concat([WIS_optim, collect_seasons], axis=0)
