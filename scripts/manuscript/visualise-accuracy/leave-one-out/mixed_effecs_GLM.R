@@ -45,7 +45,7 @@ df_boot <- df %>%
   )
 
 # paired bootstrap function
-boot_geom_mean_ratio <- function(df_group, baseline_col, B = 2000) {
+boot_geom_mean_ratio <- function(df_group, baseline_col, B = 200) {
   refdates <- unique(df_group$reference_date)
   n_dates <- length(refdates)
   
@@ -443,9 +443,10 @@ left_join(results, pvals, by = "contrast")
 ########################################
 
 # model log transform of relative WIS
-df$log_relative_WIS_stationary <- log(df$relative_WIS_stationary)
-df$log_relative_WIS_nonstationary <- log(df$relative_WIS_nonstationary)
-
+# df$log_relative_WIS_stationary <- log(df$relative_WIS_stationary)
+# df$log_relative_WIS_nonstationary <- log(df$relative_WIS_nonstationary)
+df$log_WIS <- log(df$WIS)
+  
 # attach months
 df$month <- factor(
   format(df$reference_date, "%m"),
@@ -474,7 +475,7 @@ df_filtered <- df %>% filter(informed == TRUE)
 
 # build linear mixed effects model
 m_additive <- lmer(
-  log_relative_WIS_stationary ~ 
+  log_WIS ~ 
     model +
     immunity_linking + 
     ED_visits + 
