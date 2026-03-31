@@ -23,7 +23,6 @@ MY_FOLDER
 import os
 import numpy as np
 import pandas as pd
-from scipy.stats import gmean
 from datetime import datetime, timedelta
 from hierarchSIR.utils import get_NC_influenza_data
 from hierarchSIR.accuracy import compute_WIS
@@ -140,6 +139,7 @@ for mn in model_names:
                             season_accuracy.loc[(mn, inf, il, ev, season, hp, reference_date, slice(None)), 'relative_WIS_nonstationary'] = compute_WIS(simout, data).values / baseline[baseline['model']=='GRW_nonstationary']['WIS'].values
                         # collect season results
                         WIS_collection.append(season_accuracy)
+# Concatenate all WIS datasets
 output = pd.concat(WIS_collection, axis=0)
 
 # omit horizon -1
