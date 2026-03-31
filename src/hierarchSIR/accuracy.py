@@ -18,7 +18,7 @@ def compute_WIS(simout, data):
         - Columns: 'reference_date', 'target', 'horizon', 'location', 'output_type', 'output_type_id', 'target_end_date', 'value'. 
 
     - data: pd.Series
-        - Groundtruth data.
+        - Groundtruth data. Indexed on 'date'. No location.
 
     Output
     ------
@@ -41,7 +41,10 @@ def compute_WIS(simout, data):
             ## get date
             date = reference_date+timedelta(weeks=n)
             ## get data
-            y = data.loc[date]
+            try:
+                y = data.loc[date]
+            except:
+                y = np.nan
             ## compute IS
             IS_alpha = []
             for q in quantiles:
