@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from hierarchSIR.accuracy import compute_WIS
 
 # start of evaluation
-eval_start_date = datetime(2025, 10, 15)
+eval_start_date = datetime(2025, 11, 1)
 eval_end_date = datetime(2026, 5, 1)
 
 # all paths absolute to this file
@@ -51,24 +51,27 @@ data = pd.read_csv('../target-data/target-hospital-admissions.csv', parse_dates=
 data = data[data['date'] > eval_start_date]
 data = data.sort_values(by=["date", "location"]).reset_index()[['date', 'location', 'value']]
 
-# settings
-prediction_horizon_weeks = 4
-quantiles_WIS = [0.02, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
-
 # finding the right simulations
 model_names = get_subfolders(os.path.dirname(__file__))
 
-# exclude models
+# exclude models that didn't participate in 2025-2026
 exclude_models = ['CFA_Pyrenew-Pyrenew_E_Flu', 'CMU-climate_baseline',
-                  'FluSight-base_seasonal', 'FluSight-baseline_cat', 'FluSight-dist_cat', 'FluSight-ens_q_cat', 'FluSight-ens_q_cat_sub', 'FluSight-equal_cat', 'FluSight-lop_norm', 'FluSight-national_cat'
-                  'GH-model']
+                  'FluSight-base_seasonal', 'FluSight-baseline_cat', 'FluSight-dist_cat', 'FluSight-ens_q_cat', 'FluSight-ens_q_cat_sub', 'FluSight-equal_cat', 'FluSight-lop_norm', 'FluSight-national_cat',
+                  'GH-model', 'GT-FluFNP', 'Gatech-ensemble_point', 'Google_SAI-FluBoostQR',
+                  'ISU_NiemiLab-ENS', 'ISU_NiemiLab-GPE', 'ISU_NiemiLab-NLH', 'ISU_NiemiLab-SIR',
+                  'JHUAPL-DMD', 'JHUAPL-Morris', 'Metaculus-cp', 'MetroCast-ensemble', 'MOBS-GLEAM_FLUH', 'NU_UCSD-GLEAM_AI_FLUH',
+                  'NU-PGF_FLUH', 'PSI-PROF_beta', 'SGroup-RandomForest', 'SigSci-BECAM', 'SigSci-CREG', 'Stevens-GBR', 'Stevens-ILIForecast',
+                  'UGA_flucast-OKeeffe', 'UVAFluX-CESGCN', 'UVAFluX-OptimWISE', 'VTSanghani-Ensemble', 'UMass-trends_ensemble', 'cfa-flumech', 'cfarenewal-cfaepimlight',
+                  'fjordhest-ensemble']
 model_names = [mn for mn in model_names if mn not in exclude_models]
+
+all_locations = data['location'].unique()
 
 # WIS computation loop
 WIS_collection = []
 print('Starting loop...')
 mn_acc_collect = []
-for mn in model_names[:20]:
+for mn in model_names:
     print(f'\tWorking on model: {mn}')
     filenames = list_files_in_directory(os.path.join(abs_dir, mn))
     filenames = [fn for fn in filenames if fn != '.DS_Store']
@@ -79,7 +82,7 @@ for mn in model_names[:20]:
         ref_date = datetime.strptime(fn[:10], "%Y-%m-%d")
         # only use if larger than the eval date
         if ((ref_date >= eval_start_date) & (ref_date <= eval_end_date)):
-            # get the forecast
+            # get the forecasts
             forecast = pd.read_csv(os.path.join(abs_dir, mn, fn), dtype={'location': str}, parse_dates=['reference_date', 'target_end_date'], date_format='%Y-%m-%d')
             # slice right target and metrics
             forecast = forecast[((forecast['target'] == 'wk inc flu hosp') & (forecast['output_type'] == 'quantile'))]
@@ -90,8 +93,10 @@ for mn in model_names[:20]:
             for loc in locations:
                 # get the corresponding target data
                 d = data[((data['date'].isin(forecast['target_end_date'].unique())) & (data['location'] == loc))][['date', 'value']].set_index('date').squeeze()
+                # slice the right location in forecast
+                fc = forecast[forecast['location'] == loc]
                 # compute the WIS scores
-                acc = compute_WIS(forecast, d)
+                acc = compute_WIS(fc, d)
                 acc = acc.reset_index()
                 acc['location'] = loc
                 acc['model'] = mn
