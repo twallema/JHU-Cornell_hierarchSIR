@@ -35,66 +35,114 @@ df <- read_csv(file.path(script_dir, "accuracy.csv"))
 ## Bootstrap geometric mean rel WIS ##
 ######################################
 
-# for informed == TRUE
+# Factor formatting
 df_boot <- df %>%
   mutate(
     informed = factor(informed),
     model = factor(model, levels = c("SIR-1S", "SIR-2S", "SIR-3S")),
     immunity_linking = factor(immunity_linking, levels = c(FALSE, TRUE)),
-    ED_visits = factor(ED_visits, levels = c(FALSE, TRUE)),
-    log_rel_wis = log(relative_WIS_drift)
+    ED_visits = factor(ED_visits, levels = c(FALSE, TRUE))
   )
 
-boot_geom_mean <- function(x, B = 2000) {
-  n <- length(x)
-  boot_stats <- replicate(
-    B,
-    {
-      sample_x <- sample(x, size = n, replace = TRUE)
-      mean(sample_x, na.rm = TRUE)
-    }
-  )
+# paired bootstrap function
+boot_geom_mean_ratio <- function(df_group, baseline_col, B = 2000) {
+  refdates <- unique(df_group$reference_date)
+  n_dates <- length(refdates)
+  
+  boot_stats <- replicate(B, {
+    # sample reference dates WITH replacement
+    sampled_dates <- tibble(
+      reference_date = sample(refdates, size = n_dates, replace = TRUE)
+    )
+    # join to preserve multiplicity
+    sample_df <- sampled_dates %>%
+      left_join(df_group, by = "reference_date")
+    # compute geometric mean ratio
+    log_mean_model <- mean(log(sample_df$WIS), na.rm = TRUE)
+    log_mean_baseline <- mean(log(sample_df[[baseline_col]]), na.rm = TRUE)
+    exp(log_mean_model - log_mean_baseline)
+  })
+  
+  # point estimate on full data
+  log_mean_model <- mean(log(df_group$WIS), na.rm = TRUE)
+  log_mean_baseline <- mean(log(df_group[[baseline_col]]), na.rm = TRUE)
+  
   tibble(
-    geom_mean_WIS = exp(mean(x, na.rm = TRUE)),
-    lower_95  = exp(quantile(boot_stats, 0.025, na.rm = TRUE)),
-    upper_95  = exp(quantile(boot_stats, 0.975, na.rm = TRUE))
+    geom_mean_rel_WIS = exp(log_mean_model - log_mean_baseline),
+    lower_95 = quantile(boot_stats, 0.025, na.rm = TRUE),
+    upper_95 = quantile(boot_stats, 0.975, na.rm = TRUE)
   )
 }
 
-boot_tbl <- df_boot %>%
+# Apply bootstrap (nonstationary)
+boot_tbl_nonstat <- df_boot %>%
   group_by(informed, model, immunity_linking, ED_visits) %>%
   summarise(
-    stats = list(boot_geom_mean(log_rel_wis)),
+    stats = list(boot_geom_mean_ratio(cur_data(), "WIS_GRW_nonstationary")),
     .groups = "drop"
   ) %>%
-  unnest(stats)
+  unnest(stats) %>%
+  mutate(baseline = "nonstationary")
 
-boot_tbl_out <- boot_tbl %>%
-  mutate(
-    geom_mean_WIS = round(geom_mean_WIS, 2),
-    lower_95  = round(lower_95, 2),
-    upper_95  = round(upper_95, 2)
+# Apply bootstrap (stationary)
+boot_tbl_stat <- df_boot %>%
+  group_by(informed, model, immunity_linking, ED_visits) %>%
+  summarise(
+    stats = list(boot_geom_mean_ratio(cur_data(), "WIS_GRW_stationary")),
+    .groups = "drop"
   ) %>%
-  arrange(informed, model, immunity_linking, ED_visits)
+  unnest(stats) %>%
+  mutate(baseline = "stationary")
 
+# Combine results
+boot_tbl_out <- bind_rows(boot_tbl_nonstat, boot_tbl_stat) %>%
+  mutate(
+    geom_mean_rel_WIS = round(geom_mean_rel_WIS, 2),
+    lower_95 = round(lower_95, 2),
+    upper_95 = round(upper_95, 2)
+  ) %>%
+  arrange(baseline, informed, model, immunity_linking, ED_visits)
+
+# Save output
 write.csv(
   boot_tbl_out,
-  file = file.path(script_dir, "bootstrapped_relative_WIS_GRWD.csv"),
+  file = file.path(script_dir, "bootstrapped_relative_WIS.csv"),
   row.names = FALSE
 )
 
-# basic point + errorbar plot for informed==TRUE
-p <- ggplot(boot_tbl %>% filter(informed==TRUE), aes(x = model, y = geom_mean_WIS, color = ED_visits)) +
+# Visualise output
+selected_baseline <- "nonstationary"  # or "stationary"
+p <- ggplot(
+  boot_tbl_out %>% 
+    filter(informed == TRUE, baseline == selected_baseline),
+  aes(x = model, y = geom_mean_rel_WIS, color = ED_visits)
+) +
   geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = lower_95, ymax = upper_95), 
-                width = 0.2, 
-                position = position_dodge(width = 0.5)) +
-  facet_wrap(~ immunity_linking, labeller = labeller(immunity_linking = c("FALSE" = "(a) No immunity chaining", "TRUE" = "(b) Immunity chaining"))) +
+  geom_errorbar(
+    aes(ymin = lower_95, ymax = upper_95),
+    width = 0.2,
+    position = position_dodge(width = 0.5)
+  ) +
+  facet_wrap(
+    ~ immunity_linking,
+    labeller = labeller(
+      immunity_linking = c(
+        "FALSE" = "(a) No immunity chaining",
+        "TRUE"  = "(b) Immunity chaining"
+      )
+    )
+  ) +
   theme_minimal(base_size = 14) +
   labs(
-    y = "Rel. WIS (GRW)",
+    y = paste0(
+      "Rel. WIS (", 
+      ifelse(selected_baseline == "nonstationary", 
+             "nsGRW", 
+             "sGRW"),
+      ")"
+    ),
     x = "No. Strains Represented",
-    color = "ED visits",
+    color = "ED visits"
   ) +
   scale_x_discrete(
     labels = c(
@@ -102,13 +150,17 @@ p <- ggplot(boot_tbl %>% filter(informed==TRUE), aes(x = model, y = geom_mean_WI
       "SIR-2S" = "2",
       "SIR-3S" = "3"
     )
-  ) + 
+  ) +
   scale_color_brewer(palette = "Set1")
+
 ggsave(
-  filename = file.path(script_dir, "WIS_comparison_GRW.pdf"),
+  filename = file.path(
+    script_dir, 
+    paste0("WIS_comparison_", selected_baseline, ".pdf")
+  ),
   plot = p,
   width = 8.3,
-  height = 11.7/4,
+  height = 11.7 / 4,
   units = "in"
 )
 
@@ -117,11 +169,11 @@ ggsave(
 #############################################
 
 # compute difference in geom_mean between informed FALSE/TRUE per reference date
+# baseline model cancels out
 paired_df <- df %>%
-  filter(informed %in% c(TRUE, FALSE)) %>%
   group_by(reference_date, informed) %>%
   summarise(
-    log_gm_WIS = mean(log(relative_WIS_nodrift), na.rm = TRUE),
+    log_gm_WIS = mean(log(WIS), na.rm = TRUE),
     .groups = "drop"
   ) %>%
   tidyr::pivot_wider(
@@ -150,11 +202,13 @@ result <- tibble(
   log_ratio = mean(boot_log_diff),
   lower_log = ci[1],
   upper_log = ci[2],
-  diff_percent = (exp(mean(boot_log_diff))-1)*100,
-  lower = (exp(ci[1])-1)*100,
-  upper = (exp(ci[2])-1)*100
+  diff_percent = (exp(mean(boot_log_diff)) - 1) * 100,
+  lower = (exp(ci[1]) - 1) * 100,
+  upper = (exp(ci[2]) - 1) * 100
 )
 result
+
+# no need to prove statistical significance here
 
 ############################################################
 ## Prove immunity linking doesn't work for informed==TRUE ##
@@ -164,7 +218,7 @@ result
 # Folks will be able to see on the figure immunity_linking never achieves lower WIS
 # It only barely achieves similar WIS scores to having no immunity linking
 
-# compute paired difference between groups
+# compute paired difference between immunity_linking TRUE/FALSE per reference_date
 paired_immune <- df %>%
   filter(
     informed == TRUE,
@@ -172,7 +226,7 @@ paired_immune <- df %>%
   ) %>%
   group_by(reference_date, immunity_linking) %>%
   summarise(
-    log_gm_WIS = mean(log(relative_WIS_nodrift), na.rm = TRUE),
+    log_gm_WIS = mean(log(WIS), na.rm = TRUE),  # CDC-standard
     .groups = "drop"
   ) %>%
   pivot_wider(
@@ -185,7 +239,7 @@ paired_immune <- df %>%
     log_diff = immune_TRUE - immune_FALSE
   )
 
-# perform paired bootstrap
+# perform paired bootstrap by reference_date
 B <- 10000
 boot_log_diff <- replicate(
   B,
@@ -195,20 +249,21 @@ boot_log_diff <- replicate(
   }
 )
 
-# report results
+# report results (percent change relative to FALSE)
 ci <- quantile(boot_log_diff, c(0.025, 0.975))
 result <- tibble(
   log_ratio = mean(boot_log_diff),
   lower_log = ci[1],
   upper_log = ci[2],
-  ratio = (exp(mean(boot_log_diff))-1)*100,
-  lower = (exp(ci[1])-1)*100,
-  upper = (exp(ci[2])-1)*100
+  diff_percent = (exp(mean(boot_log_diff)) - 1) * 100,
+  lower = (exp(ci[1]) - 1) * 100,
+  upper = (exp(ci[2]) - 1) * 100
 )
 result
 
-# p-value
+# one-sided p-value: prob that immunity linking is better (log_diff < 0)
 p_value <- mean(boot_log_diff <= 0)
+p_value
 
 ##########################################################################
 ## Prove ED_visits works for informed==TRUE and immunity_linking==FALSE ##
@@ -222,7 +277,7 @@ paired_ED_visits <- df %>%
   ) %>%
   group_by(reference_date, ED_visits) %>%
   summarise(
-    log_gm_WIS = mean(log(relative_WIS_drift), na.rm = TRUE),
+    log_gm_WIS = mean(log(WIS), na.rm = TRUE),  # CDC-standard
     .groups = "drop"
   ) %>%
   pivot_wider(
@@ -259,6 +314,7 @@ result
 
 # p-value
 p_value <- mean(boot_log_diff >= 0)
+p_value
 
 ###############################################################################
 ## Find out if ED_visits works for informed==TRUE and immunity_linking==TRUE ##
@@ -272,7 +328,7 @@ paired_ED_visits <- df %>%
   ) %>%
   group_by(reference_date, ED_visits) %>%
   summarise(
-    log_gm_WIS = mean(log(relative_WIS_drift), na.rm = TRUE),
+    log_gm_WIS = mean(log(WIS), na.rm = TRUE),
     .groups = "drop"
   ) %>%
   pivot_wider(
@@ -309,7 +365,7 @@ result
 
 # p-value
 p_value <- mean(boot_log_diff >= 0)
-
+p_value
 
 ##################################################################################################
 ## Prove SIR-1S < SIR-2S < SIR-3S for informed==TRUE, immunity_linking==FALSE, ED_visits==FALSE ##
@@ -321,11 +377,11 @@ paired_models <- df %>%
   filter(
     informed == TRUE,
     immunity_linking == FALSE,
-    ED_visits == TRUE,
+    ED_visits == FALSE,
   ) %>%
   group_by(reference_date, model) %>%
   summarise(
-    log_gm_WIS = mean(log(relative_WIS_nodrift), na.rm = TRUE),
+    log_gm_WIS = mean(log(WIS), na.rm = TRUE),
     .groups = "drop"
   ) %>%
   pivot_wider(
@@ -343,7 +399,7 @@ paired_models <- paired_models %>%
   )
 
 # perform paired bootstrap
-B <- 5000
+B <- 10000
 boot_contrasts <- replicate(
   B,
   {
@@ -387,8 +443,8 @@ left_join(results, pvals, by = "contrast")
 ########################################
 
 # model log transform of relative WIS
-df$log_relative_WIS_drift <- log(df$relative_WIS_drift)
-df$log_relative_WIS_nodrift <- log(df$relative_WIS_nodrift)
+df$log_relative_WIS_stationary <- log(df$relative_WIS_stationary)
+df$log_relative_WIS_nonstationary <- log(df$relative_WIS_nonstationary)
 
 # attach months
 df$month <- factor(
@@ -418,7 +474,7 @@ df_filtered <- df %>% filter(informed == TRUE)
 
 # build linear mixed effects model
 m_additive <- lmer(
-  log_relative_WIS_nodrift ~ 
+  log_relative_WIS_stationary ~ 
     model +
     immunity_linking + 
     ED_visits + 
@@ -448,129 +504,4 @@ qqnorm(re[, 1], main = "Random Intercepts")
 qqline(re[, 1])
 
 dev.off()
-
-#####################
-## Build the model ##
-#####################
-
-# build linear mixed effects model
-m_full <- lmer(
-  log_relative_WIS_nodrift ~ 
-    informed + 
-    model +
-    immunity_linking + 
-    ED_visits + 
-    informed * model + 
-    informed * immunity_linking + 
-    informed * ED_visits +    
-    model * ED_visits +
-    model * immunity_linking + 
-    (1 | reference_date) +
-    (1 | season),
-  data = df,
-  REML = TRUE
-)
-
-# stepwise selection
-model_selection <- step(m_full, keep=c('informed', 'model', 'immunity_linking', 'ED_visits'))
-m1 <- get_model(model_selection)
-
-# print coefficients (of m1)
-summary(m1)
-
-
-
-# Conditional and marginal R2
-r2_nakagawa(m1)
-
-####################
-## Export results ##
-####################
-
-# compute marginal effects over informed=TRUE (+ averages out random effects)
-emm <- emmeans(m1, ~ model + ED_visits + immunity_linking, at = list(informed = "TRUE"), pbkrtest.limit = 15924, lmerTest.limit = 15924)
-
-# transform estimated effects in original domain
-emm_log <- summary(emm)
-emm_log$WIS <- exp(emm_log$emmean)
-emm_log$lower <- exp(emm_log$lower.CL)
-emm_log$upper <- exp(emm_log$upper.CL)
-
-# basic point + errorbar plot
-p <- ggplot(emm_log, aes(x = model, y = WIS, color = ED_visits)) +
-  geom_point(position = position_dodge(width = 0.5), size = 3) +
-  geom_errorbar(aes(ymin = lower, ymax = upper), 
-                width = 0.2, 
-                position = position_dodge(width = 0.5)) +
-  facet_wrap(~ immunity_linking, labeller = labeller(immunity_linking = c("FALSE" = "(a) No immunity chaining", "TRUE" = "(b) Immunity chaining"))) +
-  theme_minimal(base_size = 14) +
-  labs(
-    y = "Rel. WIS (GRW)",
-    x = "Strain representation",
-    color = "ED visits",
-  ) +
-  scale_color_brewer(palette = "Set1")
-ggsave(
-  filename = file.path(script_dir, "WIS_comparison_GRW.pdf"),
-  plot = p,
-  width = 8.3,
-  height = 11.7/4,
-  units = "in"
-)
-
-# tabulate the results
-emm_log_out <- emm_log %>%
-  select(
-    model,
-    immunity_linking,
-    ED_visits,
-    WIS,
-    lower,
-    upper
-  ) %>%
-  mutate(
-    across(c(WIS, lower, upper), ~ round(.x, 2))
-  )
-emm_log_out <- emm_log_out %>%
-  mutate(
-    model = factor(model, levels = c("SIR-1S", "SIR-2S", "SIR-3S")),
-    immunity_linking = factor(immunity_linking, levels = c("FALSE", "TRUE")),
-    ED_visits = factor(ED_visits, levels = c("FALSE", "TRUE"))
-  ) %>%
-  arrange(model, immunity_linking, ED_visits)
-write.csv(
-  emm_log_out,
-  file = file.path(script_dir, "predited_relative_WIS_GRW.csv"),
-  row.names = FALSE
-)
-
-# compute overall difference for immunity chaining under informed==TRUE
-emm <- emmeans(m1, ~ immunity_linking, at=list(informed = "TRUE"), pbkrtest.limit = 15924, lmerTest.limit = 15924)
-contr <- contrast(emm, "pairwise")
-summary(contr, infer = TRUE, type = "response") %>%
-  transform(
-    ratio = exp(estimate),
-    lower = exp(lower.CL),
-    upper = exp(upper.CL)
-  )
-
-# compute difference for ED_visits under informed==TRUE + immunity_linking==FALSE
-emm <- emmeans(m1, ~ ED_visits, at=list(informed = "TRUE", immunity_linking="FALSE"), pbkrtest.limit = 15924, lmerTest.limit = 15924)
-contr <- contrast(emm, "pairwise")
-summary(contr, infer = TRUE, type = "response") %>%
-  transform(
-    ratio = exp(estimate),
-    lower = exp(lower.CL),
-    upper = exp(upper.CL)
-  )
-
-# compute difference for ED_visits per model under informed==TRUE + immunity_linking==FALSE
-emm <- emmeans(m1, ~ ED_visits, at=list(informed = "TRUE", immunity_linking="FALSE"), by='model', pbkrtest.limit = 15924, lmerTest.limit = 15924)
-contr <- contrast(emm, "pairwise")
-summary(contr, infer = TRUE, type = "response") %>%
-  transform(
-    ratio = exp(estimate),
-    lower = exp(lower.CL),
-    upper = exp(upper.CL)
-  )
 
