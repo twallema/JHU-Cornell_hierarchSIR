@@ -22,7 +22,6 @@ MY_FOLDER
 import os
 import numpy as np
 import pandas as pd
-from scipy.stats import gmean
 from datetime import datetime, timedelta
 from hierarchSIR.utils import get_NC_influenza_data
 from hierarchSIR.accuracy import compute_WIS
@@ -126,48 +125,32 @@ for mn in model_names:
 
                         # make a dataframe for the output of the season
                         idx = pd.MultiIndex.from_product([[mn,], [il], [ev], [season], [hp,], reference_dates, range(-1,prediction_horizon_weeks)], names=['model', 'immunity_linking', 'ED_visits', 'season', 'hyperparameters', 'reference_date', 'horizon'])
-                        season_accuracy = pd.DataFrame(index=idx, columns=['WIS', 'relative_WIS_nodrift', 'relative_WIS_drift'])
+                        season_accuracy = pd.DataFrame(index=idx, columns=['WIS', 'relative_WIS_stationary', 'relative_WIS_nonstationary'])
 
                         # loop over weeks
                         for reference_date, simout, data, baseline in zip(reference_dates, simouts, datas, baselines):
                             # compute WIS and relative WIS
                             season_accuracy.loc[(mn, il, ev, season, hp, reference_date, slice(None)), 'WIS'] = compute_WIS(simout, data).values
-                            season_accuracy.loc[(mn, il, ev, season, hp, reference_date, slice(None)), 'relative_WIS_nodrift'] = compute_WIS(simout, data).values / baseline[baseline['model']=='GRW_nodrift']['WIS'].values
-                            season_accuracy.loc[(mn, il, ev, season, hp, reference_date, slice(None)), 'relative_WIS_drift'] = compute_WIS(simout, data).values / baseline[baseline['model']=='GRW_drift']['WIS'].values
+                            season_accuracy.loc[(mn, il, ev, season, hp, reference_date, slice(None)), 'relative_WIS_stationary'] = compute_WIS(simout, data).values / baseline[baseline['model']=='GRW_stationary']['WIS'].values
+                            season_accuracy.loc[(mn, il, ev, season, hp, reference_date, slice(None)), 'relative_WIS_nonstationary'] = compute_WIS(simout, data).values / baseline[baseline['model']=='GRW_nonstationary']['WIS'].values
                         # collect season results
                         WIS_collection.append(season_accuracy.reset_index())
-
 # Concatenate all WIS datasets
 output = pd.concat(WIS_collection, axis=0)
 
 # omit horizon -1
 output = output.reset_index()
 output = output[output['horizon'] != -1]
+
+# append the WIS of the baseline models
+baseline = pd.read_csv('baselineModels-accuracy.csv', parse_dates=True, date_format='%Y-%m-%d')
+baseline['reference_date'] = pd.to_datetime(baseline['reference_date'])
+baseline = baseline.pivot(index=["reference_date", "horizon"],columns="model", values="WIS").reset_index()
+output = output.merge(baseline, on=["reference_date", "horizon"], how="left")
+output = output.rename(columns={"GRW_stationary": "WIS_GRW_stationary", "GRW_nonstationary": "WIS_GRW_nonstationary"})
+
+# set index
 output = output.set_index(['model', 'immunity_linking', 'ED_visits',  'season', 'hyperparameters', 'reference_date', 'horizon'])
 
 # Save output to a .csv
 output.to_csv('accuracy.csv')
-
-# Reset index to simplify
-df_reset = output.reset_index()
-# Columns to aggregate
-cols = ['WIS', 'relative_WIS_nodrift', 'relative_WIS_drift']
-group_keys = ['model', 'immunity_linking', 'ED_visits', 'season', 'hyperparameters']
-# Drop NaNs
-df_clean = df_reset.dropna(subset=cols)
-# Group by model/immunity_linking/ED_visits
-grouped = df_clean.groupby(group_keys)
-# Compute mean
-mean_df = grouped[cols].mean()
-# Compute gmean
-gmean_df = grouped[cols].agg(lambda x: gmean(np.array(x, dtype=float)))
-# Add 'mean' and 'gmean' as new first-level column index
-mean_df.columns = pd.MultiIndex.from_tuples([('mean', col) for col in mean_df.columns])
-gmean_df.columns = pd.MultiIndex.from_tuples([('gmean', col) for col in gmean_df.columns])
-# Combine them along columns
-summary_df = pd.concat([mean_df, gmean_df], axis=1)
-# Sort by column levels: ('mean', 'WIS'), ('gmean', 'WIS'), etc.
-summary_df = summary_df.sort_index(axis=1, level=0)
-summary_df = summary_df.round(2)
-# Optional: save
-summary_df.to_csv("accuracy_summary.csv")
