@@ -80,8 +80,11 @@ legend_elements = [
     )
 ]
 
+# limit data to match Sore's visuals
+df = df[df['as_of'] <= datetime(2026,3,21)]
+
 # visualise results
-fig,ax=plt.subplots(figsize=(8.3, 11.7/4))
+fig,ax=plt.subplots(figsize=(8.27/1.32, 11.69/4))
 for mn in df['model'].unique():
     # plot them all
     if ((mn != baseline) & (mn != 'Cornell_JHU-hierarchSIR')):
@@ -93,8 +96,9 @@ for mn in ['Cornell_JHU-hierarchSIR']:
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 ## X
-ax.set_xticks([datetime(2025,12,15), datetime(2026,1,15), datetime(2026,2,15), datetime(2026,3,15)])
+ax.set_xticks([datetime(2025,12,1), datetime(2026,1,1), datetime(2026,2,1), datetime(2026,3,1)])
 ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+#ax.set_xlim([None, datetime(2026,3,27)])
 ## Y
 if log:
     ax.set_ylim([0.8,1.2])
@@ -102,7 +106,7 @@ if log:
     ax.set_ylabel('log. rel. WIS (-)')
 else:
     ax.set_ylim([0.4,1.6])
-    ax.set_yticks([0.5, 0.7, 0.9, 1.1])
+    ax.set_yticks([0.5, 0.75, 1.0, 1.25])
     ax.set_ylabel('rel. WIS (-)')
 ax.legend(handles=legend_elements, frameon=False, loc='upper right')
 
