@@ -106,7 +106,7 @@ for mn in model_names:
                 # append the AE
                 fc = fc[fc['output_type_id'] == 0.50]
                 fc = fc.merge(d.rename("obs"), left_on="target_end_date", right_index=True, how='left')
-                acc['AE'] = np.abs((fc['value'] - fc['obs']).values)
+                acc['MAE'] = np.abs((fc['value'] - fc['obs']).values)
                 loc_acc_collect.append(acc)
             fn_acc_collect.append(pd.concat(loc_acc_collect, axis=0))
     mn_acc_collect.append(pd.concat(fn_acc_collect, axis=0))
@@ -122,7 +122,7 @@ all_locations = data['location'].unique()
 all_reference_dates = mn_acc['reference_date'].unique()
 
 index = pd.MultiIndex.from_product([all_models, all_reference_dates, all_locations, all_horizons], names=["model", "reference_date", "location", "horizon"])
-df = pd.DataFrame(index=index, columns=['WIS', 'AE'])
+df = pd.DataFrame(index=index, columns=['WIS', 'MAE'])
 
 # join the WIS data
 mn_acc = mn_acc.set_index(["model", "reference_date", "location", "horizon"])

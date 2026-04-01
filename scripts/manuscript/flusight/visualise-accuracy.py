@@ -11,9 +11,10 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-# define baseline modelx
-log = True
+# settings
 baseline = 'FluSight-baseline'
+objective = 'MAE'
+log = False
 
 # load in data
 df = pd.read_csv('accuracy.csv', dtype={'location': str})
@@ -25,7 +26,7 @@ df = df[df['location'] != 'US']
 # compute the fraction of NaNs
 nan_fraction_per_model = (
     df
-    .assign(is_nan=df["WIS"].isna())
+    .assign(is_nan=df[objective].isna())
     .groupby("model")["is_nan"]
     .mean()
 )
@@ -35,7 +36,7 @@ df = df[df['model'].isin(nan_fraction_per_model[nan_fraction_per_model <= 0.15].
 
 # log score?
 if log:
-    df['WIS'] = np.log(df['WIS'])
+    df[objective] = np.log(df[objective])
 
 # compute rolling rel WIS
 ref_dates = np.sort(df['reference_date'].unique())
@@ -46,9 +47,9 @@ for i, ref_date in enumerate(ref_dates):
     # subset dataframe
     df_window = df[df['reference_date'].isin(current_window)]
     # sum all WIS scores per model
-    WIS_sum = df_window.groupby(by='model')['WIS'].sum().to_frame()
+    WIS_sum = df_window.groupby(by='model')[objective].sum().to_frame()
     # normalise with the baseline
-    WIS_sum['rel_WIS'] = WIS_sum / WIS_sum.loc[baseline]
+    WIS_sum[f'rel_{objective}'] = WIS_sum / WIS_sum.loc[baseline]
     WIS_sum = WIS_sum.reset_index()
     # attach current "as-of" reference date
     WIS_sum['as_of'] = ref_date
@@ -83,14 +84,14 @@ legend_elements = [
 # limit data to match Sore's visuals
 df = df[df['as_of'] <= datetime(2026,3,21)]
 
-# visualise results
+# visualise results (non-compressed)
 fig,ax=plt.subplots(figsize=(8.27/1.32, 11.69/4))
 for mn in df['model'].unique():
     # plot them all
     if ((mn != baseline) & (mn != 'Cornell_JHU-hierarchSIR')):
-        ax.plot(df['as_of'].unique(), df[df['model'] == mn]['rel_WIS'].values, color='black', alpha=0.1, marker='o', markerfacecolor='none', label=mn)
+        ax.plot(df['as_of'].unique(), df[df['model'] == mn][f'rel_{objective}'].values, color='black', alpha=0.1, marker='o', markerfacecolor='none', label=mn)
 for mn in ['Cornell_JHU-hierarchSIR']:
-    ax.plot(df['as_of'].unique(), df[df['model'] == mn]['rel_WIS'].values, color='hotpink', alpha=1, marker='o', label=mn)
+    ax.plot(df['as_of'].unique(), df[df['model'] == mn][f'rel_{objective}'].values, color='hotpink', alpha=1, marker='o', label=mn)
     
 # format axis
 ax.spines['top'].set_visible(False)
@@ -98,18 +99,20 @@ ax.spines['right'].set_visible(False)
 ## X
 ax.set_xticks([datetime(2025,12,1), datetime(2026,1,1), datetime(2026,2,1), datetime(2026,3,1)])
 ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-#ax.set_xlim([None, datetime(2026,3,27)])
 ## Y
 if log:
     ax.set_ylim([0.8,1.2])
     ax.set_yticks([0.9, 1.0, 1.1])
-    ax.set_ylabel('log. rel. WIS (-)')
+    ax.set_ylabel(f'log. rel. {objective} (-)')
 else:
     ax.set_ylim([0.4,1.6])
     ax.set_yticks([0.5, 0.75, 1.0, 1.25])
-    ax.set_ylabel('rel. WIS (-)')
+    ax.set_ylabel(f'rel. {objective} (-)')
 ax.legend(handles=legend_elements, frameon=False, loc='upper right')
 
 fig.tight_layout()
-fig.savefig('accuracy_flusight.pdf')
+fig.savefig(f'accuracy_flusight_log-{log}_{objective}.pdf')
 plt.close()
+
+
+# visualise results (compressed)
