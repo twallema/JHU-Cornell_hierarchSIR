@@ -1,5 +1,5 @@
 """
-A script to compute the Weighted Interval Score (WIS) accuracy metric for CDC FluSight models
+A script to compute the Weighted Interval Score (WIS) and Mean Absolute Error (MAE) accuracy metric for CDC FluSight models
 
 Designed for use with the following folder structure:
 
@@ -93,6 +93,9 @@ for mn in model_names:
             for loc in locations:
                 # get the corresponding target data
                 d = data[((data['date'].isin(forecast['target_end_date'].unique())) & (data['location'] == loc))][['date', 'value']].set_index('date').squeeze()
+                # prevent collapse to float when there is only one value
+                if isinstance(d, float):
+                    d = pd.Series(index=[ref_date], data=d)
                 # slice the right location in forecast
                 fc = forecast[forecast['location'] == loc]
                 # compute the WIS scores
@@ -100,6 +103,10 @@ for mn in model_names:
                 acc = acc.reset_index()
                 acc['location'] = loc
                 acc['model'] = mn
+                # append the AE
+                fc = fc[fc['output_type_id'] == 0.50]
+                fc = fc.merge(d.rename("obs"), left_on="target_end_date", right_index=True, how='left')
+                acc['AE'] = np.abs((fc['value'] - fc['obs']).values)
                 loc_acc_collect.append(acc)
             fn_acc_collect.append(pd.concat(loc_acc_collect, axis=0))
     mn_acc_collect.append(pd.concat(fn_acc_collect, axis=0))
@@ -115,7 +122,7 @@ all_locations = data['location'].unique()
 all_reference_dates = mn_acc['reference_date'].unique()
 
 index = pd.MultiIndex.from_product([all_models, all_reference_dates, all_locations, all_horizons], names=["model", "reference_date", "location", "horizon"])
-df = pd.DataFrame(index=index, columns=['WIS'])
+df = pd.DataFrame(index=index, columns=['WIS', 'AE'])
 
 # join the WIS data
 mn_acc = mn_acc.set_index(["model", "reference_date", "location", "horizon"])
