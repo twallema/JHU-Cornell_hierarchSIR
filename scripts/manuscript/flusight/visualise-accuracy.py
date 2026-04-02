@@ -14,9 +14,9 @@ from scipy.stats import gmean
 
 # settings
 baseline = 'FluSight-baseline'
-objective = 'WIS'
+objective = 'MAE'
 log = False         # TRUE: log transform WIS scores before running the computation
-mean = False        # FALSE: compute rel. WIS in each territory using gmean
+mean = True        # FALSE: compute rel. WIS in each territory using gmean
 glob = True         # FALSE: compute rel. WIS per territory and then take the mean across territories
 
 # load in data
@@ -52,7 +52,7 @@ if glob:
         df_window = df[df['reference_date'].isin(current_window)]
         # sum all WIS scores per model
         if not mean:
-            WIS_sum = df_window.groupby(by='model')[objective].apply(gmean).to_frame()
+            WIS_sum = df_window.groupby(by='model')[objective].apply(lambda x: np.exp(np.sum(np.log(x))/len(x)) ).to_frame()
         else:
             WIS_sum = df_window.groupby(by='model')[objective].sum().to_frame()
         # normalise with the baseline
@@ -139,7 +139,7 @@ else:
 ax.legend(handles=legend_elements, frameon=False, loc='upper right')
 
 fig.tight_layout()
-fig.savefig(f'accuracy_flusight_log-{log}_{objective}.pdf')
+fig.savefig(f'accuracy_flusight_log-{log}_mean-{mean}_{objective}.pdf')
 plt.close()
 
 
@@ -176,11 +176,11 @@ if log:
     ax.set_yticks([0.8, 1.0, 1.2])
     ax.set_ylabel(f'rel. log. {objective}')
 else:
-    ax.set_ylim([0.3,2.5])
+    ax.set_ylim([0.25,2.45])
     ax.set_yticks([0.75, 1.5, 2.25])
-    ax.set_ylabel(f'rel. {objective}')
+    ax.set_ylabel(f'rel. {objective}\n(mean)')
 #ax.legend(handles=legend_elements, frameon=False, loc='upper right')
 fig.tight_layout()
-fig.savefig(f'accuracy_flusight_compressed_log-{log}_{objective}.pdf')
+fig.savefig(f'accuracy_flusight_compressed_log-{log}_mean-{mean}_{objective}.pdf')
 plt.close()
 
