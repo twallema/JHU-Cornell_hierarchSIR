@@ -161,6 +161,10 @@ ggsave(
 # model the log WIS
 df$log_WIS <- log(df$WIS)
 
+# compute baseline model's mean log WIS
+mean(log(df$WIS_GRW_nonstationary))
+mean(log(df$WIS_GRW_stationary))
+
 # learning equation  
 nlme_formula <- log_WIS ~
   mu +
