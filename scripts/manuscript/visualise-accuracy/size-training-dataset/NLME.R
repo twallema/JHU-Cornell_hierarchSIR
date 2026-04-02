@@ -158,7 +158,11 @@ ggsave(
 ## Define the model ##
 ######################
 
-nlme_formula <- log_rel_wis ~
+# model the log WIS
+df$log_WIS <- log(df$WIS)
+
+# learning equation  
+nlme_formula <- log_WIS ~
   mu +
   exp(Delta) * exp(-exp(kappa) * training_horizon)
 
@@ -168,7 +172,6 @@ fixed_effects <- list(
   Delta ~ 1 + model + season + ED, # season-specific asymptote
   kappa ~ 0 + model + ED  # shared learning rate per model
 )
-
 random_effects <- pdDiag(mu ~ 1)
 
 start_vals <- c(
