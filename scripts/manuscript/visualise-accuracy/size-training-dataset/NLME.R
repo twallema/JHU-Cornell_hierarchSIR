@@ -242,13 +242,30 @@ plot(fitted(m1), resid(m1))
 pdf(file.path(script_dir,"qqplots_nlme_diagnostics.pdf"), width = 10, height = 5)
 par(mfrow = c(1, 2))
 
+# set scaling factors
+title_cex <- 1.5      # main titles
+axis_cex  <- 2    # tick labels
+label_cex <- 2.5    # axis labels (if you add them)
+
 # verify normality of residuals
-qqnorm(resid(m1),  main = "Residuals")
+qqnorm(
+  resid(m1),
+  main = "Residuals",
+  cex.main = title_cex,
+  cex.lab  = label_cex,
+  cex.axis = axis_cex
+)
 qqline(resid(m1))
 
-# do the random effects satisfy the assumption of normality?
+# random effects normality
 re <- ranef(m1)
-qqnorm(re[, 1], main = "Random Intercepts")
+qqnorm(
+  re[, 1],
+  main = "Random Intercepts",
+  cex.main = title_cex,
+  cex.lab  = label_cex,
+  cex.axis = axis_cex
+)
 qqline(re[, 1])
 
 dev.off()

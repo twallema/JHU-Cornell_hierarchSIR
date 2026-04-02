@@ -45,7 +45,7 @@ df_boot <- df %>%
   )
 
 # paired bootstrap function
-boot_geom_mean_ratio <- function(df_group, baseline_col, B = 200) {
+boot_geom_mean_ratio <- function(df_group, baseline_col, B = 20) {
   refdates <- unique(df_group$reference_date)
   n_dates <- length(refdates)
   
@@ -497,11 +497,24 @@ plot(fitted(m_additive), resid(m_additive))
 pdf(file.path(script_dir,"qqplots_lmer_diagnostics.pdf"), width = 10, height = 5)
 par(mfrow = c(1, 2))
 
-qqnorm(resid(m_additive), main = "Residuals")
+# set scaling factors
+title_cex <- 2      # main titles
+axis_cex  <- 1.5    # tick labels
+label_cex <- 1.5    # axis labels (if you add them)
+
+qqnorm(resid(m_additive),
+       main = "Residuals",
+       cex.main = title_cex,
+       cex.lab  = label_cex,
+       cex.axis = axis_cex)
 qqline(resid(m_additive))
 
 re <- ranef(m_additive)$reference_date
-qqnorm(re[, 1], main = "Random Intercepts")
+qqnorm(re[, 1],
+       main = "Random Intercepts",
+       cex.main = title_cex,
+       cex.lab  = label_cex,
+       cex.axis = axis_cex)
 qqline(re[, 1])
 
 dev.off()
