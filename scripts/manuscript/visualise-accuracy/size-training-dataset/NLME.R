@@ -8,8 +8,9 @@ library(performance)
 library(purrr)
 library(glue)
 
-baseline <- 'drift'
-if (baseline == 'nodrift') {baseline_label <- 'sGRW'} else {baseline_label <- 'nsGRW'}
+baseline <- 'nonstationary'
+if (baseline == 'stationary') {baseline_label <- 'sGRW'} else {baseline_label <- 'nsGRW'}
+if (baseline == 'stationary') {ylims <- c(0.3, 1.0)} else {ylims <- c(0.4, 1.35)}
 
 ##################################################
 ## Set working directory and load accuracy data ##
@@ -53,24 +54,23 @@ df <- data %>%
 ## Paired bootstrap of geometric mean ##
 ########################################
 
-# compute geometric mean
-gmean <- function(x) {
-  exp(mean(log(x), na.rm = TRUE))
-}
-
-# take one paired bootstrap sample
+# define a bootstrap function
 bootstrap_gm_once <- function(df) {
   # sample reference_date clusters with replacement
   ref_dates <- unique(df$reference_date)
   sampled_refs <- sample(ref_dates, size = length(ref_dates), replace = TRUE)
   # rebuild bootstrap dataset
   boot_df <- purrr::map_dfr(sampled_refs, ~ df[df$reference_date == .x, ])
-  # compute geometric means
+  # compute log geometric means of absolute WIS and baseline
   boot_df %>%
     group_by(model, ED, season, training_horizon) %>%
     summarise(
-      gm_rel_wis = gmean(.data[[paste0("relative_WIS_",baseline)]]),
+      log_gm_model = mean(log(WIS), na.rm = TRUE),
+      log_gm_base  = mean(log(.data[[paste0("WIS_GRW_", baseline)]]), na.rm = TRUE),
       .groups = "drop"
+    ) %>%
+    mutate(
+      gm_rel_wis = exp(log_gm_model - log_gm_base)
     )
 }
 
@@ -130,7 +130,7 @@ p <- ggplot(boot_summary) +
   
   scale_y_continuous(
     name = glue("Rel. WIS ({baseline_label})"),
-    limits = c(0.45, 1.4)
+    limits = ylims
   ) +
   
   scale_x_continuous(
