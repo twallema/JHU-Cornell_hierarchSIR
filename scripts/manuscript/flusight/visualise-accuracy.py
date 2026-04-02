@@ -10,11 +10,14 @@ import pandas as pd
 from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from scipy.stats import gmean
 
 # settings
 baseline = 'FluSight-baseline'
-objective = 'MAE'
-log = False
+objective = 'WIS'
+log = False         # TRUE: log transform WIS scores before running the computation
+mean = False        # FALSE: compute rel. WIS in each territory using gmean
+glob = True         # FALSE: compute rel. WIS per territory and then take the mean across territories
 
 # load in data
 df = pd.read_csv('accuracy.csv', dtype={'location': str})
@@ -38,25 +41,50 @@ df = df[df['model'].isin(nan_fraction_per_model[nan_fraction_per_model <= 0.15].
 if log:
     df[objective] = np.log(df[objective])
 
-# compute rolling rel WIS
+# compute global WIS at once
 ref_dates = np.sort(df['reference_date'].unique())
 results = []
-for i, ref_date in enumerate(ref_dates):
-    # consider all reference dates up to current
-    current_window = ref_dates[:i+1]
-    # subset dataframe
-    df_window = df[df['reference_date'].isin(current_window)]
-    # sum all WIS scores per model
-    WIS_sum = df_window.groupby(by='model')[objective].sum().to_frame()
-    # normalise with the baseline
-    WIS_sum[f'rel_{objective}'] = WIS_sum / WIS_sum.loc[baseline]
-    WIS_sum = WIS_sum.reset_index()
-    # attach current "as-of" reference date
-    WIS_sum['as_of'] = ref_date
-    results.append(WIS_sum)
-# combine all weeks
-df = pd.concat(results, ignore_index=True)
-
+if glob:
+    for i, ref_date in enumerate(ref_dates):
+        # consider all reference dates up to current
+        current_window = ref_dates[:i+1]
+        # subset dataframe
+        df_window = df[df['reference_date'].isin(current_window)]
+        # sum all WIS scores per model
+        if not mean:
+            WIS_sum = df_window.groupby(by='model')[objective].apply(gmean).to_frame()
+        else:
+            WIS_sum = df_window.groupby(by='model')[objective].sum().to_frame()
+        # normalise with the baseline
+        WIS_sum[f'rel_{objective}'] = WIS_sum / WIS_sum.loc[baseline]
+        WIS_sum = WIS_sum.reset_index()
+        # attach current "as-of" reference date
+        WIS_sum['as_of'] = ref_date
+        results.append(WIS_sum)
+    # combine all weeks
+    df = pd.concat(results, ignore_index=True)
+else:
+    # compute rel WIS per territory and then WIS over it
+    for i, ref_date in enumerate(ref_dates):
+        # consider all reference dates up to current
+        current_window = ref_dates[:i+1]
+        # subset dataframe
+        df_window = df[df['reference_date'].isin(current_window)]
+        # sum all WIS scores per model
+        if not mean:
+            WIS_sum = df_window.groupby(by=['model', 'location'])[objective].apply(gmean).to_frame()
+        else:
+            WIS_sum = df_window.groupby(by=['model', 'location'])[objective].sum().to_frame()
+        # normalise with the baseline
+        WIS_sum[f'rel_{objective}'] = WIS_sum / WIS_sum.loc[baseline]
+        # mean over locations
+        WIS_sum = WIS_sum.groupby(by='model')[f'rel_{objective}'].mean()
+        WIS_sum = WIS_sum.reset_index() 
+        # attach current "as-of" reference date
+        WIS_sum['as_of'] = ref_date
+        results.append(WIS_sum)
+    # combine all weeks
+    df = pd.concat(results, ignore_index=True)
 
 # pre-format legend
 from matplotlib.lines import Line2D
