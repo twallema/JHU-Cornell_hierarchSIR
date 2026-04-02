@@ -116,3 +116,43 @@ plt.close()
 
 
 # visualise results (compressed)
+fig,ax=plt.subplots(figsize=(8.27/1.32, 11.69/4/2.5))
+save = []
+for mn in df['model'].unique():
+    # plot them all
+    if ((mn != baseline) & (mn != 'Cornell_JHU-hierarchSIR')):
+        # save them
+        save.append(df[df['model'] == mn][f'rel_{objective}'].values)
+# compute summary statistics
+save = np.stack(save, axis=1)
+min = np.min(save, axis=1)
+max = np.max(save, axis=1)
+q25 = np.quantile(save, q=0.25, axis=1)
+q75 = np.quantile(save, q=0.75, axis=1)
+# visualise
+ax.fill_between(df['as_of'].unique(), min, max, color='black', alpha=0.1)
+ax.fill_between(df['as_of'].unique(), q25, q75, color='black', alpha=0.1)
+
+for mn in ['Cornell_JHU-hierarchSIR']:
+    ax.plot(df['as_of'].unique(), df[df['model'] == mn][f'rel_{objective}'].values, color='hotpink', alpha=1, marker='o', label=mn)
+    
+# format axis
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+## X
+ax.set_xticks([datetime(2025,12,1), datetime(2026,1,1), datetime(2026,2,1), datetime(2026,3,1)])
+ax.set_xticklabels([])
+## Y
+if log:
+    ax.set_ylim([0.75,1.25])
+    ax.set_yticks([0.8, 1.0, 1.2])
+    ax.set_ylabel(f'rel. log. {objective}')
+else:
+    ax.set_ylim([0.3,2.5])
+    ax.set_yticks([0.75, 1.5, 2.25])
+    ax.set_ylabel(f'rel. {objective}')
+#ax.legend(handles=legend_elements, frameon=False, loc='upper right')
+fig.tight_layout()
+fig.savefig(f'accuracy_flusight_compressed_log-{log}_{objective}.pdf')
+plt.close()
+
