@@ -8,7 +8,7 @@ library(performance)
 library(purrr)
 library(glue)
 
-baseline <- 'nonstationary'
+baseline <- 'stationary'
 if (baseline == 'stationary') {baseline_label <- 'sGRW'} else {baseline_label <- 'nsGRW'}
 if (baseline == 'stationary') {ylims <- c(0.3, 1.0)} else {ylims <- c(0.4, 1.35)}
 
@@ -268,6 +268,7 @@ Delta_bar <- sapply(levels(df$model), function(m) {
   ))
 })
 
+
 #####################
 ## Goodness-of-fit ##
 #####################
@@ -293,10 +294,10 @@ pred_grid <- expand.grid(
     season = factor(season, levels = season_levels)
   )
 
-# reconstruct model prediction
+# reconstruct model prediction (log WIS → WIS)
 pred_grid <- pred_grid %>%
   mutate(
-    ## baseline mean
+    ## baseline mean (on log scale!)
     mu =
       beta["mu.(Intercept)"] +
       ifelse(season == "2023-2024", beta["mu.season2023-2024"], 0) +
@@ -305,7 +306,7 @@ pred_grid <- pred_grid %>%
       ifelse(model == "SIR-3S", beta["mu.modelSIR-3S"], 0) +
       beta["mu.ED"] * ED_num,
     
-    ## season × model learning amplitude
+    ## learning amplitude
     Delta =
       beta["Delta.(Intercept)"] + 
       ifelse(season == "2023-2024", beta["Delta.season2023-2024"], 0) +
@@ -314,56 +315,72 @@ pred_grid <- pred_grid %>%
       ifelse(model == "SIR-3S", beta["Delta.modelSIR-3S"], 0) +
       beta["Delta.ED"] * ED_num,
     
-    ## model-specific learning rate + ED shift
+    ## learning rate
     kappa =
       case_when(
         model == "SIR-1S" ~ beta["kappa.modelSIR-1S"],
         model == "SIR-2S" ~ beta["kappa.modelSIR-2S"],
         model == "SIR-3S" ~ beta["kappa.modelSIR-3S"]
       ) +
-      #ifelse(season == "2023-2024", beta["kappa.season2023-2024"], 0) +
-      #ifelse(season == "2024-2025", beta["kappa.season2024-2025"], 0) +
       beta["kappa.ED"] * ED_num,
     
-    log_rel_wis_hat = mu + exp(Delta) * exp(-exp(kappa) * training_horizon),
-    rel_wis_hat     = exp(log_rel_wis_hat)
+    ## predicted log WIS and WIS
+    log_WIS_hat = mu + exp(Delta) * exp(-exp(kappa) * training_horizon),
+    WIS_hat     = exp(log_WIS_hat)
   )
 
-# observed geometric means
+# Observed geometric means
 obs_gm <- df %>%
   mutate(
     ED = factor(ED, levels = ED_levels, labels = ED_labels)
   ) %>%
   group_by(training_horizon, model, season, ED) %>%
   summarise(
-    gm_rel_wis = exp(mean(log( .data[[paste0("relative_WIS_", baseline)]]), na.rm = TRUE)),
+    gm_model = exp(mean(log(WIS), na.rm = TRUE)),
+    gm_base  = exp(mean(log(.data[[paste0("WIS_GRW_", baseline)]]), na.rm = TRUE)),
+    gm_rel_wis = gm_model / gm_base,
     .groups = "drop"
   )
 
-# predicted geometric means (already deterministic, but kept symmetric)
+# Predicted geometric means
 pred_gm <- pred_grid %>%
   group_by(training_horizon, model, season, ED) %>%
   summarise(
-    gm_rel_wis_hat = exp(mean(log(rel_wis_hat))),
+    gm_model_hat = exp(mean(log(WIS_hat))),
     .groups = "drop"
   )
 
-# plot
+# Baseline geometric mean (from data)
+baseline_gm <- df %>%
+  group_by(training_horizon, season) %>%
+  summarise(
+    gm_base = exp(mean(log(.data[[paste0("WIS_GRW_", baseline)]]), na.rm = TRUE)),
+    .groups = "drop"
+  )
+
+# Combine predicted with baseline
+pred_gm <- pred_gm %>%
+  left_join(baseline_gm, by = c("training_horizon", "season")) %>%
+  mutate(
+    gm_rel_wis_hat = gm_model_hat / gm_base
+  )
+
+# Plot
 p <- ggplot() +
   geom_point(
     data = obs_gm,
     aes(x = training_horizon, y = gm_rel_wis, color = model, shape = model),
-    size = 1.5,
+    size = 1.5
   ) +
   geom_line(
     data = pred_gm,
     aes(x = training_horizon, y = gm_rel_wis_hat, color = model),
-    linewidth = 0.4,
+    linewidth = 0.4
   ) +
   facet_grid(ED ~ season) +
   scale_y_continuous(
     name = glue("Rel. WIS ({baseline_label})"),
-    limits = c(0.45, 1.4)
+    limits = ylims
   ) +
   scale_x_continuous(
     name = "Number of training seasons"
@@ -378,6 +395,7 @@ p <- ggplot() +
     strip.background = element_rect(fill = "grey95"),
     panel.grid.minor = element_blank()
   )
+
 ggsave(
   filename = file.path(script_dir, glue("training_model_{baseline_label}.pdf")),
   plot = p,
@@ -385,3 +403,28 @@ ggsave(
   height = 11.7/3,
   units = "in"
 )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
