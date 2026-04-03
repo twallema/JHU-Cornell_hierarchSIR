@@ -11,13 +11,14 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from scipy.stats import gmean
+from datetime import timedelta
 
 # settings
 baseline = 'FluSight-baseline'
-objective = 'MAE'
+objective = 'WIS'
 log = False         # TRUE: log transform WIS scores before running the computation
 mean = True        # FALSE: compute rel. WIS in each territory using gmean
-glob = True         # FALSE: compute rel. WIS per territory and then take the mean across territories
+glob = False        # FALSE: compute rel. WIS per territory and then take the mean across territories
 
 # load in data
 df = pd.read_csv('accuracy.csv', dtype={'location': str})
@@ -63,6 +64,9 @@ if glob:
         results.append(WIS_sum)
     # combine all weeks
     df = pd.concat(results, ignore_index=True)
+    # compute ranking
+    ranking = df[df['as_of'] == max(df['as_of']) - timedelta(weeks=11)]
+    ranking = ranking.sort_values(f'rel_{objective}')
 else:
     # compute rel WIS per territory and then WIS over it
     for i, ref_date in enumerate(ref_dates):
@@ -72,19 +76,44 @@ else:
         df_window = df[df['reference_date'].isin(current_window)]
         # sum all WIS scores per model
         if not mean:
-            WIS_sum = df_window.groupby(by=['model', 'location'])[objective].apply(gmean).to_frame()
+            WIS_sum = df_window.groupby(by=['model', 'location'])[objective].apply(lambda x: np.exp(np.sum(np.log(x))/len(x)) ).to_frame()
         else:
             WIS_sum = df_window.groupby(by=['model', 'location'])[objective].sum().to_frame()
         # normalise with the baseline
         WIS_sum[f'rel_{objective}'] = WIS_sum / WIS_sum.loc[baseline]
         # mean over locations
-        WIS_sum = WIS_sum.groupby(by='model')[f'rel_{objective}'].mean()
+        #WIS_sum = WIS_sum.groupby(by='model')[f'rel_{objective}'].mean()
         WIS_sum = WIS_sum.reset_index() 
         # attach current "as-of" reference date
         WIS_sum['as_of'] = ref_date
         results.append(WIS_sum)
     # combine all weeks
     df = pd.concat(results, ignore_index=True)
+    # show score by location of our model
+    ranking = df[((df['model'] == 'Cornell_JHU-hierarchSIR') & (df['as_of'] == max(df['as_of']) - timedelta(weeks=1)))]
+    ranking = ranking.sort_values(f'rel_{objective}')
+    # load demography and merge to ranking
+    demo = pd.read_csv('../../../data/interim/demography/demography.csv')
+    ranking["location"] = ranking["location"].astype(int)
+    ranking = ranking.merge(demo[["fips_state", "population"]], left_on="location", right_on="fips_state", how="left")
+    # excluding California, Texas, NY, FL only increases R2 to 0.1
+    # perform linear regression
+    x = ranking["population"].values
+    y = ranking["rel_WIS"].values
+    slope, intercept = np.polyfit(x, y, 1)
+    y_pred = slope * x + intercept
+    ss_res = np.sum((y - y_pred)**2)
+    ss_tot = np.sum((y - np.mean(y))**2)
+    r2 = 1 - (ss_res / ss_tot)
+    print("Intercept:", intercept)
+    print("Slope:", slope)
+    print("R^2:", r2)
+    
+    # average over locations
+    df = df.groupby(by=['model', 'as_of'])[f'rel_{objective}'].mean().reset_index()
+
+import sys
+sys.exit()
 
 # pre-format legend
 from matplotlib.lines import Line2D
