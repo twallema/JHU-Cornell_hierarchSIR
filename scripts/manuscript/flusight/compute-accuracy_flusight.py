@@ -23,7 +23,7 @@ from hierarchSIR.accuracy import compute_WIS
 
 # start of evaluation
 eval_start_date = datetime(2025, 11, 1)
-eval_end_date = datetime(2026, 5, 1)
+eval_end_date = datetime(2026, 6, 1)
 
 # all paths absolute to this file
 abs_dir = os.path.dirname(__file__)
@@ -62,7 +62,7 @@ exclude_models = ['CFA_Pyrenew-Pyrenew_E_Flu', 'CMU-climate_baseline',
                   'JHUAPL-DMD', 'JHUAPL-Morris', 'Metaculus-cp', 'MetroCast-ensemble', 'MOBS-GLEAM_FLUH', 'NU_UCSD-GLEAM_AI_FLUH',
                   'NU-PGF_FLUH', 'PSI-PROF_beta', 'SGroup-RandomForest', 'SigSci-BECAM', 'SigSci-CREG', 'Stevens-GBR', 'Stevens-ILIForecast',
                   'UGA_flucast-OKeeffe', 'UVAFluX-CESGCN', 'UVAFluX-OptimWISE', 'VTSanghani-Ensemble', 'UMass-trends_ensemble', 'cfa-flumech', 'cfarenewal-cfaepimlight',
-                  'fjordhest-ensemble']
+                  'fjordhest-ensemble','DMAPRIME-DLM', 'DMAPRIME-HYB']
 model_names = [mn for mn in model_names if mn not in exclude_models]
 
 all_locations = data['location'].unique()

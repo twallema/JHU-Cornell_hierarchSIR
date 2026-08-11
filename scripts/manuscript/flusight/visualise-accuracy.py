@@ -14,16 +14,24 @@ from scipy.stats import gmean
 from datetime import timedelta
 from scipy.stats import linregress
 
+# amean MAE --> False, True, True
+# amean WIS --> False, True, True
+# gmean WIS --> True, True, True
+inclusion_threshold = 1/28
+
 # settings
 baseline = 'FluSight-baseline'
 objective = 'WIS'
-log = False         # TRUE: log transform WIS scores before running the computation
-mean = True        # FALSE: compute rel. WIS in each territory using gmean
-glob = False        # FALSE: compute rel. WIS per territory and then take the mean across territories
+log = False        # TRUE: log transform WIS scores before running the computation
+mean = False        # FALSE: compute rel. WIS in each territory using gmean
+glob = True        # FALSE: compute rel. WIS per territory and then take the mean across territories
 
 # load in accuracy data
 df = pd.read_csv('accuracy.csv', dtype={'location': str})
 df['reference_date'] = pd.to_datetime(df['reference_date'])
+
+# limit range
+df = df[df['reference_date'] <= datetime(2026,5,23)]
 
 # load in hospital admissions data
 hosp_data = pd.read_csv('target-hospital-admissions.csv')
@@ -44,7 +52,9 @@ nan_fraction_per_model = (
 )
 
 # exclude if fraction of NaNs is higher than 5%
-df = df[df['model'].isin(nan_fraction_per_model[nan_fraction_per_model <= 0.15].index.values)]
+df = df[df['model'].isin(nan_fraction_per_model[nan_fraction_per_model <= min(nan_fraction_per_model) + inclusion_threshold*(1-min(nan_fraction_per_model))].index.values)]
+
+print(f"Number of included models with threshold {inclusion_threshold:.3f}: {len(df['model'].unique())}")
 
 # log score?
 if log:
@@ -104,68 +114,65 @@ else:
     demo = pd.read_csv('../../../data/interim/demography/demography.csv')
     ranking["location"] = ranking["location"].astype(int)
     ranking = ranking.merge(demo[["fips_state", "population"]], left_on="location", right_on="fips_state", how="left")
-    # perform linear regression on population size versus relative WIS
-    x = np.log1p(ranking["population"].values)
-    y = ranking["rel_WIS"].values
-    slope1, intercept1, r_value1, p_value1, std_err1 = linregress(x, y)
-    # do a regression between onset of the epidemic and relative WIS
-    # Step 1: Find the first date per location where weekly_rate exceeds the threshold
-    threshold = 4
-    hosp_data = hosp_data[hosp_data['location'] != 72]
-    first_cross = (hosp_data[hosp_data['weekly_rate'] > threshold].groupby('location')['date'].min().reset_index())
-    first_cross.rename(columns={'date': 'first_cross_date'}, inplace=True)
-    # Step 2: Normalize by the earliest date across all locations
-    earliest_cross = first_cross['first_cross_date'].min()
-    first_cross['days_from_earliest'] = (first_cross['first_cross_date'] - earliest_cross).dt.days
-    ranking = ranking.merge(first_cross[["location", "days_from_earliest"]], left_on="location", right_on="location", how="left")
-    # Step 3: Regress
-    ranking_star = ranking[ranking['location'] != 72]
-    x = np.log1p(ranking_star["days_from_earliest"].values)  # also significant in regular domain
-    y = ranking_star["rel_WIS"].values
-    slope2, intercept2, r_value2, p_value2, std_err2 = linregress(x, y)
+    if objective == 'WIS':
+        # perform linear regression on population size versus relative WIS
+        x = np.log1p(ranking["population"].values)
+        y = ranking["rel_WIS"].values
+        slope1, intercept1, r_value1, p_value1, std_err1 = linregress(x, y)
+        # do a regression between onset of the epidemic and relative WIS
+        # Step 1: Find the first date per location where weekly_rate exceeds the threshold
+        threshold = 4
+        hosp_data = hosp_data[hosp_data['location'] != 72]
+        first_cross = (hosp_data[hosp_data['weekly_rate'] > threshold].groupby('location')['date'].min().reset_index())
+        first_cross.rename(columns={'date': 'first_cross_date'}, inplace=True)
+        # Step 2: Normalize by the earliest date across all locations
+        earliest_cross = first_cross['first_cross_date'].min()
+        first_cross['days_from_earliest'] = (first_cross['first_cross_date'] - earliest_cross).dt.days
+        ranking = ranking.merge(first_cross[["location", "days_from_earliest"]], left_on="location", right_on="location", how="left")
+        # Step 3: Regress
+        ranking_star = ranking[ranking['location'] != 72]
+        x = np.log1p(ranking_star["days_from_earliest"].values)  # also significant in regular domain
+        y = ranking_star["rel_WIS"].values
+        slope2, intercept2, r_value2, p_value2, std_err2 = linregress(x, y)
 
-    # Filter locations if needed
-    ranking_star = ranking[ranking['location'] != 72]
-    # --- Panel 1: log(days from earliest onset) vs rel_WIS ---
-    x1 = np.log1p(ranking_star["days_from_earliest"].values)
-    y1 = ranking_star["rel_WIS"].values
-    slope1, intercept1, r_value1, p_value1, std_err1 = linregress(x1, y1)
-    y_pred1 = slope1 * x1 + intercept1
-    # --- Panel 2: log(population) vs rel_WIS ---
-    x2 = np.log(ranking_star["population"].values)
-    y2 = ranking_star["rel_WIS"].values
-    slope2, intercept2, r_value2, p_value2, std_err2 = linregress(x2, y2)
-    y_pred2 = slope2 * x2 + intercept2
-    print(r_value1**2, p_value1, r_value2**2, p_value2)
-    # --- Create figure with 2 subplots ---
-    fig, axes = plt.subplots(1, 2, figsize=(8.3,11.7/4), sharey=True)
-    # Panel 1
-    axes[0].scatter(x1, y1, color='black', label='U.S. States and Territories')
-    axes[0].plot(x1, y_pred1, color='red', linewidth=2, label='Linear fit')
-    axes[0].set_xlabel("log(relative onset)")
-    axes[0].set_ylabel("(amean) Rel. WIS")
-    axes[0].grid(alpha=0.3)
-    axes[0].text(0.05, 0.95, f"Slope={slope1:.3f}\nIntercept={intercept1:.3f}\nR²={r_value1**2:.3f}\np={p_value1:.3f}",
-                transform=axes[0].transAxes, verticalalignment='top', fontsize=8,
-                bbox=dict(facecolor='white', alpha=0.6, edgecolor='gray'))
-    # Panel 2
-    axes[1].scatter(x2, y2, color='black', label='U.S. States and Territories')
-    axes[1].plot(x2, y_pred2, color='red', linewidth=2, label='Linear fit')
-    axes[1].set_xlabel("log(population)")
-    axes[1].grid(alpha=0.3)
-    axes[1].legend(frameon=False, fontsize=8)
-    axes[1].text(0.05, 0.95, f"Slope={slope2:.3f}\nIntercept={intercept2:.3f}\nR²={r_value2**2:.3f}\np={p_value2:.3f}",
-                transform=axes[1].transAxes, verticalalignment='top', fontsize=8,
-                bbox=dict(facecolor='white', alpha=0.6, edgecolor='gray'))
-    plt.tight_layout()
-    plt.savefig('regression.pdf')
-    plt.close()
+        # Filter locations if needed
+        ranking_star = ranking[ranking['location'] != 72]
+        # --- Panel 1: log(days from earliest onset) vs rel_WIS ---
+        x1 = np.log1p(ranking_star["days_from_earliest"].values)
+        y1 = ranking_star["rel_WIS"].values
+        slope1, intercept1, r_value1, p_value1, std_err1 = linregress(x1, y1)
+        y_pred1 = slope1 * x1 + intercept1
+        # --- Panel 2: log(population) vs rel_WIS ---
+        x2 = np.log(ranking_star["population"].values)
+        y2 = ranking_star["rel_WIS"].values
+        slope2, intercept2, r_value2, p_value2, std_err2 = linregress(x2, y2)
+        y_pred2 = slope2 * x2 + intercept2
+        # --- Create figure with 2 subplots ---
+        fig, axes = plt.subplots(1, 2, figsize=(8.3,11.7/4), sharey=True)
+        # Panel 1
+        axes[0].scatter(x1, y1, color='black', label='U.S. States and Territories')
+        axes[0].plot(x1, y_pred1, color='red', linewidth=2, label='Linear fit')
+        axes[0].set_xlabel("log(relative onset)")
+        axes[0].set_ylabel("(amean) Rel. WIS")
+        axes[0].grid(alpha=0.3)
+        axes[0].text(0.05, 0.95, f"Slope={slope1:.3f}\nIntercept={intercept1:.3f}\nR²={r_value1**2:.3f}\np={p_value1:.3f}",
+                    transform=axes[0].transAxes, verticalalignment='top', fontsize=8,
+                    bbox=dict(facecolor='white', alpha=0.6, edgecolor='gray'))
+        # Panel 2
+        axes[1].scatter(x2, y2, color='black', label='U.S. States and Territories')
+        axes[1].plot(x2, y_pred2, color='red', linewidth=2, label='Linear fit')
+        axes[1].set_xlabel("log(population)")
+        axes[1].grid(alpha=0.3)
+        axes[1].legend(frameon=False, fontsize=8)
+        axes[1].text(0.05, 0.95, f"Slope={slope2:.3f}\nIntercept={intercept2:.3f}\nR²={r_value2**2:.3f}\np={p_value2:.3f}",
+                    transform=axes[1].transAxes, verticalalignment='top', fontsize=8,
+                    bbox=dict(facecolor='white', alpha=0.6, edgecolor='gray'))
+        plt.tight_layout()
+        plt.savefig('regression.pdf')
+        plt.close()
 
     # average over locations
     df = df.groupby(by=['model', 'as_of'])[f'rel_{objective}'].mean().reset_index()
-
-import sys
-sys.exit()
 
 # pre-format legend
 from matplotlib.lines import Line2D
@@ -191,7 +198,7 @@ legend_elements = [
 ]
 
 # limit data to match Sore's visuals
-df = df[df['as_of'] <= datetime(2026,3,21)]
+df = df[df['as_of'] <= datetime(2026,5,23)]
 
 # visualise results (non-compressed)
 fig,ax=plt.subplots(figsize=(8.27/1.32, 11.69/4))
@@ -218,9 +225,8 @@ else:
     ax.set_yticks([0.5, 0.75, 1.0, 1.25])
     ax.set_ylabel(f'rel. {objective} (-)')
 ax.legend(handles=legend_elements, frameon=False, loc='upper right')
-
 fig.tight_layout()
-fig.savefig(f'accuracy_flusight_log-{log}_mean-{mean}_{objective}.pdf')
+plt.show()
 plt.close()
 
 
@@ -249,7 +255,7 @@ for mn in ['Cornell_JHU-hierarchSIR']:
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 ## X
-ax.set_xticks([datetime(2025,12,1), datetime(2026,1,1), datetime(2026,2,1), datetime(2026,3,1)])
+ax.set_xticks([datetime(2025,12,1), datetime(2026,2,1), datetime(2026,4,1), datetime(2026,6,1)])
 ax.set_xticklabels([])
 ## Y
 if log:
@@ -258,10 +264,10 @@ if log:
     ax.set_ylabel(f'rel. log. {objective}')
 else:
     ax.set_ylim([0.25,2.45])
-    ax.set_yticks([0.75, 1.5, 2.25])
+    ax.set_yticks([0.70, 1.5, 2.30])
     ax.set_ylabel(f'rel. {objective}\n(mean)')
 #ax.legend(handles=legend_elements, frameon=False, loc='upper right')
 fig.tight_layout()
-fig.savefig(f'accuracy_flusight_compressed_log-{log}_mean-{mean}_{objective}.pdf')
+fig.savefig(f'accuracy_flusight_compressed_log-{log}_mean-{mean}_{objective}.svg')
 plt.close()
 
