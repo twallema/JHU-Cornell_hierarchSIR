@@ -16,8 +16,8 @@ from scipy.stats import linregress
 
 # amean MAE --> False, True, True
 # amean WIS --> False, True, True
-# gmean WIS --> True, True, True
-inclusion_threshold = 1/28
+# gmean WIS --> False, False, True
+inclusion_threshold = 0/28
 
 # settings
 baseline = 'FluSight-baseline'
@@ -73,7 +73,7 @@ if glob:
         if not mean:
             WIS_sum = df_window.groupby(by='model')[objective].apply(lambda x: np.exp(np.sum(np.log(x))/len(x)) ).to_frame()
         else:
-            WIS_sum = df_window.groupby(by='model')[objective].sum().to_frame()
+            WIS_sum = df_window.groupby(by='model')[objective].mean().to_frame()
         # normalise with the baseline
         WIS_sum[f'rel_{objective}'] = WIS_sum / WIS_sum.loc[baseline]
         WIS_sum = WIS_sum.reset_index()
@@ -96,7 +96,7 @@ else:
         if not mean:
             WIS_sum = df_window.groupby(by=['model', 'location'])[objective].apply(lambda x: np.exp(np.sum(np.log(x))/len(x)) ).to_frame()
         else:
-            WIS_sum = df_window.groupby(by=['model', 'location'])[objective].sum().to_frame()
+            WIS_sum = df_window.groupby(by=['model', 'location'])[objective].mean().to_frame()
         # normalise with the baseline
         WIS_sum[f'rel_{objective}'] = WIS_sum / WIS_sum.loc[baseline]
         # mean over locations
